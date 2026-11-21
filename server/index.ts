@@ -9,6 +9,7 @@ import { assetPath, type CanvasStore, canvasStore, createCanvas, getCanvasInfo, 
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { explainRegion, explainRelation, explainSelection, handleChat, makeObject } from "./explain.ts";
+import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
 
 const app = new Hono<{ Variables: { user: User } }>();
@@ -84,6 +85,30 @@ app.post("/api/search", async (c) => {
   return c.json(await runSearch(config, query, ids, count));
 });
 
+// ---- arXiv ----
+
+app.get("/api/arxiv/search", async (c) => {
+  const q = c.req.query("q")?.trim();
+  if (!q) return c.json({ error: "q is required" }, 400);
+  const sort = c.req.query("sort") === "date" ? "submittedDate" : "relevance";
+  try {
+    return c.json(await searchArxiv(q, { start: Number(c.req.query("start") ?? 0) || 0, max: 15, sort }));
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 502);
+  }
+});
+
+// The PDF goes through the server: arXiv doesn't allow pages to fetch it directly, and the copy is cached.
+app.get("/api/arxiv/pdf", async (c) => {
+  const id = parseArxivId(c.req.query("id") ?? "");
+  if (!id) return c.json({ error: "an arXiv id is required" }, 400);
+  try {
+    return c.body(new Uint8Array(await arxivPdf(id)), 200, { "Content-Type": "application/pdf", "Cache-Control": "private, max-age=86400" });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 502);
+  }
+});
+
 // ---- Canvas ----
 
 app.get("/api/canvases", async (c) => {
@@ -128,6 +153,14 @@ app.post("/api/canvases/:cid/images", async (c) => {
   if (!(file instanceof File)) return c.json({ error: "file is required" }, 400);
   const num = (k: string) => Number(body[k]);
   const asset = await saveAsset(Buffer.from(await file.arrayBuffer()), file.type);
+  // A page added from arXiv says where it came from.
+  let source: ImageItem["source"];
+  try {
+    const s = typeof body.source === "string" ? JSON.parse(body.source) : undefined;
+    if (s?.kind === "arxiv" && parseArxivId(String(s.id))) {
+      source = { kind: "arxiv", id: String(s.id), title: String(s.title ?? "").slice(0, 300), page: Number(s.page) || 1, url: `https://arxiv.org/abs/${s.id}` };
+    }
+  } catch {}
   const item: ImageItem = {
     kind: "image",
     id: newId(),
@@ -139,6 +172,7 @@ app.post("/api/canvases/:cid/images", async (c) => {
     h: num("h"),
     naturalW: num("naturalW"),
     naturalH: num("naturalH"),
+    ...(source ? { source } : {}),
   };
   if ([item.x, item.y, item.w, item.h, item.naturalW, item.naturalH].some((n) => !Number.isFinite(n))) {
     return c.json({ error: "x, y, w, h, naturalW and naturalH are required numbers" }, 400);

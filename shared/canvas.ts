@@ -29,6 +29,8 @@ export interface ImageItem extends ItemState {
   h: number;
   naturalW: number;
   naturalH: number;
+  /** Provenance, for a page added from arXiv. */
+  source?: ImageSource;
   /** The whole page read once, when something first needs it (relating two slides). */
   pageText?: string;
   topic?: string;
@@ -109,6 +111,26 @@ export interface ChatMessage {
   objectId?: string;
 }
 
+/** An arXiv paper, as found by search or looked up by id. */
+export interface Paper {
+  id: string;
+  title: string;
+  authors: string[];
+  summary: string;
+  published: string;
+  category: string;
+  url: string;
+}
+
+/** Where an image came from, when it wasn't dropped in by hand. */
+export interface ImageSource {
+  kind: "arxiv";
+  id: string;
+  title: string;
+  page: number;
+  url: string;
+}
+
 export interface Video {
   url: string;
   videoId: string;
@@ -123,7 +145,8 @@ export interface Video {
 export type CardObject =
   | { type: "videos"; videos: Video[] }
   | { type: "links"; links: FoundSource[] }
-  | { type: "diagram"; svg: string; caption: string };
+  | { type: "diagram"; svg: string; caption: string }
+  | { type: "papers"; papers: Paper[] };
 
 export type ObjectKind = CardObject["type"];
 

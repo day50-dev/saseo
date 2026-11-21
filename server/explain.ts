@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { assetPath, type CanvasStore, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
+import { searchArxiv } from "./arxiv.ts";
 import { runSearch } from "./providers.ts";
 import { partialSvg, sanitizeSvg, svgLabels } from "./svg.ts";
 
@@ -548,15 +549,17 @@ const INTENT_CRITERIA: Record<Intent, string> = {
   videos: "A request for videos, lectures or talks to watch.",
   links: "A request for reading: articles, notes, papers, textbooks or other pages.",
   diagram: "A request to draw, sketch, picture or diagram something.",
+  papers: "A request for research papers, preprints or arXiv articles.",
 };
 const isIntent = (v: unknown): v is Intent => typeof v === "string" && v in INTENT_CRITERIA;
 
 const INTENT = `A reader typed a message in the conversation box on a card about a topic they are studying.
 Decide what they want: an answer in words, or an object made for them.
-Return JSON only: {"kind": "answer" | "videos" | "links" | "diagram", "request": "what they asked for, restated in a few words"}
+Return JSON only: {"kind": "answer" | "videos" | "links" | "diagram" | "papers", "request": "what they asked for, restated in a few words"}
 - "videos": they ask for videos, lectures or talks to watch.
 - "links": they ask for things to read: articles, notes, papers, textbook chapters.
 - "diagram": they ask you to draw, sketch, picture or diagram something.
+- "papers": they ask for research papers, preprints, or arXiv.
 - "answer": anything else.`;
 
 async function decideIntent(text: string, about: string): Promise<{ kind: Intent; request: string }> {
@@ -675,6 +678,20 @@ export function makeObject(store: CanvasStore, cardId: string) {
       const links = await search(`${q} introduction`);
       if (!links.length) throw new Error(`Nothing found for "${q}".`);
       await store.update(cardId, { stage: "done", subject: `Reading: ${request}`, object: { type: "links", links } });
+    } else if (card.objectKind === "papers") {
+      // Papers are the authority, not the onramp: here precise technical keywords are what work.
+      await store.update(cardId, { stage: "searching" });
+      let q = about.name;
+      try {
+        const r = await chatJson<{ query?: string }>(config.llm, [
+          { role: "system", content: PAPER_QUERY },
+          { role: "user", content: `The card is about: ${about.text}\n\nThey asked for: ${request}` },
+        ]);
+        q = str(r.query) || q;
+      } catch {}
+      const { papers } = await searchArxiv(q, { max: 8 });
+      if (!papers.length) throw new Error(`arXiv found nothing for "${q}".`);
+      await store.update(cardId, { stage: "done", subject: `Papers: ${request}`, object: { type: "papers", papers } });
     } else if (card.objectKind === "diagram") {
       await store.update(cardId, { stage: "writing" });
       // Draw it as it streams: each frame is the SVG so far, closed and cleaned, shown to viewers
@@ -707,7 +724,16 @@ export function makeObject(store: CanvasStore, cardId: string) {
   });
 }
 
-const MADE: Record<ObjectKind, string> = { videos: "Finding videos", links: "Finding reading", diagram: "Drawing a diagram" };
+const MADE: Record<ObjectKind, string> = {
+  videos: "Finding videos",
+  links: "Finding reading",
+  diagram: "Drawing a diagram",
+  papers: "Searching arXiv",
+};
+
+const PAPER_QUERY = `Write an arXiv search for research papers on what the reader asked for, given the card it was asked about.
+Use 2-5 precise technical keywords that would appear in paper titles or abstracts (names of equations, objects, methods).
+Return JSON only: {"query": "..."}`;
 
 /** Handles the latest message in a card's conversation: answers it, or makes what it asks for. */
 export async function handleChat(store: CanvasStore, cardId: string) {
