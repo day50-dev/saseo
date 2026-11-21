@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type CardItem, type CardStage, type FoundSource, type Paper, REGISTERS, type RegisterNote, type Sem } from "../shared/canvas.ts";
 import { PaperRow } from "./ArxivPanel.tsx";
+import { looksLikeTex, selectedText, Tex, textWithTex, withMath } from "./MathText.tsx";
 import { SemShapes } from "./SemShapes.tsx";
 
 const STAGE_TEXT: Record<CardStage, string> = {
@@ -29,6 +30,10 @@ const domain = (url: string) => {
 
 /** Turns [n] markers into links to the found source. */
 function withCitations(text: string, sources: FoundSource[]): ReactNode[] {
+  return withMath(text, (plain) => citations(plain, sources));
+}
+
+function citations(text: string, sources: FoundSource[]): ReactNode[] {
   return text.split(/(\[\d+\])/g).map((part, i) => {
     const m = part.match(/^\[(\d+)\]$/);
     const src = m && sources.find((s) => s.n === Number(m[1]));
@@ -48,15 +53,20 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * terms, and everyday stand-ins say which real term they stand for. Citations render inside.
  */
 function withRegister(text: string, sem: Sem, sources: FoundSource[]): ReactNode[] {
+  // Terms are marked only in the words, never inside a formula.
+  return withMath(text, (plain) => registerMarks(plain, sem, sources));
+}
+
+function registerMarks(text: string, sem: Sem, sources: FoundSource[]): ReactNode[] {
   const marks = new Map<string, { kind: "term" | "standin"; concept?: string }>();
   for (const t of sem.terms ?? []) if (t.length > 1) marks.set(t.toLowerCase(), { kind: "term" });
   for (const s of sem.standIns ?? []) if (s.phrase.length > 1) marks.set(s.phrase.toLowerCase(), { kind: "standin", concept: s.concept });
-  if (!marks.size) return withCitations(text, sources);
+  if (!marks.size) return citations(text, sources);
   // Longest first, so "magnetic field" wins over "field".
   const pattern = new RegExp(`(${[...marks.keys()].sort((a, b) => b.length - a.length).map(escapeRe).join("|")})`, "gi");
   return text.split(pattern).map((part, i) => {
     const m = marks.get(part.toLowerCase());
-    if (!m) return <span key={i}>{withCitations(part, sources)}</span>;
+    if (!m) return <span key={i}>{citations(part, sources)}</span>;
     return m.kind === "term" ? (
       <span key={i} className="sem-term" title="Term of art: a technical term with a strict definition. Select it to go further down.">
         {part}
@@ -125,7 +135,7 @@ export function Card(props: {
 
   const onMouseUp = () => {
     const sel = window.getSelection();
-    const text = sel?.toString().replace(/\s+/g, " ").trim() ?? "";
+    const text = sel ? selectedText(sel).replace(/\s+/g, " ").trim() : "";
     const el = ref.current;
     if (!sel || !text || !el || sel.rangeCount === 0 || !inText(sel.anchorNode) || !inText(sel.focusNode)) {
       setPicked(null);
@@ -137,7 +147,7 @@ export function Card(props: {
     // The line the words sit in tells the librarian what they refer to.
     const node = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement;
     const line = node?.closest(".sem-step, .sem-desc, .sem-part, .sem-together, .sem-aside, .facet p, .chat-text, .source-para");
-    const context = (line?.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
+    const context = (line ? textWithTex(line) : "").replace(/\s+/g, " ").trim().slice(0, 500);
     setPicked({ text: text.slice(0, 200), context, top: (r.bottom - box.top) / scale + 6, clientY: r.top });
   };
 
@@ -208,7 +218,7 @@ export function Card(props: {
         </div>
       )}
       {card.register && <RegisterBanner note={card.register} />}
-      {card.transcription && card.transcription !== card.subject && <div className="transcription">{card.transcription}</div>}
+      {card.transcription && card.transcription !== card.subject && <div className="transcription">{transcription(card.transcription)}</div>}
       {card.terms && card.terms.length > 0 && <TermsList terms={card.terms} />}
 
       {busy && (
@@ -226,7 +236,7 @@ export function Card(props: {
       )}
 
       <div ref={explainRef} className="card-explanation">
-      {card.origin && card.stage === "done" && <SourceView card={card} />}
+      {card.origin && card.stage === "done" && <SourceView card={card} onReread={props.onRetry} />}
       {card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} />}
       {card.sem && (
         <SemShapes
@@ -459,27 +469,42 @@ function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: 
   );
 }
 
+/** A transcription is LaTeX when it's math; otherwise words that may hold some. */
+function transcription(t: string): ReactNode {
+  return /\\[(\[]/.test(t) || !looksLikeTex(t) ? withMath(t) : <Tex tex={t} display />;
+}
+
 /** A starting point that isn't an image: a page someone linked to, or a statement they typed. */
-function SourceView({ card }: { card: CardItem }) {
+function SourceView({ card, onReread }: { card: CardItem; onReread: () => void }) {
   const [all, setAll] = useState(false);
   const o = card.origin!;
-  if (o.kind === "note") return <p className="source-para source-note">{o.title}</p>;
-  const text = card.pageText ?? "";
+  if (o.kind === "note") return <p className="source-para source-note">{withMath(o.title)}</p>;
+  // Paragraphs, "## " headings, images as ![alt](url), and formulas between \( \) or \[ \].
+  const paras = (card.pageText ?? "").split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
   const LIMIT = 6000;
-  const shown = all || text.length <= LIMIT ? text : `${text.slice(0, LIMIT).replace(/\s+\S*$/, "")} …`;
+  let used = 0;
+  const shown = all ? paras : paras.filter((p) => (used += p.length) <= LIMIT || used === p.length);
   return (
     <div className="source-page">
       <a href={o.url} target="_blank" rel="noreferrer" className="small source-link">
         {o.site ?? domain(o.url)} ↗
-      </a>
-      {shown.split(/\n{2,}|\n(?=[A-Z][^.\n]{0,60}\n)/).map((para, i) =>
-        para.trim() ? (
-          <p key={i} className={`source-para ${/^[^.\n]{1,60}$/.test(para.trim()) ? "source-heading" : ""}`}>
-            {para.trim()}
-          </p>
-        ) : null,
-      )}
-      {!all && text.length > LIMIT && (
+      </a>{" "}
+      <button type="button" className="link small" title="Fetch the page again" onClick={onReread}>
+        Read again
+      </button>
+      {shown.map((para, i) => {
+        const img = para.match(/^!\[([^\]]*)\]\((https:\/\/[^\s)]+)\)$/);
+        if (img) {
+          return (
+            <figure key={i} className="source-figure">
+              <img src={img[2]} alt={img[1]} loading="lazy" referrerPolicy="no-referrer" draggable={false} />
+            </figure>
+          );
+        }
+        if (para.startsWith("## ")) return <p key={i} className="source-para source-heading">{withMath(para.slice(3))}</p>;
+        return <p key={i} className="source-para">{withMath(para)}</p>;
+      })}
+      {shown.length < paras.length && (
         <button type="button" className="link small" onClick={() => setAll(true)}>
           Show the whole page
         </button>

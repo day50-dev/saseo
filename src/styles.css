@@ -509,6 +509,12 @@ kbd {
 .start-dock input { border: none !important; background: transparent !important; padding: 8px 10px !important; }
 .source-page { margin-top: 6px; }
 .source-link { display: inline-block; margin-bottom: 6px; }
-.source-para { margin: 0 0 10px; line-height: 1.55; }
+.source-para { margin: 0 0 10px; line-height: 1.55; white-space: pre-line; }
+.source-figure { margin: 4px 0 12px; text-align: center; }
+.source-figure img { max-width: 100%; background: #fff; border-radius: 4px; padding: 4px; }
+.math .katex { font-size: 1.08em; }
+.math-display { display: block; overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.math-display .katex-display { margin: 0.3em 0; }
+.tex-raw { white-space: pre-wrap; }
 .source-heading { font-weight: 700; margin-top: 14px; }
 .source-note { font-size: 17px; font-weight: 500; line-height: 1.45; margin-top: 8px; }

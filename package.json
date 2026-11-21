@@ -19,6 +19,7 @@
     "better-sqlite3": "^13.2.0",
     "fast-xml-parser": "^5.12.1",
     "hono": "^4.13.19",
+    "katex": "^0.19.1",
     "keenable": "^0.1.4",
     "linkedom": "^0.18.15",
     "pdfjs-dist": "^6.5.438",
