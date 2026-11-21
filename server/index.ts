@@ -133,10 +133,10 @@ app.post("/api/canvas/cards/:id/retry", async (c) => {
     if (!body.marked?.startsWith("data:image/") || !body.crop?.startsWith("data:image/")) {
       return c.json({ error: "marked and crop must be image data URLs" }, 400);
     }
-    await update(card.id, { stage: "reading" });
+    await update(card.id, { stage: "reading", error: "" });
     void explainRegion(card.id, { marked: body.marked, crop: body.crop });
   } else {
-    await update(card.id, { stage: "reading" });
+    await update(card.id, { stage: "reading", error: "" });
     void explainSelection(card.id);
   }
   return c.json({ ok: true });
