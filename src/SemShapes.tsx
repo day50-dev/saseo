@@ -19,6 +19,9 @@ const SECTIONS: Section[] = [
 ];
 
 const LINE_MID = 10; // half the text line height: where an arrow meets the first line
+// Arrowhead length. Lines stop where the head begins and the head carries on to the target, so
+// a line never runs under the head and pokes out at its point.
+const ARROW = 8;
 
 interface Box {
   x: number;
@@ -80,8 +83,12 @@ export function SemShapes({
         const top = title.y + title.h;
         const last = aside ? aside.y + LINE_MID : cats[cats.length - 1].y + cats[cats.length - 1].h / 2;
         d.plain.push(`M${busX + 14} ${top} L${busX} ${top + 14} V${last}`);
-        for (const cat of cats) d.thick.push(`M${busX} ${cat.y + cat.h / 2} H${cat.x - 3}`);
-        if (aside) d.thin.push(`M${busX} ${aside.y + LINE_MID - 12} Q${busX} ${aside.y + LINE_MID} ${busX + 12} ${aside.y + LINE_MID} H${aside.x - 3}`);
+        for (const cat of cats) d.thick.push(`M${busX} ${cat.y + cat.h / 2} H${Math.max(busX + 6, cat.x - 2 - ARROW)}`);
+        if (aside) {
+          const y = aside.y + LINE_MID;
+          const end = Math.max(busX + 8, aside.x - 2 - ARROW);
+          d.thin.push(`M${busX} ${y - 8} Q${busX} ${y} ${Math.min(busX + 6, end - 2)} ${y} H${end}`);
+        }
       }
 
       for (const s of present) {
@@ -102,9 +109,12 @@ export function SemShapes({
           for (let i = 1; i < steps.length; i++) {
             const a = steps[i - 1];
             const b = steps[i];
-            const x1 = a.x + 14;
             const y2 = b.y + LINE_MID;
-            d.thin.push(`M${x1} ${a.y + a.h} Q${x1} ${y2} ${b.x - 4} ${y2}`);
+            const end = b.x - 3 - ARROW;
+            // The curve must arrive travelling right, so it starts left of where it ends; otherwise
+            // the head follows a leftward tangent and points backwards.
+            const x1 = Math.min(a.x + 14, end - 10);
+            d.thin.push(`M${x1} ${a.y + a.h} Q${x1} ${y2} ${end} ${y2}`);
           }
         } else if (s.key === "what") {
           // Category with Descriptions: the description bend, a thinner bus, an arrow to each line.
@@ -113,7 +123,7 @@ export function SemShapes({
           const busX = cat.x + 10;
           const top = cat.y + cat.h;
           d.plain.push(`M${busX + 12} ${top} L${busX} ${top + 12} V${descs[descs.length - 1].y + LINE_MID}`);
-          for (const t of descs) d.thin.push(`M${busX} ${t.y + LINE_MID} H${t.x - 4}`);
+          for (const t of descs) d.thin.push(`M${busX} ${t.y + LINE_MID} H${Math.max(busX + 6, t.x - 3 - ARROW)}`);
         } else if (s.key === "parts") {
           // Horizontal category bus down into each part, then a Y-connector to what they add up to.
           const parts = all("part-");
@@ -122,13 +132,13 @@ export function SemShapes({
           const centers = parts.map((p) => p.x + p.w / 2);
           d.plain.push(`M${cat.x + 22} ${cat.y + cat.h} V${busY}`);
           d.plain.push(`M${Math.min(cat.x + 22, ...centers)} ${busY} H${Math.max(...centers)}`);
-          for (const p of parts) d.thin.push(`M${p.x + p.w / 2} ${busY} V${p.y - 3}`);
+          for (const p of parts) d.thin.push(`M${p.x + p.w / 2} ${busY} V${p.y - 2 - ARROW}`);
           const join = box("together");
           if (join) {
             const jx = join.x + join.w / 2;
             const jy = join.y - 14;
             for (const p of parts) d.plain.push(`M${p.x + p.w / 2} ${p.y + p.h} L${jx} ${jy}`);
-            d.thin.push(`M${jx} ${jy} V${join.y - 2}`);
+            d.thin.push(`M${jx} ${jy} V${join.y - 2 - ARROW}`);
           }
         }
       }
@@ -146,7 +156,7 @@ export function SemShapes({
     <div className="sem" ref={root}>
       <svg className="sem-lines" aria-hidden>
         <defs>
-          <marker id={marker} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <marker id={marker} viewBox="0 0 10 10" refX="0" refY="5" markerUnits="userSpaceOnUse" markerWidth={ARROW} markerHeight={ARROW} orient="auto-start-reverse">
             <path d="M0 0L10 5L0 10z" className="sem-head" />
           </marker>
         </defs>
