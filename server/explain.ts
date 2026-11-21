@@ -48,6 +48,37 @@ async function ancestry(card: CardItem): Promise<{ path: string[]; topic?: strin
   return { path, topic: topic ?? root?.topic, root };
 }
 
+/** A card's explanation as plain text: the structure for newer cards, paragraphs for older ones. */
+function cardText(c: CardItem): string {
+  if (c.sem) return semText(c.sem);
+  if (c.facets) return [c.facets.why, c.facets.what, c.facets.how].filter(Boolean).join("\n");
+  return "";
+}
+
+/**
+ * Everything the librarian knows about how the reader got to this card: what they boxed on the
+ * page, every card on the way down with its gist, and the full explanation they selected from.
+ */
+async function trail(card: CardItem): Promise<string> {
+  const chain: CardItem[] = [];
+  let cur: Item | undefined = await findItem(card.parentId);
+  while (cur?.kind === "card") {
+    chain.unshift(cur);
+    cur = await findItem(cur.parentId);
+  }
+  if (!chain.length) return "";
+  const root = chain[0];
+  const parent = chain[chain.length - 1];
+  const lines = [
+    `The reader boxed this on a page${root.topic ? ` about ${root.topic}` : ""}${root.transcription ? `: ${root.transcription}` : ""}`,
+    `Then, step by step, they asked about:`,
+    ...chain.map((c, i) => `${i + 1}. ${c.subject ?? c.selection ?? "?"}${c.sem?.what.gist ? `: ${c.sem.what.gist}` : ""}`),
+    `The full explanation of "${parent.subject ?? "the previous card"}" that they selected words from:`,
+    cardText(parent),
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
 function mergeHits(results: Awaited<ReturnType<typeof runSearch>>, max = 6): FoundSource[] {
   const lists = Object.entries(results)
     .filter(([, r]) => r?.ok)
@@ -98,11 +129,20 @@ const semText = (s: Sem) =>
     .filter(Boolean)
     .join("\n");
 
-async function write(card: CardItem, subject: string, quoted: string, topic: string | undefined, path: string[], sources: FoundSource[]) {
+async function write(
+  card: CardItem,
+  subject: string,
+  quoted: string,
+  topic: string | undefined,
+  path: string[],
+  sources: FoundSource[],
+  context = "",
+) {
   const config = await loadConfig();
   const lines = [
     `Subject: ${subject}`,
     `What the reader selected: ${quoted}`,
+    context ? `How they got here:\n${context}` : "",
     topic ? `The page is about: ${topic}` : "",
     path.length
       ? `The reader got here by asking about: ${path.join(" → ")} → ${subject}. They don't know these yet, so don't lean on them.`
@@ -191,18 +231,62 @@ export function explainRegion(cardId: string, images: { marked: string; crop: st
   });
 }
 
+const RESOLVE = `A reader selected some words inside an explanation because they want to know more.
+Work out what idea those words refer to IN THAT SENTENCE. Explanations often use everyday stand-ins
+("an invisible push", "spread-out flow") for a real concept, and searching the literal words finds
+nothing useful. Name the real concept the way an introductory textbook would title it.
+Return JSON only, no prose:
+{"concept": "the standard name of the idea, 2-6 words",
+ "searchQuery": "2-6 plain words for BEGINNER material (intro notes, textbook chapters, videos) on that concept, without terms specific to the page"}`;
+
+/** What the selected words name, as a concept and a beginner search; null if the model can't say. */
+async function resolveSelection(
+  selection: string,
+  sentence: string | undefined,
+  context: string,
+): Promise<{ concept: string; searchQuery: string } | null> {
+  const config = await loadConfig();
+  try {
+    const r = await chatJson<{ concept?: string; searchQuery?: string }>(config.llm, [
+      { role: "system", content: RESOLVE },
+      {
+        role: "user",
+        content: [
+          `Selected words: ${selection}`,
+          sentence ? `The sentence they are in: ${sentence}` : "",
+          context ? `Everything known about where that sentence comes from:\n${context}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      },
+    ]);
+    const concept = str(r.concept);
+    const searchQuery = str(r.searchQuery);
+    return concept && searchQuery ? { concept, searchQuery } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** For words the learner selected inside another card: explain them one level further down. */
 export function explainSelection(cardId: string) {
   return guard(cardId, async () => {
     const card = (await findItem(cardId)) as CardItem;
     const selection = card.selection ?? "";
     const { path, topic } = await ancestry(card);
-    const subject = selection;
-    await update(cardId, { stage: "searching", subject, topic });
-    // Search for the plain concept, not "concept + page topic": adding the topic pulls results
-    // back toward the specialist material, which is the climb the descent is meant to avoid.
-    const sources = await search(`${selection} explained introduction`);
+    const context = await trail(card);
+
+    // First work out what the words mean where they were selected: the literal words of a plain
+    // gloss ("invisible push") find nothing, while the page topic pulls the search back toward the
+    // specialist material. Search for the concept itself, at beginner level.
+    await update(cardId, { stage: "reading" });
+    const resolved = await resolveSelection(selection, card.context, context);
+    const subject = resolved?.concept ?? selection;
+    const quoted = card.context ? `“${selection}” in: ${card.context}` : selection;
+    await update(cardId, { stage: "searching", subject, topic, transcription: card.context ? quoted : undefined });
+
+    const sources = await search(resolved ? `${resolved.searchQuery} introduction` : `${selection} explained introduction`);
     await update(cardId, { stage: "writing", sources });
-    await write(card, subject, selection, topic, path, sources);
+    await write(card, subject, quoted, topic, path, sources, context);
   });
 }
