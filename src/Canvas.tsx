@@ -726,6 +726,16 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     await refresh();
   };
 
+  /** Brings an item into the middle of the view and selects it. */
+  const focusOn = (id: string) => {
+    const item = byId.get(id);
+    const el = stageRef.current;
+    if (!item || item.kind === "region" || !el) return;
+    const r = el.getBoundingClientRect();
+    setView((v) => ({ ...v, x: r.width / 2 - (item.x + item.w / 2) * v.scale, y: 80 - item.y * v.scale }));
+    setSelected(id);
+  };
+
   // ---- Connectors ----
 
   const connectors = visibleCards.flatMap((c) => {
@@ -995,6 +1005,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               onHeight={(h) => setHeights((all) => (all[c.id] === h ? all : { ...all, [c.id]: h }))}
               onDescend={(text, context, clientY) => descend(c, text, context, toWorld(0, clientY).y)}
               onRetry={() => retry(c)}
+              onFocus={focusOn}
               onAsk={async (text) => {
                 try {
                   await api.chat(c.id, text);

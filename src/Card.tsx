@@ -81,6 +81,8 @@ export function Card(props: {
   onRetry: () => void;
   /** Sends a message in this card's conversation. */
   onAsk: (text: string) => void;
+  /** Brings an object a conversation made into view. */
+  onFocus: (id: string) => void;
   /** Pointer down on the header: start moving this card and the cards below it. */
   onGrab: (e: React.PointerEvent) => void;
   moving: boolean;
@@ -221,6 +223,7 @@ export function Card(props: {
       )}
 
       <div ref={explainRef} className="card-explanation">
+      {card.object && <ObjectView card={card} />}
       {card.sem && (
         <SemShapes
           title={card.subject ?? "Explanation"}
@@ -261,7 +264,7 @@ export function Card(props: {
       )}
 
       <div ref={chatRef}>
-        <ChatBox card={card} sources={sources} onAsk={props.onAsk} />
+        <ChatBox card={card} sources={sources} onAsk={props.onAsk} onFocus={props.onFocus} />
       </div>
       </>
       )}
@@ -333,7 +336,17 @@ function TermsList({ terms }: { terms: RegisterNote[] }) {
 }
 
 /** A conversation held at this card: everything said stays here, on the canvas. */
-function ChatBox({ card, sources, onAsk }: { card: CardItem; sources: FoundSource[]; onAsk: (text: string) => void }) {
+function ChatBox({
+  card,
+  sources,
+  onAsk,
+  onFocus,
+}: {
+  card: CardItem;
+  sources: FoundSource[];
+  onAsk: (text: string) => void;
+  onFocus: (id: string) => void;
+}) {
   const [draft, setDraft] = useState("");
   const messages = card.chat ?? [];
   const send = () => {
@@ -347,7 +360,14 @@ function ChatBox({ card, sources, onAsk }: { card: CardItem; sources: FoundSourc
       {messages.map((m, i) => (
         <div key={i} className={`chat-msg chat-${m.role}`}>
           <span className="chat-who">{m.role === "user" ? "You" : "Librarian"}</span>
-          <p className="chat-text">{m.role === "assistant" ? withCitations(m.text, sources) : m.text}</p>
+          {m.objectId ? (
+            // What the conversation made lives on its own card; this line just points to it.
+            <button type="button" className="chat-object" onClick={() => onFocus(m.objectId!)}>
+              {m.text} →
+            </button>
+          ) : (
+            <p className="chat-text">{m.role === "assistant" ? withCitations(m.text, sources) : m.text}</p>
+          )}
         </div>
       ))}
       {card.chatPending && (
@@ -359,7 +379,7 @@ function ChatBox({ card, sources, onAsk }: { card: CardItem; sources: FoundSourc
         className="chat-input"
         rows={1}
         value={draft}
-        placeholder={messages.length ? "Ask a follow-up…" : "Ask about this…"}
+        placeholder={messages.length ? "Ask a follow-up, or ask for videos, reading, a diagram…" : "Ask about this, or ask for videos, reading, a diagram…"}
         disabled={card.chatPending}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
@@ -372,5 +392,57 @@ function ChatBox({ card, sources, onAsk }: { card: CardItem; sources: FoundSourc
         onPointerDown={(e) => e.stopPropagation()}
       />
     </div>
+  );
+}
+
+/** An object a conversation made: videos to watch, pages to read, or a diagram. */
+function ObjectView({ card }: { card: CardItem }) {
+  const [playing, setPlaying] = useState<string | null>(null);
+  const o = card.object!;
+  if (o.type === "diagram")
+    return (
+      <figure className="object-diagram">
+        {/* Shown as an image: the browser runs nothing inside it. */}
+        <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(o.svg)}`} alt={card.subject ?? "Diagram"} draggable={false} />
+        {o.caption && <figcaption className="facet-text">{o.caption}</figcaption>}
+      </figure>
+    );
+  if (o.type === "videos")
+    return (
+      <div className="object-videos">
+        {o.videos.map((v) =>
+          playing === v.videoId ? (
+            <div key={v.videoId} className="video playing">
+              <iframe
+                src={`https://www.youtube-nocookie.com/embed/${v.videoId}?autoplay=1`}
+                title={v.title}
+                allow="autoplay; encrypted-media; picture-in-picture"
+                allowFullScreen
+              />
+              <a href={v.url} target="_blank" rel="noreferrer" className="small">
+                {v.title}
+              </a>
+            </div>
+          ) : (
+            <button key={v.videoId} type="button" className="video" onClick={() => setPlaying(v.videoId)} title="Play here">
+              <img src={`https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`} alt="" loading="lazy" draggable={false} />
+              <span className="video-title">{v.title}</span>
+            </button>
+          ),
+        )}
+      </div>
+    );
+  return (
+    <ol className="object-links">
+      {o.links.map((l) => (
+        <li key={l.n}>
+          <a href={l.url} target="_blank" rel="noreferrer">
+            {l.title || domain(l.url)}
+          </a>{" "}
+          <span className="muted small">{domain(l.url)}</span>
+          {l.snippet && <p className="small">{l.snippet.slice(0, 180)}…</p>}
+        </li>
+      ))}
+    </ol>
   );
 }
