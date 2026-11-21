@@ -13,6 +13,7 @@ import {
   type TestResult,
 } from "../shared/providers.ts";
 import { api } from "./api.ts";
+import { linkTo } from "./router.ts";
 
 export function Settings() {
   const [config, setConfig] = useState<PublicConfig | null>(null);
@@ -34,7 +35,9 @@ export function Settings() {
   return (
     <main className="settings">
       <header>
-        <a href="#" className="back">← Canvas</a>
+        <a {...linkTo("/")} className="back">
+          ← All canvases
+        </a>
         <h1>Settings</h1>
         <p className="muted">
           Keys are stored on this machine by the local server and never sent to the browser.

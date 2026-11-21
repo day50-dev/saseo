@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CARD_WIDTH, type CardItem, type ImageItem, type Item, MIN_CHILD_GAP, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { Card, type Side } from "./Card.tsx";
-import { assetUrl, canvasApi } from "./canvasApi.ts";
+import { assetUrl, CanvasNotFound, canvasApi, canvasesApi } from "./canvasApi.ts";
+import { linkTo } from "./router.ts";
 
 interface View {
   x: number;
@@ -14,17 +15,18 @@ const STACK_GAP = 24; // vertical gap between cards in one column
 const PENDING_HEIGHT = 900; // space reserved for a card that hasn't been written yet; diagram cards run 700-1100px
 const MAX_IMAGE_WIDTH = 900;
 
-function loadView(): View {
+// Where you were looking is remembered per canvas, in this browser only.
+function loadView(canvasId: string): View {
   try {
-    const v = JSON.parse(localStorage.getItem("librarian.view") ?? "");
+    const v = JSON.parse(localStorage.getItem(`librarian.view.${canvasId}`) ?? "");
     if (typeof v?.x === "number" && typeof v?.scale === "number") return v;
   } catch {}
   return { x: 40, y: 80, scale: 1 };
 }
 
-function saveView(v: View) {
+function saveView(canvasId: string, v: View) {
   try {
-    localStorage.setItem("librarian.view", JSON.stringify(v));
+    localStorage.setItem(`librarian.view.${canvasId}`, JSON.stringify(v));
   } catch {}
 }
 
@@ -53,11 +55,14 @@ function loadMode(): Mode {
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
-export function Canvas() {
+export function Canvas({ canvasId }: { canvasId: string }) {
+  const api = useMemo(() => canvasApi(canvasId), [canvasId]);
+  const [name, setName] = useState("");
+  const [notFound, setNotFound] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<View>(loadView);
+  const [view, setView] = useState<View>(() => loadView(canvasId));
   const [draft, setDraft] = useState<{ imageId: string; start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   // A container being dragged, with everything that hangs off it.
   // A connection being dragged from one card's port, to ask how it relates to another card.
@@ -110,14 +115,16 @@ export function Canvas() {
 
   const refresh = useCallback(async () => {
     try {
-      const s = await canvasApi.state();
+      const s = await api.state();
+      setName(s.name);
       // Hidden items stay in the log (undo can bring them back) but aren't drawn or laid out around.
       setItems(s.items.filter((i) => !i.hidden));
       setLoaded(true);
     } catch (e) {
-      setError(String(e));
+      if (e instanceof CanvasNotFound) setNotFound(true);
+      else setError(String(e));
     }
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     refresh();
@@ -131,7 +138,22 @@ export function Canvas() {
     return () => clearInterval(t);
   }, [pending, refresh]);
 
-  useEffect(() => saveView(view), [view]);
+  useEffect(() => saveView(canvasId, view), [canvasId, view]);
+
+  useEffect(() => {
+    document.title = name ? `${name} · Librarian` : "Librarian";
+  }, [name]);
+
+  const rename = async (next: string) => {
+    const clean = next.trim();
+    if (!clean || clean === name) return;
+    setName(clean);
+    try {
+      setName((await canvasesApi.rename(canvasId, clean)).name);
+    } catch (e) {
+      setError(`Couldn't rename: ${e}`);
+    }
+  };
 
   // ---- Undo and redo ----
   // Every step is reversible because removal only hides. A new step after an undo starts a new
@@ -159,16 +181,16 @@ export function Canvas() {
     pushStep({
       label,
       undo: async () => {
-        hiddenIds = (await canvasApi.hide(ids)).ids;
+        hiddenIds = (await api.hide(ids)).ids;
       },
-      redo: () => canvasApi.show(hiddenIds),
+      redo: () => api.show(hiddenIds),
     });
   };
 
   const remove = async (id: string, label: string) => {
     try {
-      const { ids } = await canvasApi.hide([id]);
-      pushStep({ label, undo: () => canvasApi.show(ids), redo: () => canvasApi.hide(ids) });
+      const { ids } = await api.hide([id]);
+      pushStep({ label, undo: () => api.show(ids), redo: () => api.hide(ids) });
       await refresh();
     } catch (e) {
       setError(`Couldn't remove: ${e}`);
@@ -285,7 +307,7 @@ export function Canvas() {
       await el.decode();
       const w = Math.min(el.naturalWidth, MAX_IMAGE_WIDTH);
       const h = Math.round((el.naturalHeight * w) / el.naturalWidth);
-      const img = await canvasApi.addImage(file, { x: Math.round(at.x), y: Math.round(at.y), w, h, naturalW: el.naturalWidth, naturalH: el.naturalHeight });
+      const img = await api.addImage(file, { x: Math.round(at.x), y: Math.round(at.y), w, h, naturalW: el.naturalWidth, naturalH: el.naturalHeight });
       added("add image", [img.id]);
       await refresh();
     } catch (e) {
@@ -446,8 +468,8 @@ export function Canvas() {
     const to = changed.map((c) => ({ id: c.id, x: c.x, y: Math.round(pos.get(c.id)!.y), h: heights[c.id] }));
     const from = changed.map((c) => ({ id: c.id, x: c.x, y: c.y, h: heights[c.id] }));
     try {
-      await canvasApi.move(to);
-      pushStep({ label: "untangle", undo: () => canvasApi.move(from), redo: () => canvasApi.move(to) });
+      await api.move(to);
+      pushStep({ label: "untangle", undo: () => api.move(from), redo: () => api.move(to) });
     } catch (e) {
       setError(`Couldn't untangle: ${e}`);
     }
@@ -464,8 +486,8 @@ export function Canvas() {
     // Show the new place at once; the refresh confirms it.
     setItems((all) => all.map((i) => (d.orig[i.id] && i.kind !== "region" ? { ...i, x: i.x + d.dx, y: i.y + d.dy } : i)));
     try {
-      await canvasApi.move(to);
-      pushStep({ label: "move", undo: () => canvasApi.move(from), redo: () => canvasApi.move(to) });
+      await api.move(to);
+      pushStep({ label: "move", undo: () => api.move(from), redo: () => api.move(to) });
     } catch (e) {
       setError(`Couldn't move: ${e}`);
     }
@@ -515,7 +537,7 @@ export function Canvas() {
       y = slotY(x, Math.round(bottom + 64));
     }
     try {
-      const res = await canvasApi.relate({ a: a.id, b: b.id, x, y });
+      const res = await api.relate({ a: a.id, b: b.id, x, y });
       added(`relate “${(a.subject ?? "").slice(0, 20)}” and “${(b.subject ?? "").slice(0, 20)}”`, [res.card.id]);
       await refresh();
     } catch (e) {
@@ -578,7 +600,7 @@ export function Canvas() {
     try {
       const { marked, crop } = renderRegion(el, rect);
       const cardX = img.x + img.w + GAP;
-      const res = await canvasApi.addRegion({ imageId: img.id, rect, card: { x: cardX, y: slotY(cardX, Math.round(y0)) }, marked, crop });
+      const res = await api.addRegion({ imageId: img.id, rect, card: { x: cardX, y: slotY(cardX, Math.round(y0)) }, marked, crop });
       added("box", [res.region.id]);
       await refresh();
     } catch (e) {
@@ -596,7 +618,7 @@ export function Canvas() {
     const vertical = dir === "below" ? parent.y + cardHeight(parent) + STACK_GAP * 2 : dir === "above" ? parent.y - STACK_GAP * 2 - PENDING_HEIGHT : null;
     try {
       const y = vertical === null ? slotY(x, Math.round(worldY - 20)) : dir === "below" ? slotY(x, Math.round(vertical)) : Math.round(vertical);
-      const res = await canvasApi.descend({ parentId: parent.id, selection, context, x, y });
+      const res = await api.descend({ parentId: parent.id, selection, context, x, y });
       added(`explain “${selection.slice(0, 30)}”`, [res.card.id]);
       await refresh();
     } catch (e) {
@@ -610,9 +632,9 @@ export function Canvas() {
       if (parent?.kind === "region") {
         const el = imgRefs.current[parent.imageId];
         if (!el) throw new Error("its image isn't on the canvas");
-        await canvasApi.retry(card.id, renderRegion(el, parent.rect));
+        await api.retry(card.id, renderRegion(el, parent.rect));
       } else {
-        await canvasApi.retry(card.id);
+        await api.retry(card.id);
       }
       await refresh();
     } catch (e) {
@@ -643,11 +665,11 @@ export function Canvas() {
     // Show the change at once; the refresh confirms it.
     setItems((all) => all.map((i) => (i.id === id ? { ...i, collapsed: next } : i)));
     try {
-      await canvasApi.collapse([id], next);
+      await api.collapse([id], next);
       pushStep({
         label: next ? "collapse" : "expand",
-        undo: () => canvasApi.collapse([id], !next),
-        redo: () => canvasApi.collapse([id], next),
+        undo: () => api.collapse([id], !next),
+        redo: () => api.collapse([id], next),
       });
     } catch (e) {
       setError(`Couldn't ${next ? "collapse" : "expand"}: ${e}`);
@@ -705,10 +727,24 @@ export function Canvas() {
     h: Math.abs(draft.end.y - draft.start.y),
   };
 
+  if (notFound)
+    return (
+      <main className="settings">
+        <h1>No canvas here</h1>
+        <p>
+          There's no canvas with the id <code>{canvasId}</code>. <a {...linkTo("/")}>See all canvases</a>
+        </p>
+      </main>
+    );
+
   return (
     <div className="canvas-page">
       <div className="toolbar">
-        <strong>Librarian</strong>
+        <a className="brand" {...linkTo("/")} title="All canvases">
+          Librarian
+        </a>
+        <span className="muted">/</span>
+        <CanvasName name={name} onRename={rename} />
         <span className="muted small hint">
           Drop or paste an image · Select: drag a box over what stopped you · hold Space to pan · Ctrl+scroll to zoom
         </span>
@@ -754,7 +790,7 @@ export function Canvas() {
         <button type="button" className="link" title="Reset zoom" onClick={() => setView({ x: 40, y: 80, scale: 1 })}>
           {Math.round(view.scale * 100)}%
         </button>
-        <a href="#settings">Settings</a>
+        <a {...linkTo("/settings")}>Settings</a>
       </div>
       {error && (
         <div className="banner fail" onClick={() => setError(null)}>
@@ -936,4 +972,41 @@ function renderRegion(img: HTMLImageElement, rect: Rect): { marked: string; crop
   cc.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, crop.width, crop.height);
 
   return { marked: page.toDataURL("image/jpeg", 0.88), crop: crop.toDataURL("image/png") };
+}
+
+/** The canvas's name, edited in place: click it, type, press Enter or click away. */
+function CanvasName({ name, onRename }: { name: string; onRename: (name: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  if (!editing)
+    return (
+      <button
+        type="button"
+        className="canvas-name"
+        title="Rename this canvas (its URL stays the same)"
+        onClick={() => {
+          setDraft(name);
+          setEditing(true);
+        }}
+      >
+        {name || "…"}
+      </button>
+    );
+  const done = () => {
+    setEditing(false);
+    onRename(draft);
+  };
+  return (
+    <input
+      className="canvas-name-input"
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={done}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") done();
+        if (e.key === "Escape") setEditing(false);
+      }}
+    />
+  );
 }

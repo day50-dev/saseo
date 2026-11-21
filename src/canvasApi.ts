@@ -1,5 +1,5 @@
 import { unreachable } from "./api.ts";
-import type { CanvasState, CardItem, ImageItem, Rect, RegionItem } from "../shared/canvas.ts";
+import type { CanvasInfo, CanvasState, CardItem, ImageItem, Rect, RegionItem } from "../shared/canvas.ts";
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -11,42 +11,60 @@ async function json<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-const post = (path: string, body: unknown) =>
-  fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const send = (method: string, path: string, body: unknown) =>
+  fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const post = (path: string, body: unknown) => send("POST", path, body);
 
-export const canvasApi = {
-  state: () => fetch("/api/canvas").then((r) => json<CanvasState>(r)),
-
-  addImage: (file: File, place: { x: number; y: number; w: number; h: number; naturalW: number; naturalH: number }) => {
-    const form = new FormData();
-    form.append("file", file);
-    for (const [k, v] of Object.entries(place)) form.append(k, String(v));
-    return fetch("/api/canvas/images", { method: "POST", body: form }).then((r) => json<ImageItem>(r));
-  },
-
-  addRegion: (body: { imageId: string; rect: Rect; card: { x: number; y: number }; marked: string; crop: string }) =>
-    post("/api/canvas/regions", body).then((r) => json<{ region: RegionItem; card: CardItem }>(r)),
-
-  /** Asks how two cards are related; the answer is a new card between them. */
-  relate: (body: { a: string; b: string; x: number; y: number }) =>
-    post("/api/canvas/relate", body).then((r) => json<{ card: CardItem }>(r)),
-
-  descend: (body: { parentId: string; selection: string; context: string; x: number; y: number }) =>
-    post("/api/canvas/descend", body).then((r) => json<{ card: CardItem }>(r)),
-
-  /** Hides items and whatever depends on them; returns everything that was hidden. */
-  hide: (ids: string[]) => post("/api/canvas/hide", { ids }).then((r) => json<{ ids: string[] }>(r)),
-
-  collapse: (ids: string[], collapsed: boolean) =>
-    post("/api/canvas/collapse", { ids, collapsed }).then((r) => json<{ ok: true }>(r)),
-
-  move: (moves: { id: string; x: number; y: number; h?: number }[]) =>
-    post("/api/canvas/move", { moves }).then((r) => json<{ ok: true }>(r)),
-
-  retry: (cardId: string, images?: { marked: string; crop: string }) =>
-    post(`/api/canvas/cards/${cardId}/retry`, images ?? {}).then((r) => json<{ ok: true }>(r)),
-
-  show: (ids: string[]) => post("/api/canvas/show", { ids }).then((r) => json<{ ids: string[] }>(r)),
+/** The list of canvases, and making or renaming one. */
+export const canvasesApi = {
+  list: () => fetch("/api/canvases").then((r) => json<CanvasInfo[]>(r)),
+  create: (name: string) => post("/api/canvases", { name }).then((r) => json<CanvasInfo>(r)),
+  rename: (id: string, name: string) => send("PATCH", `/api/canvases/${id}`, { name }).then((r) => json<CanvasInfo>(r)),
 };
+
+export class CanvasNotFound extends Error {}
+
+/** Everything on one canvas. */
+export function canvasApi(cid: string) {
+  const base = `/api/canvases/${encodeURIComponent(cid)}`;
+  return {
+    state: () =>
+      fetch(base).then((r) => {
+        if (r.status === 404) throw new CanvasNotFound(cid);
+        return json<CanvasState & CanvasInfo>(r);
+      }),
+
+    addImage: (file: File, place: { x: number; y: number; w: number; h: number; naturalW: number; naturalH: number }) => {
+      const form = new FormData();
+      form.append("file", file);
+      for (const [k, v] of Object.entries(place)) form.append(k, String(v));
+      return fetch(`${base}/images`, { method: "POST", body: form }).then((r) => json<ImageItem>(r));
+    },
+
+    addRegion: (body: { imageId: string; rect: Rect; card: { x: number; y: number }; marked: string; crop: string }) =>
+      post(`${base}/regions`, body).then((r) => json<{ region: RegionItem; card: CardItem }>(r)),
+
+    /** Asks how two cards are related; the answer is a new card between them. */
+    relate: (body: { a: string; b: string; x: number; y: number }) =>
+      post(`${base}/relate`, body).then((r) => json<{ card: CardItem }>(r)),
+
+    descend: (body: { parentId: string; selection: string; context: string; x: number; y: number }) =>
+      post(`${base}/descend`, body).then((r) => json<{ card: CardItem }>(r)),
+
+    /** Hides items and whatever depends on them; returns everything that was hidden. */
+    hide: (ids: string[]) => post(`${base}/hide`, { ids }).then((r) => json<{ ids: string[] }>(r)),
+
+    collapse: (ids: string[], collapsed: boolean) =>
+      post(`${base}/collapse`, { ids, collapsed }).then((r) => json<{ ok: true }>(r)),
+
+    move: (moves: { id: string; x: number; y: number; h?: number }[]) =>
+      post(`${base}/move`, { moves }).then((r) => json<{ ok: true }>(r)),
+
+    retry: (cardId: string, images?: { marked: string; crop: string }) =>
+      post(`${base}/cards/${cardId}/retry`, images ?? {}).then((r) => json<{ ok: true }>(r)),
+
+    show: (ids: string[]) => post(`${base}/show`, { ids }).then((r) => json<{ ids: string[] }>(r)),
+  };
+}
 
 export const assetUrl = (name: string) => `/api/assets/${name}`;
