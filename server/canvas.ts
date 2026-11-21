@@ -2,7 +2,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { CanvasEvent, CanvasState, CardItem, Item, LoggedEvent } from "../shared/canvas.ts";
+import {
+  type CanvasEvent,
+  type CanvasState,
+  type CardItem,
+  type Item,
+  type LoggedEvent,
+  MIN_CHILD_GAP,
+  type Move,
+} from "../shared/canvas.ts";
 
 const DATA_DIR = process.env.LIBRARIAN_DATA ?? path.resolve("data");
 const LOG_PATH = path.join(DATA_DIR, "canvas.jsonl");
@@ -18,6 +26,11 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   else if (e.type === "update") {
     const item = s.items.find((i) => i.id === e.id);
     if (item?.kind === "card") Object.assign(item, e.patch);
+  } else if (e.type === "move") {
+    for (const m of e.moves) {
+      const item = s.items.find((i) => i.id === m.id);
+      if (item && item.kind !== "region") Object.assign(item, { x: m.x, y: m.y });
+    }
   } else {
     const ids = new Set(e.ids);
     for (const item of s.items) if (ids.has(item.id)) item.hidden = e.type === "hide";
@@ -89,6 +102,45 @@ export async function withDependents(ids: string[]): Promise<string[]> {
     }
   }
   return visible.filter((i) => out.has(i.id)).map((i) => i.id);
+}
+
+/** Where an item's right edge is after `moves`, for checking the right-of-parent rule. */
+function rightEdge(items: Item[], id: string, moved: Map<string, Move>): number | null {
+  const item = items.find((i) => i.id === id);
+  if (!item) return null;
+  if (item.kind === "card") return (moved.get(id)?.x ?? item.x) + item.w;
+  if (item.kind === "region") {
+    const img = items.find((i) => i.id === item.imageId);
+    if (img?.kind !== "image") return null;
+    const x = moved.get(img.id)?.x ?? img.x;
+    return x + ((item.rect.x + item.rect.w) * img.w) / img.naturalW;
+  }
+  return null;
+}
+
+/** Applies a set of moves if every card would still sit right of what it explains. */
+export async function moveItems(moves: Move[]): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { items } = await getState();
+  const moved = new Map(moves.map((m) => [m.id, m]));
+  for (const m of moves) {
+    const item = items.find((i) => i.id === m.id);
+    if (!item || item.kind === "region") return { ok: false, error: `can't move ${m.id}` };
+    if (!Number.isFinite(m.x) || !Number.isFinite(m.y)) return { ok: false, error: "x and y must be numbers" };
+  }
+  // Check every visible card whose own position or whose parent's position changes.
+  for (const card of items) {
+    if (card.kind !== "card" || card.hidden) continue;
+    const parent = items.find((i) => i.id === card.parentId);
+    const parentMoved = parent && (moved.has(parent.id) || (parent.kind === "region" && moved.has(parent.imageId)));
+    if (!moved.has(card.id) && !parentMoved) continue;
+    const edge = rightEdge(items, card.parentId, moved);
+    const x = moved.get(card.id)?.x ?? card.x;
+    if (edge !== null && x < edge + MIN_CHILD_GAP - 0.5) {
+      return { ok: false, error: "an explanation must stay to the right of what it explains" };
+    }
+  }
+  await record({ type: "move", moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y) })) });
+  return { ok: true };
 }
 
 export async function findItem(id: string): Promise<Item | undefined> {

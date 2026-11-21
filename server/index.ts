@@ -3,9 +3,9 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { readFile } from "node:fs/promises";
-import { CARD_WIDTH, type CardItem, type ImageItem, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
-import { add, assetPath, findItem, getState, newId, record, saveAsset, update, withDependents } from "./canvas.ts";
+import { add, assetPath, findItem, getState, moveItems, newId, record, saveAsset, update, withDependents } from "./canvas.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { explainRegion, explainSelection } from "./explain.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
@@ -139,6 +139,13 @@ app.post("/api/canvas/cards/:id/retry", async (c) => {
     void explainSelection(card.id);
   }
   return c.json({ ok: true });
+});
+
+app.post("/api/canvas/move", async (c) => {
+  const { moves } = (await c.req.json()) as { moves: Move[] };
+  if (!Array.isArray(moves) || !moves.length) return c.json({ error: "moves is required" }, 400);
+  const result = await moveItems(moves);
+  return result.ok ? c.json(result) : c.json(result, 409);
 });
 
 // Removing is a hide event: the log keeps everything, so any removal can be undone.

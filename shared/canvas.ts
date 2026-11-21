@@ -94,7 +94,18 @@ export type CanvasEvent =
   | { type: "add"; item: Item }
   | { type: "update"; id: string; patch: Partial<CardItem> }
   | { type: "hide"; ids: string[] }
-  | { type: "show"; ids: string[] };
+  | { type: "show"; ids: string[] }
+  /** The learner moved things. The system itself never moves anything. */
+  | { type: "move"; moves: Move[] };
+
+export interface Move {
+  id: string;
+  x: number;
+  y: number;
+}
+
+/** Position is semantic: an explanation stays at least this far right of what it explains. */
+export const MIN_CHILD_GAP = 24;
 
 export interface LoggedEvent {
   seq: number;
