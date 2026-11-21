@@ -136,7 +136,7 @@ export function Card(props: {
     const scale = box.height / el.offsetHeight || 1;
     // The line the words sit in tells the librarian what they refer to.
     const node = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement;
-    const line = node?.closest(".sem-step, .sem-desc, .sem-part, .sem-together, .sem-aside, .facet p, .chat-text");
+    const line = node?.closest(".sem-step, .sem-desc, .sem-part, .sem-together, .sem-aside, .facet p, .chat-text, .source-para");
     const context = (line?.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
     setPicked({ text: text.slice(0, 200), context, top: (r.bottom - box.top) / scale + 6, clientY: r.top });
   };
@@ -213,7 +213,7 @@ export function Card(props: {
 
       {busy && (
         <p className="muted card-stage">
-          <span className="spinner" /> {STAGE_TEXT[card.stage]}
+          <span className="spinner" /> {card.origin?.kind === "page" ? "Reading the page…" : STAGE_TEXT[card.stage]}
         </p>
       )}
       {card.stage === "failed" && (
@@ -226,6 +226,7 @@ export function Card(props: {
       )}
 
       <div ref={explainRef} className="card-explanation">
+      {card.origin && card.stage === "done" && <SourceView card={card} />}
       {card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} />}
       {card.sem && (
         <SemShapes
@@ -455,5 +456,34 @@ function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: 
         </li>
       ))}
     </ol>
+  );
+}
+
+/** A starting point that isn't an image: a page someone linked to, or a statement they typed. */
+function SourceView({ card }: { card: CardItem }) {
+  const [all, setAll] = useState(false);
+  const o = card.origin!;
+  if (o.kind === "note") return <p className="source-para source-note">{o.title}</p>;
+  const text = card.pageText ?? "";
+  const LIMIT = 6000;
+  const shown = all || text.length <= LIMIT ? text : `${text.slice(0, LIMIT).replace(/\s+\S*$/, "")} …`;
+  return (
+    <div className="source-page">
+      <a href={o.url} target="_blank" rel="noreferrer" className="small source-link">
+        {o.site ?? domain(o.url)} ↗
+      </a>
+      {shown.split(/\n{2,}|\n(?=[A-Z][^.\n]{0,60}\n)/).map((para, i) =>
+        para.trim() ? (
+          <p key={i} className={`source-para ${/^[^.\n]{1,60}$/.test(para.trim()) ? "source-heading" : ""}`}>
+            {para.trim()}
+          </p>
+        ) : null,
+      )}
+      {!all && text.length > LIMIT && (
+        <button type="button" className="link small" onClick={() => setAll(true)}>
+          Show the whole page
+        </button>
+      )}
+    </div>
   );
 }

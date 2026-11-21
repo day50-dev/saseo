@@ -336,6 +336,25 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     }
   };
 
+  // ---- Starting from a link or a statement ----
+
+  /** Puts a source card in clear space to the right of everything and brings it into view. */
+  const startFrom = async (input: string) => {
+    const r = stageRef.current!.getBoundingClientRect();
+    const right = Math.max(0, ...shown.filter((i) => i.kind !== "region").map((i) => i.x + i.w));
+    const x = shown.length ? right + 120 : 40;
+    const y = Math.round(toWorld(r.left, r.top + 60).y);
+    try {
+      const res = await api.addSource(input, x, y);
+      added("start from", [res.card.id]);
+      await refresh();
+      setView((v) => ({ ...v, x: r.width * 0.06 - x * v.scale, y: 60 - y * v.scale }));
+      setSelected(res.card.id);
+    } catch (e) {
+      setError(`Couldn't start from that: ${e}`);
+    }
+  };
+
   // ---- Papers from arXiv ----
 
   const [arxivOpen, setArxivOpen] = useState(false);
@@ -949,10 +968,21 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         onPointerMove={onStagePointerMove}
         onPointerUp={onStagePointerUp}
       >
-        {loaded && images.length === 0 && (
+        {loaded && shown.length === 0 && (
+          // An empty canvas asks where to start, in the middle of the screen where the eye is.
           <div className="empty" data-pan="1">
-            <h2 data-pan="1">Drop an image of something that stopped you</h2>
-            <p className="muted" data-pan="1">A slide, a page, a screenshot. Then drag a box over the part you want explained.</p>
+            <h2 data-pan="1">What stopped you?</h2>
+            <StartBox onStart={startFrom} big />
+            <p className="muted" data-pan="1">
+              Paste a link (a Wikipedia page, an article) or type a question. Or drop or paste an image of a slide, a page or a
+              screenshot, then drag a box over the part you want explained.
+            </p>
+          </div>
+        )}
+        {/* On a canvas with things on it, starting points live in a bar that stays at the bottom. */}
+        {loaded && shown.length > 0 && (
+          <div className="start-dock">
+            <StartBox onStart={startFrom} />
           </div>
         )}
         <div
@@ -1247,5 +1277,34 @@ function CanvasSwitcher({ currentId }: { currentId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** A link to read or a question to explain: a start that isn't an image. */
+function StartBox({ onStart, big = false }: { onStart: (input: string) => Promise<void>; big?: boolean }) {
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className={big ? "start-box big" : "start-box"}
+      onPointerDown={(e) => e.stopPropagation()}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!value.trim() || busy) return;
+        setBusy(true);
+        await onStart(value.trim());
+        setBusy(false);
+        setValue("");
+      }}
+    >
+      <input
+        value={value}
+        disabled={busy}
+        autoFocus={big}
+        placeholder={big ? "A link to read, or a question to explain…" : "Start from a link or a question… (or drop an image anywhere)"}
+        title="Paste a link (e.g. a Wikipedia page) to read it here, or type a question to have it explained"
+        onChange={(e) => setValue(e.target.value)}
+      />
+    </form>
   );
 }

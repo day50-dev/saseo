@@ -54,6 +54,10 @@ export function canvasApi(cid: string) {
     addRegion: (body: { imageId: string; rect: Rect; card: { x: number; y: number }; marked: string; crop: string }) =>
       post(`${base}/regions`, body).then((r) => json<{ region: RegionItem; card: CardItem }>(r)),
 
+    /** Starts from a link (the page is read) or a statement (explained beside it). */
+    addSource: (input: string, x: number, y: number) =>
+      post(`${base}/sources`, { input, x, y }).then((r) => json<{ card: CardItem; answer?: CardItem }>(r)),
+
     /** Asks how two cards are related; the answer is a new card between them. */
     relate: (body: { a: string; b: string; x: number; y: number }) =>
       post(`${base}/relate`, body).then((r) => json<{ card: CardItem }>(r)),
