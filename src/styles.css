@@ -428,3 +428,14 @@ kbd {
 .object-links { margin: 10px 0 0; padding-left: 20px; }
 .object-links li { margin-bottom: 8px; font-size: 13px; }
 .object-links p { margin: 2px 0 0; color: var(--muted); }
+
+/* ---- Wrapping: nothing pokes out of its box ---- */
+/* Break a word only when it can't fit any other way; long URLs may break anywhere. */
+.card-item { overflow-wrap: break-word; }
+.found li, .object-links li, .transcription, .register-banner, .relation-banner { overflow-wrap: anywhere; }
+/* The chat's pointer to a made object reads as a line of text, so it wraps like one. */
+.chat-object { display: block; width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+/* Narrow formula-part boxes: hyphenate long words, and let a stand-in's tag wrap inside the box. */
+.sem-part { overflow-wrap: anywhere; hyphens: auto; }
+.sem-standin-for { white-space: normal; display: inline-block; max-width: 100%; overflow-wrap: anywhere; line-height: 1.25; }
+.sem-part .sem-standin-for { margin-left: 0; }
