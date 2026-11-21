@@ -31,6 +31,55 @@ export async function chat(ep: Endpoint, messages: Message[], timeoutMs = ep.tim
   return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 }
 
+/** Text a reasoning model shows, without its <think> sections, including one still open. */
+const visible = (text: string) => text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "");
+
+/**
+ * Streams a reply, calling `onText` with everything visible so far as it arrives. Falls back to a
+ * plain request if the endpoint doesn't stream. Resolves with the whole visible reply.
+ */
+export async function chatStream(ep: Endpoint, messages: Message[], onText: (soFar: string) => void): Promise<string> {
+  if (!ep.baseUrl || !ep.model) throw new Error("The language model isn't configured (Settings)");
+  const res = await fetch(`${ep.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: headers(ep),
+    signal: AbortSignal.timeout(ep.timeoutSeconds * 1000),
+    body: JSON.stringify({ model: ep.model, messages, temperature: 0.3, stream: true }),
+  });
+  if (!res.ok) throw new Error(`LLM: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
+  if (!res.body || !(res.headers.get("content-type") ?? "").includes("event-stream")) {
+    const data = await res.json();
+    const text = visible(String(data?.choices?.[0]?.message?.content ?? "")).trim();
+    onText(text);
+    return text;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const data = line.replace(/^data:\s*/, "").trim();
+      if (!line.startsWith("data:") || !data || data === "[DONE]") continue;
+      try {
+        const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
+        if (typeof delta === "string" && delta) {
+          text += delta;
+          onText(visible(text));
+        }
+      } catch {
+        // A keep-alive or a partial line; the next read completes it.
+      }
+    }
+  }
+  return visible(text).trim();
+}
+
 /** Asks for JSON and parses the first object in the reply, tolerating code fences and prose around it. */
 export async function chatJson<T>(ep: Endpoint, messages: Message[]): Promise<T> {
   const text = await chat(ep, messages);
