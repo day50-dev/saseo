@@ -6,12 +6,18 @@ import type {
   TestResult,
 } from "../shared/providers.ts";
 
+/** The dev proxy answers 502-504 when the API server is down or restarting after an edit. */
+export const unreachable = (status: number) =>
+  status >= 502 && status <= 504
+    ? "Can't reach the local server; it may be restarting. Try again in a moment."
+    : undefined;
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
-  if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(unreachable(res.status) ?? `${path}: HTTP ${res.status}`);
   return res.json() as Promise<T>;
 }
 

@@ -1,7 +1,10 @@
+import { unreachable } from "./api.ts";
 import type { CanvasState, CardItem, ImageItem, Rect, RegionItem } from "../shared/canvas.ts";
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
+    const down = unreachable(res.status);
+    if (down) throw new Error(down);
     const body = await res.text();
     throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
   }
