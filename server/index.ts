@@ -1,16 +1,53 @@
 // API server: holds keys and proxies every external call, so keys never reach the browser.
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { Hono } from "hono";
+import { type Context, Hono, type Next } from "hono";
 import { readFile } from "node:fs/promises";
-import { CARD_WIDTH, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, type CanvasInfo, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
-import { assetPath, canvasStore, createCanvas, getCanvasInfo, listCanvases, newId, renameCanvas, saveAsset } from "./canvas.ts";
+import { assetPath, type CanvasStore, canvasStore, createCanvas, getCanvasInfo, listCanvases, newId, renameCanvas, saveAsset } from "./canvas.ts";
+import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { explainRegion, explainRelation, explainSelection, handleChat, makeObject } from "./explain.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
 
-const app = new Hono();
+const app = new Hono<{ Variables: { user: User } }>();
+
+// ---- Accounts ----
+// Off unless LIBRARIAN_AUTH=on: a local copy has one user, who can do everything.
+
+const authHandler = auth;
+if (authHandler) app.on(["GET", "POST"], "/api/auth/*", (c) => authHandler.handler(c.req.raw));
+
+app.get("/api/me", async (c) => c.json({ accounts: AUTH_ON, providers: PROVIDERS, user: await currentUser(c.req.raw) }));
+
+// Everything else under /api needs someone signed in, except images, which are named by their
+// content hash and carry nothing private.
+app.use("/api/*", async (c, next) => {
+  if (c.req.path.startsWith("/api/auth/") || c.req.path === "/api/me" || c.req.path.startsWith("/api/assets/")) return next();
+  const user = await currentUser(c.req.raw);
+  if (!user) return c.json({ error: "sign in first" }, 401);
+  c.set("user", user);
+  return next();
+});
+
+// Models, keys and searchers are shared by everyone, so only admins see or change them.
+const adminOnly = async (c: Context<{ Variables: { user: User } }>, next: Next) =>
+  c.get("user").admin ? next() : c.json({ error: "only an admin can do that" }, 403);
+app.use("/api/config", adminOnly);
+app.use("/api/test/*", adminOnly);
+app.use("/api/models/*", adminOnly);
+app.use("/api/search", adminOnly);
+
+/** Who may open a canvas: its owner; for one from before accounts, an admin; everyone, with accounts off. */
+const canOpen = (info: CanvasInfo, user: User) => !AUTH_ON || info.owner === user.id || (!info.owner && user.admin);
+
+/** The store for a canvas this user may open, or undefined, which every route answers as not found. */
+async function canvasFor(c: Context<{ Variables: { user: User } }>): Promise<CanvasStore | undefined> {
+  const info = await getCanvasInfo(c.req.param("cid") ?? "");
+  if (!info || !canOpen(info, c.get("user"))) return undefined;
+  return canvasStore(info.id);
+}
 
 app.get("/api/config", async (c) => c.json(toPublic(await loadConfig())));
 
@@ -49,21 +86,25 @@ app.post("/api/search", async (c) => {
 
 // ---- Canvas ----
 
-app.get("/api/canvases", async (c) => c.json(await listCanvases()));
+app.get("/api/canvases", async (c) => {
+  const user = c.get("user");
+  return c.json((await listCanvases()).filter((info) => canOpen(info, user)));
+});
 
 app.post("/api/canvases", async (c) => {
   const { name } = (await c.req.json().catch(() => ({}))) as { name?: string };
-  return c.json(await createCanvas(name ?? ""));
+  return c.json(await createCanvas(name ?? "", AUTH_ON ? c.get("user").id : undefined));
 });
 
 app.patch("/api/canvases/:cid", async (c) => {
   const { name } = (await c.req.json()) as { name?: string };
+  if (!(await canvasFor(c))) return c.json({ error: "unknown canvas" }, 404);
   const info = await renameCanvas(c.req.param("cid"), name ?? "");
   return info ? c.json(info) : c.json({ error: "unknown canvas" }, 404);
 });
 
 app.get("/api/canvases/:cid", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   return c.json({ ...(await getCanvasInfo(store.id)), ...(await store.view()) });
 });
@@ -80,7 +121,7 @@ app.get("/api/assets/:name", async (c) => {
 });
 
 app.post("/api/canvases/:cid/images", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const body = await c.req.parseBody();
   const file = body.file;
@@ -107,7 +148,7 @@ app.post("/api/canvases/:cid/images", async (c) => {
 });
 
 app.post("/api/canvases/:cid/regions", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const body = (await c.req.json()) as {
     imageId: string;
@@ -130,7 +171,7 @@ app.post("/api/canvases/:cid/regions", async (c) => {
 });
 
 app.post("/api/canvases/:cid/descend", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const body = (await c.req.json()) as { parentId: string; selection: string; context?: string; x: number; y: number };
   const parent = await store.findItem(body.parentId);
@@ -147,7 +188,7 @@ app.post("/api/canvases/:cid/descend", async (c) => {
 // Runs a failed card again in place. A card from a box needs the images re-sent, since
 // only the box's position is stored, not the pixels sent to the model.
 app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const card = await store.findItem(c.req.param("id"));
   if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
@@ -174,7 +215,7 @@ app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
 });
 
 app.post("/api/canvases/:cid/move", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const { moves } = (await c.req.json()) as { moves: Move[] };
   if (!Array.isArray(moves) || !moves.length) return c.json({ error: "moves is required" }, 400);
@@ -183,7 +224,7 @@ app.post("/api/canvases/:cid/move", async (c) => {
 });
 
 app.post("/api/canvases/:cid/collapse", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const { ids, collapsed } = (await c.req.json()) as { ids: string[]; collapsed: boolean };
   const known = new Map((await store.getState()).items.map((i) => [i.id, i]));
@@ -198,7 +239,7 @@ app.post("/api/canvases/:cid/collapse", async (c) => {
 
 // The learner asks how two things relate; a card between them finds out.
 app.post("/api/canvases/:cid/relate", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const body = (await c.req.json()) as { a: string; b: string; x: number; y: number };
   const [a, b] = await Promise.all([store.findItem(body.a), store.findItem(body.b)]);
@@ -227,7 +268,7 @@ app.post("/api/canvases/:cid/relate", async (c) => {
 
 // A conversation held at a card: the question is recorded, and the answer arrives in the log.
 app.post("/api/canvases/:cid/cards/:id/chat", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const card = await store.findItem(c.req.param("id"));
   if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
@@ -242,7 +283,7 @@ app.post("/api/canvases/:cid/cards/:id/chat", async (c) => {
 });
 
 app.post("/api/canvases/:cid/z", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const { order } = (await c.req.json()) as { order: { id: string; z: number }[] };
   const known = new Map((await store.getState()).items.map((i) => [i.id, i.kind]));
@@ -256,7 +297,7 @@ app.post("/api/canvases/:cid/z", async (c) => {
 
 // Removing is a hide event: the log keeps everything, so any removal can be undone.
 app.post("/api/canvases/:cid/hide", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const { ids } = (await c.req.json()) as { ids: string[] };
   const hidden = await store.withDependents(Array.isArray(ids) ? ids : []);
@@ -265,7 +306,7 @@ app.post("/api/canvases/:cid/hide", async (c) => {
 });
 
 app.post("/api/canvases/:cid/show", async (c) => {
-  const store = await canvasStore(c.req.param("cid"));
+  const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const { ids } = (await c.req.json()) as { ids: string[] };
   const known = new Set((await store.getState()).items.map((i) => i.id));
@@ -285,7 +326,8 @@ app.get("*", async (c) => {
   }
 });
 
+await initAuth();
 const port = Number(process.env.PORT ?? 8787);
 serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, () => {
-  console.log(`librarian API on http://127.0.0.1:${port} (config: ${CONFIG_PATH})`);
+  console.log(`librarian API on http://127.0.0.1:${port} (config: ${CONFIG_PATH}; accounts ${AUTH_ON ? "on" : "off"})`);
 });

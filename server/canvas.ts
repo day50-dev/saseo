@@ -73,9 +73,14 @@ function changeIndex<T>(fn: (list: CanvasInfo[]) => T): Promise<T> {
 
 const cleanName = (name: unknown) => (typeof name === "string" ? name.trim().replace(/\s+/g, " ").slice(0, 120) : "");
 
-export const createCanvas = (name: string) =>
+export const createCanvas = (name: string, owner?: string) =>
   changeIndex((list) => {
-    const info: CanvasInfo = { id: newId(), name: cleanName(name) || "Untitled canvas", createdAt: new Date().toISOString() };
+    const info: CanvasInfo = {
+      id: newId(),
+      name: cleanName(name) || "Untitled canvas",
+      createdAt: new Date().toISOString(),
+      ...(owner ? { owner } : {}),
+    };
     list.push(info);
     return info;
   });

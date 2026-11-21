@@ -206,6 +206,8 @@ export interface CanvasInfo {
   id: string;
   name: string;
   createdAt: string;
+  /** Who it belongs to when accounts are on. Canvases from before accounts belong to the admins. */
+  owner?: string;
 }
 
 export interface LoggedEvent {
