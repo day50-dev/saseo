@@ -3,24 +3,30 @@
 //
 // On a server: anyone can sign up with email and password (no email service needed), and GitHub
 // and Google sign-in appear when their OAuth keys are set. Accounts live in data/auth.db (SQLite).
-// Emails in ADMIN_EMAILS manage the models and searchers everyone uses.
+// Emails in ADMIN_EMAILS manage the models and searchers everyone uses. SIGNUP_EMAILS, when set,
+// limits who can create an account, so a private server doesn't spend its models on strangers.
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
+import { APIError } from "better-auth/api";
 import { getMigrations } from "better-auth/db/migration";
 
 export const AUTH_ON = process.env.LIBRARIAN_AUTH === "on";
 
 const DATA_DIR = process.env.LIBRARIAN_DATA ?? path.resolve("data");
 
-const ADMINS = new Set(
-  (process.env.ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean),
-);
+const emails = (v: string | undefined) =>
+  new Set(
+    (v ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
+const ADMINS = emails(process.env.ADMIN_EMAILS);
+/** Empty means anyone can sign up. */
+const SIGNUP = emails(process.env.SIGNUP_EMAILS);
 
 export interface User {
   id: string;
@@ -68,6 +74,17 @@ function options(): BetterAuthOptions {
     trustedOrigins: [baseURL, "http://localhost:5173", "http://localhost:8787"],
     emailAndPassword: { enabled: true, minPasswordLength: 8 },
     socialProviders: social,
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user) => {
+            if (SIGNUP.size && !SIGNUP.has(user.email.toLowerCase())) {
+              throw new APIError("FORBIDDEN", { message: "Sign-up is closed on this server." });
+            }
+          },
+        },
+      },
+    },
   };
 }
 
