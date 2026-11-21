@@ -1,6 +1,6 @@
 // The librarian's loop for one card: read the region, go fish, write a descending
 // explanation from what was found, then check that it doesn't climb.
-import type { CardItem, Facets, FoundSource, Item } from "../shared/canvas.ts";
+import type { CardItem, FoundSource, Item, Sem } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { findItem, update } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
@@ -13,19 +13,23 @@ Return JSON only, no prose:
 {"transcription": "the exact text or math inside the rectangle (math as LaTeX)",
  "subject": "short name of the concept they are asking about, 2-6 words, as a reader would say it",
  "topic": "what the whole page is about, a few words",
- "searchQuery": "a web search query likely to find introductory explanations, lecture notes or videos about the subject"}`;
+ "searchQuery": "a short web search query, 2-6 plain words, for BEGINNER material (intro lecture notes, textbook chapters, videos) on the most general idea behind the subject. Never the paper's title, its notation, or terms specific to this page."}`;
 
 const EXPLAIN = `You are a research librarian with unlimited time, helping a curious, intelligent reader who is not a specialist in this field.
+Your explanation will be drawn as a diagram, not printed as paragraphs, so you return its STRUCTURE: short pieces and how they connect.
 Rules:
-- Descend, never climb. Explain with ideas MORE general and familiar than the subject. Never define it in terms more specialized than itself. If a technical term is unavoidable, it must be more basic than the subject, and you gloss it in plain words.
-- Start with why: the question or problem the idea answers and what goes wrong without it, so it doesn't feel arbitrary.
+- Descend, never climb. Use ideas MORE general and familiar than the subject. Never define it in terms more specialized than itself. If a technical term is unavoidable, it must be more basic than the subject, and you gloss it in plain words.
+- Start with why: the question or problem the idea answers, so it doesn't feel arbitrary.
 - Be faithful. Don't invent facts. Where a numbered source supports a claim, cite it as [n]. Standard background needs no citation.
-- Be short: 2 to 4 sentences per field. Plain text. Write math as plain text, not LaTeX.
+- Every piece is short: one sentence, at most about 20 words. Plain text. Math as plain text, not LaTeX.
 Return JSON only, no prose:
-{"why": "the question it answers / what breaks without it",
- "what": "what it is, in familiar terms",
- "how": "how it is used on this page specifically",
- "name": "what the words of its name mean, or an empty string if that isn't illuminating"}`;
+{"why": ["2 to 4 steps forming a chain: the problem, then each step following from the one before"],
+ "what": {"gist": "one sentence: what it is, in familiar terms", "details": ["0 to 3 further facts about it"]},
+ "parts": [{"symbol": "a piece of the formula or name, copied as written", "meaning": "what that piece is, 2-6 words", "note": "one short gloss"}],
+ "together": "if there are parts: what they add up to, one sentence; otherwise empty",
+ "here": ["1 to 3 steps: how it is used on this page specifically"],
+ "name": "what the words of its name mean, or an empty string if that isn't illuminating"}
+Use "parts" only when the subject is a formula or a compound whose pieces each mean something (2 to 5 parts); otherwise return [].`;
 
 const CLIMB_QUESTION =
   "Does this explanation rely on terms or ideas that are more specialized or obscure than its subject, without explaining them in plain words?";
@@ -67,10 +71,32 @@ function mergeHits(results: Awaited<ReturnType<typeof runSearch>>, max = 6): Fou
   return out;
 }
 
-function cleanFacets(f: Partial<Facets>): Facets {
-  const s = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-  return { why: s(f.why), what: s(f.what), how: s(f.how), name: s(f.name) };
+const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+const strs = (v: unknown, max: number) =>
+  (Array.isArray(v) ? v : typeof v === "string" ? [v] : []).map(str).filter(Boolean).slice(0, max);
+
+/** Accepts whatever the model returned and keeps only well-formed pieces of a Sem. */
+function cleanSem(raw: Record<string, unknown>): Sem {
+  const what = (raw.what ?? {}) as Record<string, unknown>;
+  const parts = (Array.isArray(raw.parts) ? raw.parts : [])
+    .map((p) => p as Record<string, unknown>)
+    .map((p) => ({ symbol: str(p.symbol), meaning: str(p.meaning), note: str(p.note) }))
+    .filter((p) => p.symbol && p.meaning)
+    .slice(0, 5);
+  return {
+    why: strs(raw.why, 4),
+    what: { gist: typeof raw.what === "string" ? str(raw.what) : str(what.gist), details: strs(what.details, 3) },
+    parts: parts.length >= 2 ? parts : [],
+    together: parts.length >= 2 ? str(raw.together) : "",
+    here: strs(raw.here ?? raw.how, 3),
+    name: str(raw.name),
+  };
 }
+
+const semText = (s: Sem) =>
+  [...s.why, s.what.gist, ...s.what.details, ...s.parts.map((p) => `${p.symbol}: ${p.meaning}, ${p.note}`), s.together, ...s.here]
+    .filter(Boolean)
+    .join("\n");
 
 async function write(card: CardItem, subject: string, quoted: string, topic: string | undefined, path: string[], sources: FoundSource[]) {
   const config = await loadConfig();
@@ -89,34 +115,39 @@ async function write(card: CardItem, subject: string, quoted: string, topic: str
     { role: "system", content: EXPLAIN },
     { role: "user", content: lines.join("\n\n") },
   ];
-  let facets = cleanFacets(await chatJson<Partial<Facets>>(config.llm, messages));
+  let sem = cleanSem(await chatJson<Record<string, unknown>>(config.llm, messages));
+  if (!sem.why.length && !sem.what.gist) throw new Error("The model's answer had no why and no what");
   let climb: number | undefined;
   let rewritten = false;
 
   if (systemOneConfigured(config.systemOne)) {
-    await update(card.id, { stage: "checking", facets, sources });
-    const check = (f: Facets) =>
-      decideYesNo(config.systemOne, { subject, explanation: `${f.why}\n${f.what}\n${f.how}` }, CLIMB_QUESTION);
+    await update(card.id, { stage: "checking", sem, sources });
+    const check = (s: Sem) => decideYesNo(config.systemOne, { subject, explanation: semText(s) }, CLIMB_QUESTION);
     try {
-      climb = await check(facets);
+      climb = await check(sem);
       if (climb >= 0.5) {
         messages.push(
-          { role: "assistant", content: JSON.stringify(facets) },
+          { role: "assistant", content: JSON.stringify(sem) },
           {
             role: "user",
             content:
-              "A check found this climbs: it leans on terms more specialized than the subject. Rewrite it using only more familiar ideas, glossing anything technical. Same JSON shape.",
+              "A check found this climbs: it leans on terms more specialized than the subject. Rewrite it using only more familiar ideas, glossing anything technical in everyday words. Same JSON shape.",
           },
         );
-        facets = cleanFacets(await chatJson<Partial<Facets>>(config.llm, messages));
+        const second = cleanSem(await chatJson<Record<string, unknown>>(config.llm, messages));
+        const secondClimb = await check(second);
         rewritten = true;
-        climb = await check(facets);
+        // Keep whichever version the check judged to climb less.
+        if (secondClimb < climb) {
+          sem = second;
+          climb = secondClimb;
+        }
       }
     } catch {
       // The check is advisory; a failure leaves the draft as written.
     }
   }
-  await update(card.id, { stage: "done", facets, sources, climb, rewritten });
+  await update(card.id, { stage: "done", sem, sources, climb, rewritten });
 }
 
 async function search(query: string): Promise<FoundSource[]> {
@@ -152,7 +183,8 @@ export function explainRegion(cardId: string, images: { marked: string; crop: st
     );
     const subject = id.subject?.trim() || "this";
     await update(cardId, { stage: "searching", subject, transcription: id.transcription, topic: id.topic });
-    const sources = await search(id.searchQuery?.trim() || `${subject} ${id.topic ?? ""}`.trim());
+    // Ask for introductions explicitly; left alone, searches on a slide's words find the paper itself.
+    const sources = await search(`${id.searchQuery?.trim() || subject} introduction`);
     await update(cardId, { stage: "writing", sources });
     const card = (await findItem(cardId)) as CardItem;
     await write(card, subject, id.transcription ?? subject, id.topic, [], sources);

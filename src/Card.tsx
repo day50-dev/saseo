@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { CardItem, CardStage, FoundSource } from "../shared/canvas.ts";
+import { SemShapes } from "./SemShapes.tsx";
 
 const STAGE_TEXT: Record<CardStage, string> = {
   reading: "Reading your selection…",
@@ -90,7 +91,8 @@ export function Card(props: {
       onMouseUp={onMouseUp}
     >
       <div className="card-head">
-        <h3>{card.subject ?? (card.stage === "reading" ? "…" : "Explanation")}</h3>
+        {/* With a Sem, the subject is drawn as the diagram's document title instead. */}
+        <h3>{card.sem ? "" : (card.subject ?? (card.stage === "reading" ? "…" : "Explanation"))}</h3>
         {card.climb !== undefined && (
           <span
             className={`badge ${card.climb < 0.5 ? "ok" : "fail"}`}
@@ -125,7 +127,12 @@ export function Card(props: {
         </div>
       )}
 
-      {card.facets &&
+      {card.sem && (
+        <SemShapes title={card.subject ?? "Explanation"} sem={card.sem} render={(t) => withCitations(t, sources)} />
+      )}
+
+      {!card.sem &&
+        card.facets &&
         FACETS.map(([key, label]) =>
           card.facets![key] ? (
             <section key={key} className="facet">

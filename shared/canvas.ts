@@ -36,6 +36,21 @@ export interface Facets {
   name: string;
 }
 
+/**
+ * An explanation as meaning, not layout (principle 5). Each field maps to a semshape:
+ * why/here are Paths (a chain where each step follows from the last), what is a Category
+ * with Descriptions, parts are a horizontal bus joined by a Y-connector into `together`,
+ * and name is an Aside. Text may cite found sources as [n].
+ */
+export interface Sem {
+  why: string[];
+  what: { gist: string; details: string[] };
+  parts: { symbol: string; meaning: string; note: string }[];
+  together: string;
+  here: string[];
+  name: string;
+}
+
 export interface FoundSource {
   n: number; // citation number used in the facets, [n]
   url: string;
@@ -60,7 +75,9 @@ export interface CardItem {
   subject?: string;
   transcription?: string;
   topic?: string;
+  /** Older cards: plain paragraphs. Newer cards carry `sem` instead. */
   facets?: Facets;
+  sem?: Sem;
   sources?: FoundSource[];
   /** Probability from the System One check that the explanation climbs (0 = clearly descends). */
   climb?: number;
@@ -90,4 +107,4 @@ export interface CanvasState {
   items: Item[];
 }
 
-export const CARD_WIDTH = 440;
+export const CARD_WIDTH = 480;

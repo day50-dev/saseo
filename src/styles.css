@@ -9,6 +9,11 @@
   --ok: #2d7a46;
   --fail: #b3362f;
   --on: #eef3fb;
+  --sem-line: #1f3b63;
+  --sem-why: #4a7fc1;
+  --sem-what: #5d4a8a;
+  --sem-parts: #2f7d78;
+  --sem-here: #5a6b85;
   color-scheme: light;
 }
 
@@ -24,6 +29,11 @@
     --ok: #6cc28a;
     --fail: #ef7a72;
     --on: #222a38;
+    --sem-line: #a9c2ea;
+    --sem-why: #3d6aa6;
+    --sem-what: #6a5799;
+    --sem-parts: #2b7470;
+    --sem-here: #55657e;
     color-scheme: dark;
   }
 }
@@ -236,3 +246,53 @@ kbd {
 .card-error { display: flex; align-items: flex-start; gap: 10px; margin-top: 8px; }
 .card-error p { margin: 4px 0 0; flex: 1; overflow-wrap: anywhere; }
 .card-error button { font-size: 13px; padding: 4px 10px; }
+
+/* ---- Semshapes: classes name meaning; this stylesheet decides the look ---- */
+
+.sem { position: relative; margin-top: 6px; }
+.sem-lines { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.sem-bus { fill: none; stroke: var(--sem-line); stroke-width: 2; }
+.sem-bus.thick { stroke-width: 3; }
+.sem-edge { fill: none; stroke: var(--sem-line); stroke-width: 1.6; }
+.sem-head { fill: var(--sem-line); }
+.sem-story { fill: var(--sem-why); stroke: var(--sem-line); stroke-width: 1; }
+.facet-here .sem-story { fill: var(--sem-here); }
+
+.sem-title {
+  display: inline-block; font-size: 17px; font-weight: 600; color: var(--sem-line);
+  padding: 0 28px 3px 0; border-bottom: 3px solid var(--sem-line); line-height: 1.3;
+}
+.sem-body { position: relative; padding-left: 28px; }
+.sem-section { margin-top: 16px; }
+.facet-why { --sem-c: var(--sem-why); }
+.facet-what { --sem-c: var(--sem-what); }
+.facet-parts { --sem-c: var(--sem-parts); }
+.facet-here { --sem-c: var(--sem-here); }
+.sem-cat {
+  display: inline-block; padding: 3px 12px; font-size: 13px; font-weight: 600; color: #fff;
+  background: var(--sem-c); border-bottom: 3px solid color-mix(in srgb, var(--sem-c) 55%, #000);
+}
+.sem-kids { position: relative; padding-left: 28px; margin-top: 10px; }
+.facet-why .sem-kids, .facet-here .sem-kids { margin-top: 22px; }
+.sem-step, .sem-desc { line-height: 20px; }
+.sem-step + .sem-step { margin-top: 14px; }
+.sem-desc + .sem-desc { margin-top: 8px; }
+.sem-desc.gist { font-weight: 500; }
+
+.sem-parts { display: flex; gap: 8px; margin-top: 24px; } /* one row, in the formula's own order */
+.sem-part {
+  flex: 1 1 0; min-width: 0; max-width: 150px; padding: 6px 8px; font-size: 13px; line-height: 17px;
+  border-top: 3px solid var(--sem-parts); background: color-mix(in srgb, var(--sem-parts) 10%, transparent);
+}
+.sem-part code { display: block; font-size: 11.5px; color: var(--sem-line); overflow-wrap: anywhere; margin-bottom: 3px; }
+.sem-part-meaning { font-weight: 600; }
+.sem-part-note { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.sem-together {
+  margin: 30px auto 0; max-width: 85%; text-align: center; line-height: 20px;
+  padding-bottom: 3px; border-bottom: 2px solid var(--sem-line);
+}
+.sem-aside { margin-top: 18px; line-height: 20px; font-style: italic; }
+.sem-aside-label {
+  font-style: normal; font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--muted); margin-right: 4px;
+}
