@@ -2,7 +2,18 @@
 
 A medium for deep, self-directed learning. Design doc: https://claude.ai/artifact/AdyuLsx3xpbK9x6SrcPSRy
 
-This first piece is the settings panel: where you configure the models and searchers the librarian uses.
+## Use
+
+1. Open the panel and set up the models and searchers under **Settings**.
+2. Drop or paste an image (a slide, a page, a screenshot) onto the canvas.
+3. Drag a box over the part that stopped you. The librarian reads it, searches the enabled
+   searchers, and writes a card beside it: why it exists, what it is, how it's used here,
+   and what the name means, citing what it found. If a System One model is configured,
+   it checks the card doesn't lean on harder terms than its subject and asks for one rewrite if it does.
+4. Select any words in a card and click **Explain** to go one level further down.
+
+Scroll to pan, Ctrl+scroll (or pinch) to zoom. Nothing on the canvas moves once placed.
+The canvas is an append-only log in `data/canvas.jsonl`; dropped images are kept in `data/assets/`.
 
 ## Run
 

@@ -2,8 +2,12 @@
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { readFile } from "node:fs/promises";
+import { CARD_WIDTH, type CardItem, type ImageItem, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
+import { add, assetPath, findItem, getState, newId, saveAsset } from "./canvas.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
+import { explainRegion, explainSelection } from "./explain.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
 
 const app = new Hono();
@@ -41,6 +45,79 @@ app.post("/api/search", async (c) => {
   );
   const count = Math.min(Math.max(body.count ?? 5, 1), 20);
   return c.json(await runSearch(config, query, ids, count));
+});
+
+// ---- Canvas ----
+
+app.get("/api/canvas", async (c) => c.json(await getState()));
+
+app.get("/api/assets/:name", async (c) => {
+  const found = assetPath(c.req.param("name"));
+  if (!found) return c.notFound();
+  try {
+    const bytes = await readFile(found.file);
+    return c.body(bytes, 200, { "Content-Type": found.mime, "Cache-Control": "public, max-age=31536000, immutable" });
+  } catch {
+    return c.notFound();
+  }
+});
+
+app.post("/api/canvas/images", async (c) => {
+  const body = await c.req.parseBody();
+  const file = body.file;
+  if (!(file instanceof File)) return c.json({ error: "file is required" }, 400);
+  const num = (k: string) => Number(body[k]);
+  const asset = await saveAsset(Buffer.from(await file.arrayBuffer()), file.type);
+  const item: ImageItem = {
+    kind: "image",
+    id: newId(),
+    asset,
+    name: file.name || "image",
+    x: num("x"),
+    y: num("y"),
+    w: num("w"),
+    h: num("h"),
+    naturalW: num("naturalW"),
+    naturalH: num("naturalH"),
+  };
+  if ([item.x, item.y, item.w, item.h, item.naturalW, item.naturalH].some((n) => !Number.isFinite(n))) {
+    return c.json({ error: "x, y, w, h, naturalW and naturalH are required numbers" }, 400);
+  }
+  await add(item);
+  return c.json(item);
+});
+
+app.post("/api/canvas/regions", async (c) => {
+  const body = (await c.req.json()) as {
+    imageId: string;
+    rect: Rect;
+    card: { x: number; y: number };
+    marked: string;
+    crop: string;
+  };
+  const image = await findItem(body.imageId);
+  if (image?.kind !== "image") return c.json({ error: "unknown image" }, 404);
+  if (!body.marked?.startsWith("data:image/") || !body.crop?.startsWith("data:image/")) {
+    return c.json({ error: "marked and crop must be image data URLs" }, 400);
+  }
+  const region: RegionItem = { kind: "region", id: newId(), imageId: image.id, rect: body.rect };
+  const card: CardItem = { kind: "card", id: newId(), parentId: region.id, x: body.card.x, y: body.card.y, w: CARD_WIDTH, stage: "reading" };
+  await add(region);
+  await add(card);
+  void explainRegion(card.id, { marked: body.marked, crop: body.crop });
+  return c.json({ region, card });
+});
+
+app.post("/api/canvas/descend", async (c) => {
+  const body = (await c.req.json()) as { parentId: string; selection: string; x: number; y: number };
+  const parent = await findItem(body.parentId);
+  if (parent?.kind !== "card") return c.json({ error: "unknown card" }, 404);
+  const selection = body.selection?.trim().slice(0, 300);
+  if (!selection) return c.json({ error: "selection is required" }, 400);
+  const card: CardItem = { kind: "card", id: newId(), parentId: parent.id, selection, x: body.x, y: body.y, w: CARD_WIDTH, stage: "searching", subject: selection };
+  await add(card);
+  void explainSelection(card.id);
+  return c.json({ card });
 });
 
 // In production, serve the built panel too.

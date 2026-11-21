@@ -124,3 +124,80 @@ button:disabled { opacity: 0.45; cursor: default; }
 .result-col li p { margin: 2px 0 0; }
 .url { overflow-wrap: anywhere; }
 a { color: var(--accent); }
+
+/* ---- Canvas ---- */
+
+.back { font-size: 13px; text-decoration: none; }
+
+.canvas-page { position: fixed; inset: 0; display: flex; flex-direction: column; }
+.toolbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--card);
+  z-index: 2;
+}
+.toolbar .spacer { flex: 1; }
+.toolbar .hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.toolbar a { font-size: 14px; }
+.banner { padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px; z-index: 2; }
+
+.stage {
+  position: relative; flex: 1; overflow: hidden; cursor: grab; touch-action: none;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.stage:active { cursor: grabbing; }
+.world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 16px; }
+.empty h2 { font-size: 20px; }
+
+.connectors { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+.connector { fill: none; stroke: var(--muted); stroke-width: 1.5; opacity: 0.6; }
+.connector.lit { stroke: var(--accent); opacity: 1; stroke-width: 2; }
+
+.source-image {
+  position: absolute; cursor: crosshair; user-select: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); border-radius: 2px; background: #fff;
+}
+.region {
+  position: absolute; border: 2px solid var(--accent); border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  pointer-events: auto; cursor: pointer;
+}
+.region.lit { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.region.drafting { pointer-events: none; border-style: dashed; }
+
+.card-item {
+  position: absolute; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px 12px; cursor: auto; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  font-size: 14px; line-height: 1.5;
+}
+.card-item.lit { border-color: var(--accent); }
+.card-head { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
+.card-head h3 { margin: 0; font-size: 16px; }
+.card-head .badge { white-space: nowrap; }
+.badge.ok { color: var(--ok); border-color: var(--ok); }
+.badge.fail { color: var(--fail); border-color: var(--fail); }
+.transcription {
+  margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: var(--bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.facet h4, .found h4 { margin: 12px 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.facet p { margin: 0; }
+.found ol { margin: 4px 0 0; padding-left: 20px; }
+.found li { margin-bottom: 3px; font-size: 13px; }
+.cite {
+  font-size: 10px; vertical-align: super; text-decoration: none; margin: 0 1px;
+  padding: 0 4px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.card-stage { margin: 10px 0 0; display: flex; align-items: center; gap: 8px; }
+.spinner {
+  width: 12px; height: 12px; border-radius: 50%; display: inline-block;
+  border: 2px solid var(--line); border-top-color: var(--accent); animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.descend {
+  position: absolute; left: 16px; z-index: 3; font-size: 13px; padding: 5px 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}

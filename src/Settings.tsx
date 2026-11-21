@@ -22,7 +22,7 @@ export function Settings() {
   }, []);
 
   if (error) return <p className="error">Couldn't reach the server: {error}</p>;
-  if (!config) return <p className="muted">Loading…</p>;
+  if (!config) return <p className="muted" style={{ padding: 32 }}>Loading…</p>;
 
   const save = async (update: ConfigUpdate) => {
     const next = await api.saveConfig(update);
@@ -33,6 +33,7 @@ export function Settings() {
   return (
     <main className="settings">
       <header>
+        <a href="#" className="back">← Canvas</a>
         <h1>Settings</h1>
         <p className="muted">
           Keys are stored on this machine by the local server and never sent to the browser.
