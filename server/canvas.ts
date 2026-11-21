@@ -99,6 +99,9 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   else if (e.type === "update") {
     const item = s.items.find((i) => i.id === e.id);
     if (item?.kind === "card") Object.assign(item, e.patch);
+  } else if (e.type === "chat") {
+    const item = s.items.find((i) => i.id === e.id);
+    if (item?.kind === "card") item.chat = [...(item.chat ?? []), e.message];
   } else if (e.type === "collapse") {
     const ids = new Set(e.ids);
     for (const item of s.items) if (ids.has(item.id)) item.collapsed = e.collapsed;
@@ -174,6 +177,11 @@ export class CanvasStore {
     const stuck = s.items.filter((i): i is CardItem => i.kind === "card" && i.stage !== "done" && i.stage !== "failed");
     this.state = s;
     for (const card of stuck) await this.update(card.id, { stage: "failed", error: "Interrupted by a server restart" });
+    for (const card of s.items) {
+      if (card.kind !== "card" || !card.chatPending) continue;
+      await this.record({ type: "chat", id: card.id, message: { role: "assistant", text: "(Interrupted by a server restart; ask again.)", at: new Date().toISOString() } });
+      await this.update(card.id, { chatPending: false });
+    }
     return s;
   }
 

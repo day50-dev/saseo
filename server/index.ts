@@ -7,7 +7,7 @@ import { CARD_WIDTH, type CardItem, type ImageItem, type Move, type Rect, type R
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { assetPath, canvasStore, createCanvas, getCanvasInfo, listCanvases, newId, renameCanvas, saveAsset } from "./canvas.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
-import { explainRegion, explainRelation, explainSelection } from "./explain.ts";
+import { chatAbout, explainRegion, explainRelation, explainSelection } from "./explain.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
 
 const app = new Hono();
@@ -215,6 +215,22 @@ app.post("/api/canvases/:cid/relate", async (c) => {
   await store.add(card);
   void explainRelation(store, card.id);
   return c.json({ card });
+});
+
+// A conversation held at a card: the question is recorded, and the answer arrives in the log.
+app.post("/api/canvases/:cid/cards/:id/chat", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const card = await store.findItem(c.req.param("id"));
+  if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
+  if (card.chatPending) return c.json({ error: "still answering the last message" }, 409);
+  const { text } = (await c.req.json()) as { text?: string };
+  const clean = typeof text === "string" ? text.trim().slice(0, 4000) : "";
+  if (!clean) return c.json({ error: "text is required" }, 400);
+  await store.record({ type: "chat", id: card.id, message: { role: "user", text: clean, at: new Date().toISOString() } });
+  await store.update(card.id, { chatPending: true });
+  void chatAbout(store, card.id);
+  return c.json({ ok: true });
 });
 
 // Removing is a hide event: the log keeps everything, so any removal can be undone.

@@ -93,6 +93,12 @@ export interface FoundSource {
   searcher: string;
 }
 
+export interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+  at: string;
+}
+
 export type CardStage = "reading" | "searching" | "writing" | "checking" | "done" | "failed";
 
 export interface CardItem extends ItemState {
@@ -117,6 +123,10 @@ export interface CardItem extends ItemState {
   relates?: [string, string];
   /** Height as last drawn, recorded with moves. */
   h?: number;
+  /** A conversation about this card, held at the card (principle 4), oldest first. */
+  chat?: ChatMessage[];
+  /** The librarian is answering the last message. */
+  chatPending?: boolean;
   x: number;
   y: number;
   w: number;
@@ -143,7 +153,8 @@ export type CanvasEvent =
   | { type: "show"; ids: string[] }
   /** The learner moved things. The system itself never moves anything. */
   | { type: "move"; moves: Move[] }
-  | { type: "collapse"; ids: string[]; collapsed: boolean };
+  | { type: "collapse"; ids: string[]; collapsed: boolean }
+  | { type: "chat"; id: string; message: ChatMessage };
 
 export interface Move {
   id: string;

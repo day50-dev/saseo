@@ -4,7 +4,7 @@ import type { CardItem, FoundSource, Item, Register, RegisterNote, Sem } from ".
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import type { CanvasStore } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
-import { chatJson, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
+import { chat, chatJson, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { runSearch } from "./providers.ts";
 
 const IDENTIFY = `You help a curious, intelligent reader who is not a specialist. They selected part of an image because they don't understand it.
@@ -464,4 +464,39 @@ export function explainRelation(store: CanvasStore, cardId: string) {
     await store.update(cardId, { stage: "writing", sources });
     await write(store, card, subject, `How are "${a.name}" and "${b.name}" related?`, undefined, [], sources, `${RELATION_GUIDANCE}\n\n${both}`);
   });
+}
+
+// ---- Conversation held at a card ----
+
+const CHAT = `You are a research librarian with unlimited time, talking with a curious, intelligent reader who is not a specialist.
+The conversation is about ONE card on their canvas; everything known about it follows.
+Rules:
+- Descend, never climb: answer with ideas more familiar than what is asked about, and gloss any technical term you must use in plain words.
+- Say plainly when a word is a strict technical term and when it is being used loosely.
+- Be faithful. Where one of the card's numbered sources supports a claim, cite it as [n]. If you don't know, say so.
+- Be brief: 1 to 4 sentences unless the reader asks for more. Plain text, math as plain text.`;
+
+/** Answers the learner's latest message in a card's conversation, with everything known about the card. */
+export async function chatAbout(store: CanvasStore, cardId: string) {
+  const config = await loadConfig();
+  const card = (await store.findItem(cardId)) as CardItem;
+  try {
+    const about = await describe(store, cardId);
+    const sources = (card.sources ?? []).map((s) => `[${s.n}] ${s.title} (${s.url})\n${s.snippet}`).join("\n\n");
+    const history: Message[] = (card.chat ?? []).slice(-20).map((m) => ({ role: m.role, content: m.text }));
+    const reply = await chat(config.llm, [
+      { role: "system", content: `${CHAT}\n\nThe card:\n${about.text}${sources ? `\n\nIts sources:\n${sources}` : ""}` },
+      ...history,
+    ]);
+    await store.record({ type: "chat", id: cardId, message: { role: "assistant", text: reply.trim(), at: new Date().toISOString() } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const timedOut = err instanceof Error && (err.name === "TimeoutError" || /aborted due to timeout/.test(message));
+    const text = timedOut
+      ? `(No answer within ${config.llm.timeoutSeconds} seconds. Ask again, or raise the timeout in Settings.)`
+      : `(Couldn't answer: ${message})`;
+    await store.record({ type: "chat", id: cardId, message: { role: "assistant", text, at: new Date().toISOString() } });
+  } finally {
+    await store.update(cardId, { chatPending: false });
+  }
 }
