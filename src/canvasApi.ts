@@ -26,6 +26,11 @@ export const canvasApi = {
 
   descend: (body: { parentId: string; selection: string; x: number; y: number }) =>
     post("/api/canvas/descend", body).then((r) => json<{ card: CardItem }>(r)),
+
+  /** Hides items and whatever depends on them; returns everything that was hidden. */
+  hide: (ids: string[]) => post("/api/canvas/hide", { ids }).then((r) => json<{ ids: string[] }>(r)),
+
+  show: (ids: string[]) => post("/api/canvas/show", { ids }).then((r) => json<{ ids: string[] }>(r)),
 };
 
 export const assetUrl = (name: string) => `/api/assets/${name}`;

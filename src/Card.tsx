@@ -45,6 +45,7 @@ export function Card(props: {
   onHover: (on: boolean) => void;
   onHeight: (h: number) => void;
   onDescend: (text: string, clientY: number) => void;
+  onRemove: () => void;
 }) {
   const { card, onHeight } = props;
   const ref = useRef<HTMLDivElement>(null);
@@ -98,6 +99,14 @@ export function Card(props: {
             {card.rewritten ? " · rewritten once" : ""}
           </span>
         )}
+        <button
+          type="button"
+          className="remove-btn"
+          title="Remove this card and the cards below it (Ctrl+Z brings it back)"
+          onClick={props.onRemove}
+        >
+          ×
+        </button>
       </div>
       {card.transcription && card.transcription !== card.subject && <div className="transcription">{card.transcription}</div>}
 

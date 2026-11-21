@@ -146,7 +146,9 @@ a { color: var(--accent); }
   background-image: radial-gradient(var(--line) 1px, transparent 1px);
   background-size: 24px 24px;
 }
-.stage:active { cursor: grabbing; }
+.stage.mode-select { cursor: default; }
+.stage.mode-pan, .stage.mode-pan * { cursor: grab !important; user-select: none; }
+.stage.mode-pan:active, .stage.mode-pan:active * { cursor: grabbing !important; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 16px; }
 .empty h2 { font-size: 20px; }
@@ -162,7 +164,7 @@ a { color: var(--accent); }
 .region {
   position: absolute; border: 2px solid var(--accent); border-radius: 3px;
   background: color-mix(in srgb, var(--accent) 8%, transparent);
-  pointer-events: auto; cursor: pointer;
+  pointer-events: auto; cursor: crosshair;
 }
 .region.lit { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .region.drafting { pointer-events: none; border-style: dashed; }
@@ -201,3 +203,32 @@ a { color: var(--accent); }
   position: absolute; left: 16px; z-index: 3; font-size: 13px; padding: 5px 10px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
+
+.modes { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.modes button {
+  border: none; border-radius: 0; background: transparent; color: var(--muted);
+  font-weight: 500; font-size: 13px; padding: 4px 10px; display: flex; align-items: center; gap: 5px;
+}
+.modes button + button { border-left: 1px solid var(--line); }
+.modes button.on { background: var(--accent); color: var(--accent-text); }
+kbd {
+  font: 11px ui-monospace, monospace; padding: 0 4px; border-radius: 3px;
+  border: 1px solid currentColor; opacity: 0.6;
+}
+
+.history { display: flex; gap: 4px; flex-shrink: 0; }
+.history button { font-size: 13px; padding: 4px 10px; font-weight: 500; }
+.modes, .toolbar > button, .toolbar > a, .toolbar > strong { flex-shrink: 0; }
+.toolbar .hint { flex: 1 1 0; }
+@media (max-width: 900px) { .toolbar .hint { display: none; } }
+
+.remove-btn {
+  width: 22px; height: 22px; padding: 0; border-radius: 50%; line-height: 1;
+  font-size: 15px; font-weight: 500; flex-shrink: 0;
+  background: var(--card); color: var(--muted); border: 1px solid var(--line);
+}
+.remove-btn:hover { color: var(--fail); border-color: var(--fail); }
+.remove-btn.on-image { position: absolute; opacity: 0.35; z-index: 1; }
+.remove-btn.on-image:hover { opacity: 1; }
+.remove-btn.on-region { position: absolute; right: -11px; top: -11px; }
+.card-head h3 { flex: 1; }

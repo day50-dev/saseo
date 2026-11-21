@@ -21,7 +21,10 @@ export async function chat(ep: Endpoint, messages: Message[], timeoutMs = 180_00
     signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({ model: ep.model, messages, temperature: 0.3 }),
   });
-  if (!res.ok) throw new Error(`LLM: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
+  if (!res.ok) {
+    const hint = res.status === 404 && !/\/v\d+$/.test(ep.baseUrl) ? ` (try the base URL ${ep.baseUrl}/v1 in Settings)` : "";
+    throw new Error(`LLM: HTTP ${res.status}${hint} ${(await res.text()).slice(0, 300)}`.trim());
+  }
   const data = await res.json();
   const text = data?.choices?.[0]?.message?.content;
   if (typeof text !== "string") throw new Error("LLM: response had no message content");

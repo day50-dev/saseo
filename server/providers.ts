@@ -61,7 +61,13 @@ export function testLlm(ep: Endpoint): Promise<TestResult> {
         messages: [{ role: "user", content: "Reply with the single word: ok" }],
       }),
     });
-    if (!res.ok) return failure(res);
+    if (!res.ok) {
+      const f = await failure(res);
+      if (res.status === 404 && !/\/v\d+$/.test(ep.baseUrl)) {
+        f.message += ` at ${ep.baseUrl}/chat/completions. Most OpenAI-compatible servers want the base URL to end in /v1 (${ep.baseUrl}/v1).`;
+      }
+      return f;
+    }
     const data = await res.json();
     const reply = data?.choices?.[0]?.message?.content;
     if (typeof reply !== "string") {

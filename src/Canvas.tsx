@@ -30,6 +30,19 @@ function saveView(v: View) {
 
 const isPending = (c: CardItem) => c.stage !== "done" && c.stage !== "failed";
 
+type Mode = "select" | "pan";
+
+function loadMode(): Mode {
+  try {
+    return localStorage.getItem("librarian.mode") === "pan" ? "pan" : "select";
+  } catch {
+    return "select";
+  }
+}
+
+const isTyping = (t: EventTarget | null) =>
+  t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
+
 export function Canvas() {
   const [items, setItems] = useState<Item[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -41,11 +54,43 @@ export function Canvas() {
   const stageRef = useRef<HTMLDivElement>(null);
   const imgRefs = useRef<Record<string, HTMLImageElement | null>>({});
   const pan = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
+  const [mode, setMode] = useState<Mode>(loadMode);
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  // Holding Space pans temporarily, whatever the mode.
+  const panning = mode === "pan" || spaceHeld;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("librarian.mode", mode);
+    } catch {}
+  }, [mode]);
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === " ") {
+        e.preventDefault();
+        setSpaceHeld(true);
+      } else if (e.key === "v" || e.key === "V") setMode("select");
+      else if (e.key === "h" || e.key === "H") setMode("pan");
+    };
+    const up = (e: KeyboardEvent) => e.key === " " && setSpaceHeld(false);
+    const blur = () => setSpaceHeld(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
       const s = await canvasApi.state();
-      setItems(s.items);
+      // Hidden items stay in the log (undo can bring them back) but aren't drawn or laid out around.
+      setItems(s.items.filter((i) => !i.hidden));
       setLoaded(true);
     } catch (e) {
       setError(String(e));
@@ -65,6 +110,89 @@ export function Canvas() {
   }, [pending, refresh]);
 
   useEffect(() => saveView(view), [view]);
+
+  // ---- Undo and redo ----
+  // Every step is reversible because removal only hides. A new step after an undo starts a new
+  // branch; the steps it replaced are still in the log.
+
+  interface Step {
+    label: string;
+    undo: () => Promise<unknown>;
+    redo: () => Promise<unknown>;
+  }
+  const undoStack = useRef<Step[]>([]);
+  const redoStack = useRef<Step[]>([]);
+  const [, setStackVersion] = useState(0);
+  const bump = () => setStackVersion((n) => n + 1);
+
+  const pushStep = (step: Step) => {
+    undoStack.current.push(step);
+    redoStack.current = [];
+    bump();
+  };
+
+  /** Records that `ids` were just added; undo hides them and whatever hangs off them. */
+  const added = (label: string, ids: string[]) => {
+    let hiddenIds: string[] = ids;
+    pushStep({
+      label,
+      undo: async () => {
+        hiddenIds = (await canvasApi.hide(ids)).ids;
+      },
+      redo: () => canvasApi.show(hiddenIds),
+    });
+  };
+
+  const remove = async (id: string, label: string) => {
+    try {
+      const { ids } = await canvasApi.hide([id]);
+      pushStep({ label, undo: () => canvasApi.show(ids), redo: () => canvasApi.hide(ids) });
+      await refresh();
+    } catch (e) {
+      setError(`Couldn't remove: ${e}`);
+    }
+  };
+
+  const undo = async () => {
+    const step = undoStack.current.pop();
+    if (!step) return;
+    await step.undo();
+    redoStack.current.push(step);
+    bump();
+    await refresh();
+  };
+
+  const redo = async () => {
+    const step = redoStack.current.pop();
+    if (!step) return;
+    await step.redo();
+    undoStack.current.push(step);
+    bump();
+    await refresh();
+  };
+
+  const undoRef = useRef(undo);
+  const redoRef = useRef(redo);
+  undoRef.current = undo;
+  redoRef.current = redo;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e.target) || !(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undoRef.current();
+      } else if ((k === "z" && e.shiftKey) || k === "y") {
+        e.preventDefault();
+        redoRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const nextUndo = undoStack.current.at(-1);
+  const nextRedo = redoStack.current.at(-1);
 
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const images = items.filter((i): i is ImageItem => i.kind === "image");
@@ -109,7 +237,8 @@ export function Canvas() {
       await el.decode();
       const w = Math.min(el.naturalWidth, MAX_IMAGE_WIDTH);
       const h = Math.round((el.naturalHeight * w) / el.naturalWidth);
-      await canvasApi.addImage(file, { x: Math.round(at.x), y: Math.round(at.y), w, h, naturalW: el.naturalWidth, naturalH: el.naturalHeight });
+      const img = await canvasApi.addImage(file, { x: Math.round(at.x), y: Math.round(at.y), w, h, naturalW: el.naturalWidth, naturalH: el.naturalHeight });
+      added("add image", [img.id]);
       await refresh();
     } catch (e) {
       setError(`Couldn't add image: ${e}`);
@@ -160,8 +289,12 @@ export function Canvas() {
     return () => el.removeEventListener("wheel", stop);
   }, []);
 
+  // Pan mode (or Space, or the middle button) drags from anywhere; select mode only from empty canvas.
   const onStagePointerDown = (e: React.PointerEvent) => {
-    if (e.target !== e.currentTarget && !(e.target as HTMLElement).dataset.pan) return;
+    const onBackground = e.target === e.currentTarget || Boolean((e.target as HTMLElement).dataset.pan);
+    const isButton = (e.target as HTMLElement).closest("button, a");
+    if (!(panning || e.button === 1 || (onBackground && e.button === 0)) || (isButton && !panning)) return;
+    e.preventDefault();
     pan.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
@@ -195,7 +328,8 @@ export function Canvas() {
     try {
       const { marked, crop } = renderRegion(el, rect);
       const cardX = img.x + img.w + GAP;
-      await canvasApi.addRegion({ imageId: img.id, rect, card: { x: cardX, y: slotY(cardX, Math.round(y0)) }, marked, crop });
+      const res = await canvasApi.addRegion({ imageId: img.id, rect, card: { x: cardX, y: slotY(cardX, Math.round(y0)) }, marked, crop });
+      added("box", [res.region.id]);
       await refresh();
     } catch (e) {
       setError(`Couldn't send the selection: ${e}`);
@@ -207,7 +341,8 @@ export function Canvas() {
   const descend = async (parent: CardItem, selection: string, worldY: number) => {
     const x = parent.x + CARD_WIDTH + GAP;
     try {
-      await canvasApi.descend({ parentId: parent.id, selection, x, y: slotY(x, Math.round(worldY - 20)) });
+      const res = await canvasApi.descend({ parentId: parent.id, selection, x, y: slotY(x, Math.round(worldY - 20)) });
+      added(`explain “${selection.slice(0, 30)}”`, [res.card.id]);
       await refresh();
     } catch (e) {
       setError(`Couldn't go further down: ${e}`);
@@ -250,10 +385,40 @@ export function Canvas() {
       <div className="toolbar">
         <strong>Librarian</strong>
         <span className="muted small hint">
-          Drop or paste an image · drag a box over what stopped you · select words in a card to go further down · scroll to pan, Ctrl+scroll to zoom
+          Drop or paste an image · Select: drag a box over what stopped you · hold Space to pan · Ctrl+scroll to zoom
         </span>
         <span className="spacer" />
-        <button type="button" className="link" onClick={() => setView({ x: 40, y: 80, scale: 1 })}>
+        <div className="history">
+          <button type="button" className="secondary" disabled={!nextUndo} title={nextUndo ? `Undo ${nextUndo.label} (Ctrl+Z)` : "Nothing to undo"} onClick={undo}>
+            ↶ Undo
+          </button>
+          <button type="button" className="secondary" disabled={!nextRedo} title={nextRedo ? `Redo ${nextRedo.label} (Ctrl+Shift+Z)` : "Nothing to redo"} onClick={redo}>
+            ↷ Redo
+          </button>
+        </div>
+        <div className="modes" role="radiogroup" aria-label="Canvas tool">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={mode === "select"}
+            className={mode === "select" ? "on" : ""}
+            title="Select (V): drag a box on an image to explain it, select words in a card to go further down"
+            onClick={() => setMode("select")}
+          >
+            <span aria-hidden>⬚</span> Select <kbd>V</kbd>
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={mode === "pan"}
+            className={mode === "pan" ? "on" : ""}
+            title="Pan (H): drag anywhere to move around. Hold Space for a moment of panning in either mode."
+            onClick={() => setMode("pan")}
+          >
+            <span aria-hidden>✥</span> Pan <kbd>H</kbd>
+          </button>
+        </div>
+        <button type="button" className="link" title="Reset zoom" onClick={() => setView({ x: 40, y: 80, scale: 1 })}>
           {Math.round(view.scale * 100)}%
         </button>
         <a href="#settings">Settings</a>
@@ -265,7 +430,7 @@ export function Canvas() {
       )}
       <div
         ref={stageRef}
-        className="stage"
+        className={`stage ${panning ? "mode-pan" : "mode-select"}`}
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
         onWheel={onWheel}
@@ -294,13 +459,27 @@ export function Canvas() {
               className="source-image"
               style={{ left: img.x, top: img.y, width: img.w, height: img.h }}
               onPointerDown={(e) => {
-                if (e.button !== 0) return;
+                // In pan mode the event bubbles to the stage, which pans.
+                if (e.button !== 0 || panning) return;
                 e.stopPropagation();
                 const p = toWorld(e.clientX, e.clientY);
                 setDraft({ imageId: img.id, start: p, end: p });
                 stageRef.current?.setPointerCapture(e.pointerId);
               }}
             />
+          ))}
+          {images.map((img) => (
+            <button
+              key={`x-${img.id}`}
+              type="button"
+              className="remove-btn on-image"
+              style={{ left: img.x + img.w - 30, top: img.y + 6 }}
+              title="Remove this image and everything on it (Ctrl+Z brings it back)"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => remove(img.id, "remove image")}
+            >
+              ×
+            </button>
           ))}
 
           {regions.map((r) => {
@@ -315,7 +494,27 @@ export function Canvas() {
                 style={{ left: w.x, top: w.y, width: w.w, height: w.h }}
                 onPointerEnter={() => setHover(r.id)}
                 onPointerLeave={() => setHover(null)}
-              />
+                onPointerDown={(e) => {
+                  // A new box can start inside an earlier one.
+                  if (e.button !== 0 || panning) return;
+                  e.stopPropagation();
+                  const p = toWorld(e.clientX, e.clientY);
+                  setDraft({ imageId: r.imageId, start: p, end: p });
+                  stageRef.current?.setPointerCapture(e.pointerId);
+                }}
+              >
+                {lit && (
+                  <button
+                    type="button"
+                    className="remove-btn on-region"
+                    title="Remove this box and its explanations (Ctrl+Z brings it back)"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => remove(r.id, "remove box")}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             );
           })}
 
@@ -329,6 +528,7 @@ export function Canvas() {
               onHover={(on) => setHover(on ? c.id : null)}
               onHeight={(h) => setHeights((all) => (all[c.id] === h ? all : { ...all, [c.id]: h }))}
               onDescend={(text, clientY) => descend(c, text, toWorld(0, clientY).y)}
+              onRemove={() => remove(c.id, `remove “${(c.subject ?? "card").slice(0, 30)}”`)}
             />
           ))}
         </div>

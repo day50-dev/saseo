@@ -68,11 +68,16 @@ export interface CardItem {
   error?: string;
 }
 
-export type Item = ImageItem | RegionItem | CardItem;
+export type Item = (ImageItem | RegionItem | CardItem) & {
+  /** Set by a hide event. Hidden items stay in the log and can be shown again. */
+  hidden?: boolean;
+};
 
 export type CanvasEvent =
   | { type: "add"; item: Item }
-  | { type: "update"; id: string; patch: Partial<CardItem> };
+  | { type: "update"; id: string; patch: Partial<CardItem> }
+  | { type: "hide"; ids: string[] }
+  | { type: "show"; ids: string[] };
 
 export interface LoggedEvent {
   seq: number;

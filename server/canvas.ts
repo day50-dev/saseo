@@ -15,9 +15,12 @@ let queue: Promise<unknown> = Promise.resolve();
 function apply(s: CanvasState, logged: LoggedEvent): void {
   const e = logged.event;
   if (e.type === "add") s.items.push(e.item);
-  else {
+  else if (e.type === "update") {
     const item = s.items.find((i) => i.id === e.id);
     if (item?.kind === "card") Object.assign(item, e.patch);
+  } else {
+    const ids = new Set(e.ids);
+    for (const item of s.items) if (ids.has(item.id)) item.hidden = e.type === "hide";
   }
   s.seq = logged.seq;
 }
@@ -55,6 +58,38 @@ export function record(event: CanvasEvent): Promise<LoggedEvent> {
 
 export const add = (item: Item) => record({ type: "add", item });
 export const update = (id: string, patch: Partial<CardItem>) => record({ type: "update", id, patch });
+
+/**
+ * What disappears along with `ids`: an image takes its boxes, a box its cards, a card the
+ * cards below it. Removing the only card on a box also removes the box, which would be
+ * meaningless on its own.
+ */
+export async function withDependents(ids: string[]): Promise<string[]> {
+  const { items } = await getState();
+  const visible = items.filter((i) => !i.hidden);
+  const out = new Set(ids);
+  for (const id of ids) {
+    const item = visible.find((i) => i.id === id);
+    if (item?.kind === "card") {
+      const parent = visible.find((i) => i.id === item.parentId);
+      const siblings = visible.filter((i) => i.kind === "card" && i.parentId === item.parentId);
+      if (parent?.kind === "region" && siblings.every((s) => out.has(s.id))) out.add(parent.id);
+    }
+  }
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const i of visible) {
+      if (out.has(i.id)) continue;
+      const parent = i.kind === "region" ? i.imageId : i.kind === "card" ? i.parentId : undefined;
+      if (parent && out.has(parent)) {
+        out.add(i.id);
+        grew = true;
+      }
+    }
+  }
+  return visible.filter((i) => out.has(i.id)).map((i) => i.id);
+}
 
 export async function findItem(id: string): Promise<Item | undefined> {
   return (await getState()).items.find((i) => i.id === id);
