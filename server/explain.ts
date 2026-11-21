@@ -30,7 +30,7 @@ Rules:
 - Descend, never climb. Use ideas MORE general and familiar than the subject. Never define it in terms more specialized than itself. If a technical term is unavoidable, it must be more basic than the subject, and you gloss it in plain words.
 - Start with why: the question or problem the idea answers, so it doesn't feel arbitrary.
 - Be faithful. Don't invent facts. Where a numbered source supports a claim, cite it as [n]. Standard background needs no citation.
-- Every piece is short: one sentence, at most about 20 words. Plain text. Math as plain text, not LaTeX.
+- Every piece is short: one sentence, at most about 20 words. Plain text. Write math as LaTeX between \\( and \\), e.g. \\(\\mathrm{id}_B \\otimes \\Delta\\), never bare symbols with flattened subscripts.
 Return JSON only, no prose:
 {"why": ["2 to 4 steps forming a chain: the problem, then each step following from the one before"],
  "what": {"gist": "one sentence: what it is, in familiar terms", "details": ["0 to 3 further facts about it"]},

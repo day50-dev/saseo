@@ -80,6 +80,26 @@ export async function chatStream(ep: Endpoint, messages: Message[], onText: (soF
   return visible(text).trim();
 }
 
+// LaTeX commands that start with a letter JSON reads as an escape: "\\frac" would become a form feed
+// and "rac", "\\nabla" a newline and "abla". Models often forget to double these backslashes.
+const TEX_COMMANDS = new Set(
+  ("beta bar bf big bigl bigr Big Bigl Bigr bigg binom bmod boldsymbol bot bowtie box bullet backslash " +
+    "frac forall flat footnotesize frak frown " +
+    "nabla neq nu ni notin not neg nearrow nexists natural nolimits nonumber " +
+    "rho right rangle rightarrow Rightarrow rightleftharpoons rm rceil rfloor rvert rVert restriction " +
+    "tau theta times text textbf textit textrm texttt tilde to top triangle triangleq tfrac therefore tiny Theta").split(" "),
+);
+
+/** Doubles backslashes that begin a LaTeX command rather than a JSON escape. */
+export function repairTexEscapes(json: string): string {
+  return json.replace(/\\\\|\\([a-zA-Z]+)|\\(?=[^"\\/bfnrtu])/g, (m, word: string | undefined) => {
+    if (m === "\\") return "\\\\"; // a lone backslash before a character JSON can't escape: \( \[ \, \{
+    if (!word) return m; // an already doubled backslash
+    if (!"bfnrtu".includes(word[0]) || TEX_COMMANDS.has(word)) return `\\${m}`;
+    return m;
+  });
+}
+
 /** Asks for JSON and parses the first object in the reply, tolerating code fences and prose around it. */
 export async function chatJson<T>(ep: Endpoint, messages: Message[]): Promise<T> {
   const text = await chat(ep, messages);
@@ -87,7 +107,7 @@ export async function chatJson<T>(ep: Endpoint, messages: Message[]): Promise<T>
   const end = text.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error(`LLM didn't return JSON: ${text.slice(0, 200)}`);
   try {
-    return JSON.parse(text.slice(start, end + 1)) as T;
+    return JSON.parse(repairTexEscapes(text.slice(start, end + 1))) as T;
   } catch {
     throw new Error(`LLM returned malformed JSON: ${text.slice(start, start + 200)}`);
   }
