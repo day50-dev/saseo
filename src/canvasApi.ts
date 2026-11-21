@@ -1,5 +1,5 @@
 import { unreachable } from "./api.ts";
-import type { CanvasInfo, CanvasState, CardItem, ImageItem, Rect, RegionItem } from "../shared/canvas.ts";
+import type { CanvasInfo, CanvasState, CardItem, ImageItem, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
 
 async function json<T>(res: Response): Promise<T> {
   if (res.status === 401) location.reload();
@@ -35,10 +35,15 @@ export function canvasApi(cid: string) {
         return json<CanvasState & CanvasInfo>(r);
       }),
 
-    addImage: (file: File, place: { x: number; y: number; w: number; h: number; naturalW: number; naturalH: number }) => {
+    addImage: (
+      file: File,
+      place: { x: number; y: number; w: number; h: number; naturalW: number; naturalH: number },
+      source?: ImageSource,
+    ) => {
       const form = new FormData();
       form.append("file", file);
       for (const [k, v] of Object.entries(place)) form.append(k, String(v));
+      if (source) form.append("source", JSON.stringify(source));
       return fetch(`${base}/images`, { method: "POST", body: form }).then((r) => json<ImageItem>(r));
     },
 

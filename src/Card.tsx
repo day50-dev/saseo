@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { type CardItem, type CardStage, type FoundSource, REGISTERS, type RegisterNote, type Sem } from "../shared/canvas.ts";
+import { type CardItem, type CardStage, type FoundSource, type Paper, REGISTERS, type RegisterNote, type Sem } from "../shared/canvas.ts";
+import { PaperRow } from "./ArxivPanel.tsx";
 import { SemShapes } from "./SemShapes.tsx";
 
 const STAGE_TEXT: Record<CardStage, string> = {
@@ -83,6 +84,8 @@ export function Card(props: {
   onAsk: (text: string) => void;
   /** Brings an object a conversation made into view. */
   onFocus: (id: string) => void;
+  /** Adds the first pages of a paper from a papers card to the canvas. */
+  onAddPaper: (paper: Paper) => Promise<void>;
   /** Pointer down on the header: start moving this card and the cards below it. */
   onGrab: (e: React.PointerEvent) => void;
   moving: boolean;
@@ -223,7 +226,7 @@ export function Card(props: {
       )}
 
       <div ref={explainRef} className="card-explanation">
-      {card.object && <ObjectView card={card} />}
+      {card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} />}
       {card.sem && (
         <SemShapes
           title={card.subject ?? "Explanation"}
@@ -396,7 +399,7 @@ function ChatBox({
 }
 
 /** An object a conversation made: videos to watch, pages to read, or a diagram. */
-function ObjectView({ card }: { card: CardItem }) {
+function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: Paper) => Promise<void> }) {
   const [playing, setPlaying] = useState<string | null>(null);
   const o = card.object!;
   if (o.type === "diagram")
@@ -431,6 +434,14 @@ function ObjectView({ card }: { card: CardItem }) {
           ),
         )}
       </div>
+    );
+  if (o.type === "papers")
+    return (
+      <ol className="paper-list">
+        {o.papers.map((p) => (
+          <PaperRow key={p.id} paper={p} onAdd={(paper) => onAddPaper(paper)} />
+        ))}
+      </ol>
     );
   return (
     <ol className="object-links">

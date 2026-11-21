@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_WIDTH, type CardItem, type ImageItem, type Item, MIN_CHILD_GAP, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, type CardItem, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { Card, type Side } from "./Card.tsx";
 import { assetUrl, CanvasNotFound, canvasApi, canvasesApi } from "./canvasApi.ts";
+import { renderPages as renderPaperPages } from "./arxiv.ts";
+import { ArxivPanel } from "./ArxivPanel.tsx";
 import { linkTo } from "./router.ts";
 import { useIsAdmin } from "./session.ts";
 
@@ -329,6 +331,35 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     } finally {
       URL.revokeObjectURL(url);
     }
+  };
+
+  // ---- Papers from arXiv ----
+
+  const [arxivOpen, setArxivOpen] = useState(false);
+
+  /**
+   * Renders the chosen pages of a paper and lays them side by side, starting at `at` (or near the
+   * middle of the view). One step to undo, however many pages.
+   */
+  const addPaperPages = async (paper: Paper, pagesSpec: string, at?: { x: number; y: number }) => {
+    const { pages } = await renderPaperPages(paper, pagesSpec);
+    if (!pages.length) throw new Error("none of those pages exist in this paper");
+    // Without a spot asked for, start in clear space: to the right of everything on the canvas,
+    // level with the top of the view. Pages then come into view.
+    const r = stageRef.current!.getBoundingClientRect();
+    const right = Math.max(0, ...shown.filter((i) => i.kind !== "region").map((i) => i.x + i.w));
+    let { x, y } = at ?? { x: right + 120, y: toWorld(r.left, r.top + 60).y };
+    const ids: string[] = [];
+    for (const p of pages) {
+      const w = Math.min(p.width / 2, MAX_IMAGE_WIDTH);
+      const h = Math.round((p.height * w) / p.width);
+      const img = await api.addImage(p.file, { x: Math.round(x), y: Math.round(y), w, h, naturalW: p.width, naturalH: p.height }, p.source);
+      ids.push(img.id);
+      x += w + 48;
+    }
+    added(`add ${pages.length} page${pages.length > 1 ? "s" : ""} of arXiv ${paper.id}`, ids);
+    await refresh();
+    if (!at) setView((v) => ({ ...v, x: r.width * 0.1 - (right + 120) * v.scale }));
   };
 
   const onDrop = (e: React.DragEvent) => {
@@ -832,6 +863,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         >
           Untangle
         </button>
+        <button type="button" className="secondary untangle" title="Search arXiv and add pages of a paper" onClick={() => setArxivOpen(true)}>
+          arXiv
+        </button>
         <div className="stacking" role="group" aria-label="Stacking order">
           {(
             [
@@ -953,7 +987,14 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               >
                 {img.collapsed ? "▸" : "▾"}
               </button>
-              <span aria-hidden>⠿</span> {img.topic ?? img.name}
+              <span aria-hidden>⠿</span>{" "}
+              {img.source ? (
+                <a href={img.source.url} target="_blank" rel="noreferrer" title={img.source.title} onPointerDown={(e) => e.stopPropagation()}>
+                  arXiv {img.source.id} · p.{img.source.page} · {img.source.title}
+                </a>
+              ) : (
+                (img.topic ?? img.name)
+              )}
               {img.collapsed && <span className="folded-count">{cardsBelow(img.id)} cards folded</span>}
             </div>
           ))}
@@ -1045,6 +1086,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               onDescend={(text, context, clientY) => descend(c, text, context, toWorld(0, clientY).y)}
               onRetry={() => retry(c)}
               onFocus={focusOn}
+              onAddPaper={(paper) => addPaperPages(paper, "1-2", { x: c.x + c.w + GAP, y: c.y })}
               onAsk={async (text) => {
                 try {
                   await api.chat(c.id, text);
@@ -1068,6 +1110,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           ))}
         </div>
       </div>
+      {arxivOpen && <ArxivPanel onAdd={(paper, pages) => addPaperPages(paper, pages)} onClose={() => setArxivOpen(false)} />}
     </div>
   );
 }
