@@ -3,7 +3,7 @@ import type { CardItem, CardStage, FoundSource } from "../shared/canvas.ts";
 import { SemShapes } from "./SemShapes.tsx";
 
 const STAGE_TEXT: Record<CardStage, string> = {
-  reading: "Reading your selection…",
+  reading: "Working out what you selected…",
   searching: "Looking for good material…",
   writing: "Writing an explanation from what was found…",
   checking: "Checking it doesn't climb…",
@@ -45,7 +45,7 @@ export function Card(props: {
   lit: boolean;
   onHover: (on: boolean) => void;
   onHeight: (h: number) => void;
-  onDescend: (text: string, clientY: number) => void;
+  onDescend: (text: string, context: string, clientY: number) => void;
   onRemove: () => void;
   onRetry: () => void;
   /** Pointer down on the header: start moving this card and the cards below it. */
@@ -57,7 +57,7 @@ export function Card(props: {
 }) {
   const { card, onHeight } = props;
   const ref = useRef<HTMLDivElement>(null);
-  const [picked, setPicked] = useState<{ text: string; top: number; clientY: number } | null>(null);
+  const [picked, setPicked] = useState<{ text: string; context: string; top: number; clientY: number } | null>(null);
 
   // The parent passes a fresh callback each render; observe once and call the latest.
   const heightCb = useRef(onHeight);
@@ -85,7 +85,11 @@ export function Card(props: {
     const r = sel.getRangeAt(0).getBoundingClientRect();
     const box = el.getBoundingClientRect();
     const scale = box.height / el.offsetHeight || 1;
-    setPicked({ text: text.slice(0, 200), top: (r.bottom - box.top) / scale + 6, clientY: r.top });
+    // The line the words sit in tells the librarian what they refer to.
+    const node = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement;
+    const line = node?.closest(".sem-step, .sem-desc, .sem-part, .sem-together, .sem-aside, .facet p");
+    const context = (line?.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
+    setPicked({ text: text.slice(0, 200), context, top: (r.bottom - box.top) / scale + 6, clientY: r.top });
   };
 
   const sources = card.sources ?? [];
@@ -214,7 +218,7 @@ export function Card(props: {
           style={{ top: picked.top }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
-            props.onDescend(picked.text, picked.clientY);
+            props.onDescend(picked.text, picked.context, picked.clientY);
             setPicked(null);
             window.getSelection()?.removeAllRanges();
           }}

@@ -24,7 +24,7 @@ export const canvasApi = {
   addRegion: (body: { imageId: string; rect: Rect; card: { x: number; y: number }; marked: string; crop: string }) =>
     post("/api/canvas/regions", body).then((r) => json<{ region: RegionItem; card: CardItem }>(r)),
 
-  descend: (body: { parentId: string; selection: string; x: number; y: number }) =>
+  descend: (body: { parentId: string; selection: string; context: string; x: number; y: number }) =>
     post("/api/canvas/descend", body).then((r) => json<{ card: CardItem }>(r)),
 
   /** Hides items and whatever depends on them; returns everything that was hidden. */

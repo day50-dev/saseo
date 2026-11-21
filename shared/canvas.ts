@@ -76,6 +76,8 @@ export interface CardItem extends ItemState {
   parentId: string;
   /** For a descent from another card: the words the learner selected there. */
   selection?: string;
+  /** The sentence or line those words sat in, which says what they refer to. */
+  context?: string;
   x: number;
   y: number;
   w: number;

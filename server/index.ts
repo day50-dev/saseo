@@ -109,12 +109,13 @@ app.post("/api/canvas/regions", async (c) => {
 });
 
 app.post("/api/canvas/descend", async (c) => {
-  const body = (await c.req.json()) as { parentId: string; selection: string; x: number; y: number };
+  const body = (await c.req.json()) as { parentId: string; selection: string; context?: string; x: number; y: number };
   const parent = await findItem(body.parentId);
   if (parent?.kind !== "card") return c.json({ error: "unknown card" }, 404);
   const selection = body.selection?.trim().slice(0, 300);
   if (!selection) return c.json({ error: "selection is required" }, 400);
-  const card: CardItem = { kind: "card", id: newId(), parentId: parent.id, selection, x: body.x, y: body.y, w: CARD_WIDTH, stage: "searching", subject: selection };
+  const context = typeof body.context === "string" ? body.context.trim().slice(0, 500) : undefined;
+  const card: CardItem = { kind: "card", id: newId(), parentId: parent.id, selection, context, x: body.x, y: body.y, w: CARD_WIDTH, stage: "reading", subject: selection };
   await add(card);
   void explainSelection(card.id);
   return c.json({ card });
@@ -135,7 +136,7 @@ app.post("/api/canvas/cards/:id/retry", async (c) => {
     await update(card.id, { stage: "reading" });
     void explainRegion(card.id, { marked: body.marked, crop: body.crop });
   } else {
-    await update(card.id, { stage: "searching" });
+    await update(card.id, { stage: "reading" });
     void explainSelection(card.id);
   }
   return c.json({ ok: true });

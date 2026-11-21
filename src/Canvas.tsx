@@ -490,10 +490,10 @@ export function Canvas() {
 
   // ---- Descending from a card ----
 
-  const descend = async (parent: CardItem, selection: string, worldY: number) => {
+  const descend = async (parent: CardItem, selection: string, context: string, worldY: number) => {
     const x = parent.x + CARD_WIDTH + GAP;
     try {
-      const res = await canvasApi.descend({ parentId: parent.id, selection, x, y: slotY(x, Math.round(worldY - 20)) });
+      const res = await canvasApi.descend({ parentId: parent.id, selection, context, x, y: slotY(x, Math.round(worldY - 20)) });
       added(`explain “${selection.slice(0, 30)}”`, [res.card.id]);
       await refresh();
     } catch (e) {
@@ -765,7 +765,7 @@ export function Canvas() {
               lit={hover === c.id || hover === c.parentId}
               onHover={(on) => setHover(on ? c.id : null)}
               onHeight={(h) => setHeights((all) => (all[c.id] === h ? all : { ...all, [c.id]: h }))}
-              onDescend={(text, clientY) => descend(c, text, toWorld(0, clientY).y)}
+              onDescend={(text, context, clientY) => descend(c, text, context, toWorld(0, clientY).y)}
               onRetry={() => retry(c)}
               onGrab={(e) => startMove(c.id, e)}
               moving={drag?.ids.includes(c.id) ?? false}
