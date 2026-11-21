@@ -1,0 +1,33 @@
+{
+  "name": "librarian",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,green \"tsx watch server/index.ts\" \"vite\"",
+    "build": "vite build",
+    "start": "tsx server/index.ts",
+    "typecheck": "tsc"
+  },
+  "author": "Chris McKenzie <kristopolous@yahoo.com> (http://9ol.es/)",
+  "license": "ISC",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@hono/node-server": "^2.1.11",
+    "agent-web-search": "^0.2.0",
+    "hono": "^4.13.19",
+    "keenable": "^0.1.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "concurrently": "^10.0.7",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}
