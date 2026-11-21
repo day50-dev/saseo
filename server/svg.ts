@@ -39,3 +39,38 @@ export function sanitizeSvg(raw: string): string | null {
   if (!/^<svg[^>]*\sxmlns=/i.test(svg)) svg = svg.replace(/^<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
   return svg;
 }
+
+/**
+ * Turns an SVG still being written into one that draws: drops the half-written last tag, closes
+ * every element left open, then cleans it. Each frame shows everything finished so far.
+ */
+export function partialSvg(streamed: string): string | null {
+  const start = streamed.search(/<svg[\s>]/i);
+  if (start < 0) return null;
+  let svg = streamed.slice(start);
+  const end = svg.toLowerCase().lastIndexOf("</svg>");
+  if (end >= 0) return sanitizeSvg(svg.slice(0, end + 6));
+  // Cut back to the last complete tag; text after it may be a half-written word, which is fine
+  // inside <text> but not elsewhere, so keep it only when it isn't the start of a tag.
+  const lastOpen = svg.lastIndexOf("<");
+  const lastClose = svg.lastIndexOf(">");
+  if (lastOpen > lastClose) svg = svg.slice(0, lastOpen);
+  if (!svg.includes(">")) return null;
+  const open: string[] = [];
+  for (const m of svg.matchAll(/<(\/?)([a-zA-Z][\w:-]*)[^>]*?(\/?)>/g)) {
+    const [, closing, name, selfClosing] = m;
+    if (selfClosing) continue;
+    if (closing) {
+      const i = open.lastIndexOf(name);
+      if (i >= 0) open.length = i;
+    } else open.push(name);
+  }
+  return sanitizeSvg(svg + open.reverse().map((n) => `</${n}>`).join(""));
+}
+
+/** The title and caption a diagram carries in its own <title> and <desc>. */
+export function svgLabels(svg: string): { title: string; caption: string } {
+  const pick = (tag: string) =>
+    (svg.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"))?.[1] ?? "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  return { title: pick("title"), caption: pick("desc") };
+}
