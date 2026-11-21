@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_WIDTH, type CardItem, type ImageItem, type Item, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, type CardItem, type ImageItem, type Item, MIN_CHILD_GAP, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { Card } from "./Card.tsx";
 import { assetUrl, canvasApi } from "./canvasApi.ts";
 
@@ -49,6 +49,15 @@ export function Canvas() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>(loadView);
   const [draft, setDraft] = useState<{ imageId: string; start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
+  // A container being dragged, with everything that hangs off it.
+  const [drag, setDrag] = useState<{
+    ids: string[];
+    start: { x: number; y: number };
+    orig: Record<string, { x: number; y: number }>;
+    minDx: number;
+    dx: number;
+    dy: number;
+  } | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const [heights, setHeights] = useState<Record<string, number>>({});
   const stageRef = useRef<HTMLDivElement>(null);
@@ -194,10 +203,18 @@ export function Canvas() {
   const nextUndo = undoStack.current.at(-1);
   const nextRedo = redoStack.current.at(-1);
 
-  const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
-  const images = items.filter((i): i is ImageItem => i.kind === "image");
-  const regions = items.filter((i): i is RegionItem => i.kind === "region");
-  const cards = items.filter((i): i is CardItem => i.kind === "card");
+  // While dragging, draw the dragged items at their new place; the log changes only on release.
+  const shown = useMemo(() => {
+    if (!drag) return items;
+    const moving = new Set(drag.ids);
+    return items.map((i) =>
+      moving.has(i.id) && i.kind !== "region" ? { ...i, x: drag.orig[i.id].x + drag.dx, y: drag.orig[i.id].y + drag.dy } : i,
+    );
+  }, [items, drag]);
+  const byId = useMemo(() => new Map(shown.map((i) => [i.id, i])), [shown]);
+  const images = shown.filter((i): i is ImageItem => i.kind === "image");
+  const regions = shown.filter((i): i is RegionItem => i.kind === "region");
+  const cards = shown.filter((i): i is CardItem => i.kind === "card");
 
   const toWorld = useCallback(
     (clientX: number, clientY: number) => {
@@ -299,10 +316,81 @@ export function Canvas() {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
+  // ---- Moving containers ----
+
+  /** The item and everything hanging off it: an image's boxes and cards, a card's cards. */
+  const subtree = (rootId: string): string[] => {
+    const out = new Set([rootId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const i of items) {
+        if (out.has(i.id)) continue;
+        const parent = i.kind === "region" ? i.imageId : i.kind === "card" ? i.parentId : undefined;
+        if (parent && out.has(parent)) {
+          out.add(i.id);
+          grew = true;
+        }
+      }
+    }
+    return [...out];
+  };
+
+  /** Right edge of what a card explains: the box on the image, or the card above it. */
+  const parentRight = (card: CardItem): number | null => {
+    const parent = byId.get(card.parentId);
+    if (parent?.kind === "card") return parent.x + parent.w;
+    if (parent?.kind === "region") {
+      const r = regionWorld(parent);
+      return r ? r.x + r.w : null;
+    }
+    return null;
+  };
+
+  const startMove = (rootId: string, e: React.PointerEvent) => {
+    if (panning || e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const ids = subtree(rootId);
+    const orig: Record<string, { x: number; y: number }> = {};
+    for (const id of ids) {
+      const i = byId.get(id);
+      if (i && i.kind !== "region") orig[id] = { x: i.x, y: i.y };
+    }
+    // A card can go anywhere except left of what it explains.
+    const root = byId.get(rootId);
+    let minDx = -Infinity;
+    if (root?.kind === "card") {
+      const edge = parentRight(root);
+      if (edge !== null) minDx = edge + MIN_CHILD_GAP - root.x;
+    }
+    setDrag({ ids, start: toWorld(e.clientX, e.clientY), orig, minDx, dx: 0, dy: 0 });
+    stageRef.current?.setPointerCapture(e.pointerId);
+  };
+
+  const finishMove = async (d: NonNullable<typeof drag>) => {
+    setDrag(null);
+    if (Math.abs(d.dx) + Math.abs(d.dy) < 3) return;
+    const to = Object.entries(d.orig).map(([id, p]) => ({ id, x: Math.round(p.x + d.dx), y: Math.round(p.y + d.dy) }));
+    const from = Object.entries(d.orig).map(([id, p]) => ({ id, x: p.x, y: p.y }));
+    // Show the new place at once; the refresh confirms it.
+    setItems((all) => all.map((i) => (d.orig[i.id] && i.kind !== "region" ? { ...i, x: i.x + d.dx, y: i.y + d.dy } : i)));
+    try {
+      await canvasApi.move(to);
+      pushStep({ label: "move", undo: () => canvasApi.move(from), redo: () => canvasApi.move(to) });
+    } catch (e) {
+      setError(`Couldn't move: ${e}`);
+    }
+    await refresh();
+  };
+
   const onStagePointerMove = (e: React.PointerEvent) => {
     if (pan.current) {
       const p = pan.current;
       setView((v) => ({ ...v, x: p.vx + e.clientX - p.x, y: p.vy + e.clientY - p.y }));
+    } else if (drag) {
+      const p = toWorld(e.clientX, e.clientY);
+      setDrag({ ...drag, dx: Math.max(drag.minDx, p.x - drag.start.x), dy: p.y - drag.start.y });
     } else if (draft) {
       setDraft({ ...draft, end: toWorld(e.clientX, e.clientY) });
     }
@@ -310,6 +398,7 @@ export function Canvas() {
 
   const onStagePointerUp = async () => {
     pan.current = null;
+    if (drag) return finishMove(drag);
     if (!draft) return;
     const d = draft;
     setDraft(null);
@@ -485,6 +574,17 @@ export function Canvas() {
             />
           ))}
           {images.map((img) => (
+            <div
+              key={`grip-${img.id}`}
+              className="image-grip"
+              style={{ left: img.x, top: img.y - 26, width: img.w }}
+              title="Drag to move this image with its boxes and explanations"
+              onPointerDown={(e) => startMove(img.id, e)}
+            >
+              <span aria-hidden>⠿</span> {img.name}
+            </div>
+          ))}
+          {images.map((img) => (
             <button
               key={`x-${img.id}`}
               type="button"
@@ -545,6 +645,8 @@ export function Canvas() {
               onHeight={(h) => setHeights((all) => (all[c.id] === h ? all : { ...all, [c.id]: h }))}
               onDescend={(text, clientY) => descend(c, text, toWorld(0, clientY).y)}
               onRetry={() => retry(c)}
+              onGrab={(e) => startMove(c.id, e)}
+              moving={drag?.ids.includes(c.id) ?? false}
               onRemove={() => remove(c.id, `remove “${(c.subject ?? "card").slice(0, 30)}”`)}
             />
           ))}

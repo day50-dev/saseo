@@ -48,6 +48,9 @@ export function Card(props: {
   onDescend: (text: string, clientY: number) => void;
   onRemove: () => void;
   onRetry: () => void;
+  /** Pointer down on the header: start moving this card and the cards below it. */
+  onGrab: (e: React.PointerEvent) => void;
+  moving: boolean;
 }) {
   const { card, onHeight } = props;
   const ref = useRef<HTMLDivElement>(null);
@@ -84,13 +87,20 @@ export function Card(props: {
   return (
     <div
       ref={ref}
-      className={`card-item ${props.lit ? "lit" : ""}`}
+      className={`card-item ${props.lit ? "lit" : ""} ${props.moving ? "moving" : ""}`}
       style={{ left: card.x, top: card.y, width: card.w }}
       onPointerEnter={() => props.onHover(true)}
       onPointerLeave={() => props.onHover(false)}
       onMouseUp={onMouseUp}
     >
-      <div className="card-head">
+      <div
+        className="card-head"
+        title="Drag to move this card and the cards below it"
+        onPointerDown={(e) => {
+          if ((e.target as HTMLElement).closest("button, a")) return;
+          props.onGrab(e);
+        }}
+      >
         {/* With a Sem, the subject is drawn as the diagram's document title instead. */}
         <h3>{card.sem ? "" : (card.subject ?? (card.stage === "reading" ? "…" : "Explanation"))}</h3>
         {card.climb !== undefined && (
