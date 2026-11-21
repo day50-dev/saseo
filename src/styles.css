@@ -232,3 +232,7 @@ kbd {
 .remove-btn.on-image:hover { opacity: 1; }
 .remove-btn.on-region { position: absolute; right: -11px; top: -11px; }
 .card-head h3 { flex: 1; }
+
+.card-error { display: flex; align-items: flex-start; gap: 10px; margin-top: 8px; }
+.card-error p { margin: 4px 0 0; flex: 1; overflow-wrap: anywhere; }
+.card-error button { font-size: 13px; padding: 4px 10px; }

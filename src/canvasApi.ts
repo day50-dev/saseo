@@ -30,6 +30,9 @@ export const canvasApi = {
   /** Hides items and whatever depends on them; returns everything that was hidden. */
   hide: (ids: string[]) => post("/api/canvas/hide", { ids }).then((r) => json<{ ids: string[] }>(r)),
 
+  retry: (cardId: string, images?: { marked: string; crop: string }) =>
+    post(`/api/canvas/cards/${cardId}/retry`, images ?? {}).then((r) => json<{ ok: true }>(r)),
+
   show: (ids: string[]) => post("/api/canvas/show", { ids }).then((r) => json<{ ids: string[] }>(r)),
 };
 

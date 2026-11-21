@@ -46,6 +46,7 @@ export function Card(props: {
   onHeight: (h: number) => void;
   onDescend: (text: string, clientY: number) => void;
   onRemove: () => void;
+  onRetry: () => void;
 }) {
   const { card, onHeight } = props;
   const ref = useRef<HTMLDivElement>(null);
@@ -115,7 +116,14 @@ export function Card(props: {
           <span className="spinner" /> {STAGE_TEXT[card.stage]}
         </p>
       )}
-      {card.stage === "failed" && <p className="fail small">{card.error ?? "Something went wrong."}</p>}
+      {card.stage === "failed" && (
+        <div className="card-error">
+          <p className="fail small">{card.error ?? "Something went wrong."}</p>
+          <button type="button" className="secondary" onClick={props.onRetry}>
+            ↻ Retry
+          </button>
+        </div>
+      )}
 
       {card.facets &&
         FACETS.map(([key, label]) =>

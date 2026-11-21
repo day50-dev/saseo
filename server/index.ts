@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { readFile } from "node:fs/promises";
 import { CARD_WIDTH, type CardItem, type ImageItem, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
-import { add, assetPath, findItem, getState, newId, record, saveAsset, withDependents } from "./canvas.ts";
+import { add, assetPath, findItem, getState, newId, record, saveAsset, update, withDependents } from "./canvas.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { explainRegion, explainSelection } from "./explain.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
@@ -118,6 +118,27 @@ app.post("/api/canvas/descend", async (c) => {
   await add(card);
   void explainSelection(card.id);
   return c.json({ card });
+});
+
+// Runs a failed card again in place. A card from a box needs the images re-sent, since
+// only the box's position is stored, not the pixels sent to the model.
+app.post("/api/canvas/cards/:id/retry", async (c) => {
+  const card = await findItem(c.req.param("id"));
+  if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
+  if (card.stage !== "failed") return c.json({ error: "only a failed card can be retried" }, 409);
+  const parent = await findItem(card.parentId);
+  if (parent?.kind === "region") {
+    const body = (await c.req.json().catch(() => ({}))) as { marked?: string; crop?: string };
+    if (!body.marked?.startsWith("data:image/") || !body.crop?.startsWith("data:image/")) {
+      return c.json({ error: "marked and crop must be image data URLs" }, 400);
+    }
+    await update(card.id, { stage: "reading" });
+    void explainRegion(card.id, { marked: body.marked, crop: body.crop });
+  } else {
+    await update(card.id, { stage: "searching" });
+    void explainSelection(card.id);
+  }
+  return c.json({ ok: true });
 });
 
 // Removing is a hide event: the log keeps everything, so any removal can be undone.

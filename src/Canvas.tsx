@@ -349,6 +349,22 @@ export function Canvas() {
     }
   };
 
+  const retry = async (card: CardItem) => {
+    try {
+      const parent = byId.get(card.parentId);
+      if (parent?.kind === "region") {
+        const el = imgRefs.current[parent.imageId];
+        if (!el) throw new Error("its image isn't on the canvas");
+        await canvasApi.retry(card.id, renderRegion(el, parent.rect));
+      } else {
+        await canvasApi.retry(card.id);
+      }
+      await refresh();
+    } catch (e) {
+      setError(`Couldn't retry: ${e}`);
+    }
+  };
+
   // ---- Connectors ----
 
   const connectors = cards.flatMap((c) => {
@@ -528,6 +544,7 @@ export function Canvas() {
               onHover={(on) => setHover(on ? c.id : null)}
               onHeight={(h) => setHeights((all) => (all[c.id] === h ? all : { ...all, [c.id]: h }))}
               onDescend={(text, clientY) => descend(c, text, toWorld(0, clientY).y)}
+              onRetry={() => retry(c)}
               onRemove={() => remove(c.id, `remove “${(c.subject ?? "card").slice(0, 30)}”`)}
             />
           ))}
