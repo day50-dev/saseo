@@ -183,6 +183,7 @@ export function Card(props: {
       <>
       {card.register && <RegisterBanner note={card.register} />}
       {card.transcription && card.transcription !== card.subject && <div className="transcription">{card.transcription}</div>}
+      {card.terms && card.terms.length > 0 && <TermsList terms={card.terms} />}
 
       {busy && (
         <p className="muted card-stage">
@@ -274,6 +275,26 @@ function RegisterBanner({ note }: { note: RegisterNote }) {
           {note.means}
         </div>
       )}
+    </div>
+  );
+}
+
+/** For a box on a page: which of its words are strict terms and which are informal (principle 9). */
+function TermsList({ terms }: { terms: RegisterNote[] }) {
+  return (
+    <div className="terms-list">
+      <span className="terms-title">In your selection</span>
+      {terms.map((t, i) => (
+        <span
+          key={i}
+          className={`term-chip reg-${t.register}`}
+          title={`${REGISTERS[t.register].label}: ${REGISTERS[t.register].gloss}${t.field ? `, borrowed from ${t.field}` : ""}.${t.means ? ` ${t.means}` : ""}`}
+        >
+          <span className="term-text">{t.text}</span>
+          <span className="term-reg">{REGISTERS[t.register].label.toLowerCase()}</span>
+          {t.means && (t.register === "casual" || t.register === "notation") && <span className="term-means">= {t.means}</span>}
+        </span>
+      ))}
     </div>
   );
 }

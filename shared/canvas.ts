@@ -106,6 +106,10 @@ export interface CardItem extends ItemState {
   context?: string;
   /** For a descent: whether the selected words were a strict term, an idiom, casual, or notation. */
   register?: RegisterNote;
+  /** For a box on a page: the whole page's text, so every later step knows the context. */
+  pageText?: string;
+  /** For a box on a page: the phrases in it whose register an outsider could misjudge. */
+  terms?: RegisterNote[];
   x: number;
   y: number;
   w: number;

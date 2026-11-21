@@ -13,6 +13,11 @@ Return JSON only, no prose:
 {"transcription": "the exact text or math inside the rectangle (math as LaTeX)",
  "subject": "short name of the concept they are asking about, 2-6 words, as a reader would say it",
  "topic": "what the whole page is about, a few words",
+ "pageText": "the full text of the WHOLE page in reading order (math as LaTeX), so later steps know the context",
+ "terms": [{"text": "a word, phrase or symbol INSIDE the rectangle, copied as written",
+            "register": "term (a technical term with a strict definition) | idiom (an insider phrase or move with a precise meaning rarely spelled out) | casual (everyday words used loosely) | notation (ONLY a symbol or formula visibly used loosely: in quote marks, with ≈ or "morally"; a precise symbol such as L^1(R^2) or a defined function is a term)",
+            "means": "for casual words or notation: what is actually meant; for a term or idiom: a one-line plain gloss",
+            "field": "for a term borrowed from another area, that area; otherwise empty"}],
  "searchQuery": "a short web search query, 2-6 plain words, for BEGINNER material (intro lecture notes, textbook chapters, videos) on the most general idea behind the subject. Never the paper's title, its notation, or terms specific to this page."}`;
 
 const EXPLAIN = `You are a research librarian with unlimited time, helping a curious, intelligent reader who is not a specialist in this field.
@@ -77,6 +82,7 @@ async function trail(card: CardItem): Promise<string> {
   const parent = chain[chain.length - 1];
   const lines = [
     `The reader boxed this on a page${root.topic ? ` about ${root.topic}` : ""}${root.transcription ? `: ${root.transcription}` : ""}`,
+    root.pageText ? `The whole page reads:\n${root.pageText}` : "",
     `Then, step by step, they asked about:`,
     ...chain.map((c, i) => `${i + 1}. ${c.subject ?? c.selection ?? "?"}${c.sem?.what.gist ? `: ${c.sem.what.gist}` : ""}`),
     `The full explanation of "${parent.subject ?? "the previous card"}" that they selected words from:`,
@@ -134,6 +140,19 @@ function cleanSem(raw: Record<string, unknown>): Sem {
       .filter((s) => s.phrase && s.concept)
       .slice(0, 8),
   };
+}
+
+function cleanTerms(raw: unknown): RegisterNote[] {
+  const out: RegisterNote[] = [];
+  for (const item of Array.isArray(raw) ? raw : []) {
+    const t = item as Record<string, unknown>;
+    // Models sometimes echo the option list ("term (a technical term…)"); keep the first word.
+    const register = str(t.register).split(/[\s(|]/)[0];
+    const text = str(t.text);
+    if (!text || !isRegister(register)) continue;
+    out.push({ text, register, means: str(t.means), field: str(t.field) || undefined });
+  }
+  return out.slice(0, 10);
 }
 
 const semText = (s: Sem) =>
@@ -213,7 +232,12 @@ async function guard(cardId: string, run: () => Promise<void>) {
   try {
     await run();
   } catch (err) {
-    await update(cardId, { stage: "failed", error: err instanceof Error ? err.message : String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    const timedOut = err instanceof Error && (err.name === "TimeoutError" || /aborted due to timeout/.test(message));
+    await update(cardId, {
+      stage: "failed",
+      error: timedOut ? "The language model didn't answer within 5 minutes. It may be busy with another card; try again." : message,
+    });
   }
 }
 
@@ -226,7 +250,14 @@ export function explainRegion(cardId: string, images: { marked: string; crop: st
       { type: "image_url" as const, image_url: { url: images.marked } },
       { type: "image_url" as const, image_url: { url: images.crop } },
     ];
-    const id = await chatJson<{ transcription?: string; subject?: string; topic?: string; searchQuery?: string }>(
+    const id = await chatJson<{
+      transcription?: string;
+      subject?: string;
+      topic?: string;
+      searchQuery?: string;
+      pageText?: string;
+      terms?: unknown;
+    }>(
       config.llm,
       [
         { role: "system", content: IDENTIFY },
@@ -234,12 +265,24 @@ export function explainRegion(cardId: string, images: { marked: string; crop: st
       ],
     );
     const subject = id.subject?.trim() || "this";
-    await update(cardId, { stage: "searching", subject, transcription: id.transcription, topic: id.topic });
+    const pageText = str(id.pageText).slice(0, 6000) || undefined;
+    const terms = cleanTerms(id.terms);
+    await update(cardId, { stage: "searching", subject, transcription: id.transcription, topic: id.topic, pageText, terms });
     // Ask for introductions explicitly; left alone, searches on a slide's words find the paper itself.
     const sources = await search(`${id.searchQuery?.trim() || subject} introduction`);
     await update(cardId, { stage: "writing", sources });
     const card = (await findItem(cardId)) as CardItem;
-    await write(card, subject, id.transcription ?? subject, id.topic, [], sources);
+    const context = [
+      pageText ? `The whole page reads:\n${pageText}` : "",
+      terms.length
+        ? `Register of the words in the selection (strict terms must be explained as strict terms, informal words for what they point at):\n${terms
+            .map((t) => `- "${t.text}": ${t.register}${t.means ? ` (${t.means})` : ""}`)
+            .join("\n")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    await write(card, subject, id.transcription ?? subject, id.topic, [], sources, context);
   });
 }
 
@@ -253,7 +296,7 @@ without warning between strict terms of art and casual description, and both loo
 - "term": a technical term with a strict definition (e.g. "energy space", "well-posed", "Coulomb gauge")
 - "idiom": a standard insider phrase or move with a precise meaning rarely spelled out (e.g. "closes the bootstrap")
 - "casual": everyday words used loosely, often pointing at something precise (e.g. "+ better", "the worst term", "rougher")
-- "notation": a symbol or formula used roughly, e.g. inside quote marks, meaning "morally this"
+- "notation": ONLY a symbol or formula visibly used loosely (in quote marks, with ≈, "morally"), meaning "roughly this"; a precise symbol (L^1(R^2), a defined function) is a "term"
 Return JSON only, no prose:
 {"concept": "the standard name of the idea, 2-6 words",
  "searchQuery": "2-6 plain words for BEGINNER material (intro notes, textbook chapters, videos) on that concept, without terms specific to the page",
@@ -262,13 +305,13 @@ Return JSON only, no prose:
  "field": "for a term borrowed from another area of mathematics or physics, that area; otherwise empty"}`;
 
 const REGISTER_QUESTION =
-  "In the sentence, are the selected words a strict technical term, an insider idiom, casual everyday language, or loosely used notation?";
+  "Judging as a researcher steeped in this field would, using the whole page and the chain of explanations in the state: in the sentence, are the selected words a strict technical term, an insider idiom, casual everyday language, or loosely used notation?";
 
 const REGISTER_CRITERIA: Record<Register, string> = {
   term: "A technical term with a strict, formal definition.",
   idiom: "A standard insider phrase or proof move with a precise meaning that is rarely spelled out.",
   casual: "Everyday words used loosely or descriptively, not a defined term.",
-  notation: "A symbol or formula used roughly, such as inside quote marks, meaning approximately.",
+  notation: "A symbol or formula visibly used loosely, such as inside quote marks or with ≈, meaning approximately. A precise symbol is a term.",
 };
 
 const isRegister = (v: unknown): v is Register => typeof v === "string" && v in REGISTER_CRITERIA;
