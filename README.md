@@ -1,6 +1,13 @@
 # Librarian
 
-A medium for deep, self-directed learning. Design doc: https://claude.ai/artifact/AdyuLsx3xpbK9x6SrcPSRy
+A research librarian with unlimited time, on an infinite desk that never gets rearranged.
+
+Drop a screenshot of something beyond you (a slide from a research talk, a page of a paper), box the
+part that stopped you, and the librarian finds introductory material and draws an explanation that
+starts with *why*, descending toward what you already know instead of climbing into more jargon.
+Select any words in it to go one level further down. Everything stays where it was placed.
+
+The design, principles and roadmap are in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Use
 
