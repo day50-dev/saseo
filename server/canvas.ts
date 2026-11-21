@@ -99,6 +99,11 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   else if (e.type === "update") {
     const item = s.items.find((i) => i.id === e.id);
     if (item?.kind === "card") Object.assign(item, e.patch);
+  } else if (e.type === "z") {
+    for (const o of e.order) {
+      const item = s.items.find((i) => i.id === o.id);
+      if (item && item.kind !== "region") item.z = o.z;
+    }
   } else if (e.type === "chat") {
     const item = s.items.find((i) => i.id === e.id);
     if (item?.kind === "card") item.chat = [...(item.chat ?? []), e.message];

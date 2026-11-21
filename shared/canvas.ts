@@ -14,6 +14,8 @@ interface ItemState {
   hidden?: boolean;
   /** Folded: an image or card shows only its title, and everything below it is out of view. */
   collapsed?: boolean;
+  /** Stacking order among images and cards; higher draws on top. Unset means 0. */
+  z?: number;
 }
 
 export interface ImageItem extends ItemState {
@@ -154,7 +156,9 @@ export type CanvasEvent =
   /** The learner moved things. The system itself never moves anything. */
   | { type: "move"; moves: Move[] }
   | { type: "collapse"; ids: string[]; collapsed: boolean }
-  | { type: "chat"; id: string; message: ChatMessage };
+  | { type: "chat"; id: string; message: ChatMessage }
+  /** The learner restacked things: front, back, forward, backward. */
+  | { type: "z"; order: { id: string; z: number }[] };
 
 export interface Move {
   id: string;

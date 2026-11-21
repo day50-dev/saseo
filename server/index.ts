@@ -233,6 +233,19 @@ app.post("/api/canvases/:cid/cards/:id/chat", async (c) => {
   return c.json({ ok: true });
 });
 
+app.post("/api/canvases/:cid/z", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const { order } = (await c.req.json()) as { order: { id: string; z: number }[] };
+  const known = new Map((await store.getState()).items.map((i) => [i.id, i.kind]));
+  const valid = (Array.isArray(order) ? order : []).filter(
+    (o) => Number.isFinite(o.z) && (known.get(o.id) === "card" || known.get(o.id) === "image"),
+  );
+  if (!valid.length) return c.json({ error: "order of cards or images is required" }, 400);
+  await store.record({ type: "z", order: valid.map((o) => ({ id: o.id, z: Math.round(o.z) })) });
+  return c.json({ ok: true });
+});
+
 // Removing is a hide event: the log keeps everything, so any removal can be undone.
 app.post("/api/canvases/:cid/hide", async (c) => {
   const store = await canvasStore(c.req.param("cid"));
