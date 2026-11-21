@@ -110,6 +110,11 @@ export interface CardItem extends ItemState {
   pageText?: string;
   /** For a box on a page: the phrases in it whose register an outsider could misjudge. */
   terms?: RegisterNote[];
+  /**
+   * A relation card: the learner asked how two things relate, and this explains it. `parentId`
+   * is the first of the two; the card depends on both.
+   */
+  relates?: [string, string];
   x: number;
   y: number;
   w: number;

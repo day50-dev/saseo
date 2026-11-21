@@ -7,7 +7,7 @@ import { CARD_WIDTH, type CardItem, type ImageItem, type Move, type Rect, type R
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { add, assetPath, findItem, getState, moveItems, newId, record, saveAsset, update, withDependents } from "./canvas.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
-import { explainRegion, explainSelection } from "./explain.ts";
+import { explainRegion, explainRelation, explainSelection } from "./explain.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
 
 const app = new Hono();
@@ -128,7 +128,10 @@ app.post("/api/canvas/cards/:id/retry", async (c) => {
   if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
   if (card.stage !== "failed") return c.json({ error: "only a failed card can be retried" }, 409);
   const parent = await findItem(card.parentId);
-  if (parent?.kind === "region") {
+  if (card.relates) {
+    await update(card.id, { stage: "reading", error: "" });
+    void explainRelation(card.id);
+  } else if (parent?.kind === "region") {
     const body = (await c.req.json().catch(() => ({}))) as { marked?: string; crop?: string };
     if (!body.marked?.startsWith("data:image/") || !body.crop?.startsWith("data:image/")) {
       return c.json({ error: "marked and crop must be image data URLs" }, 400);
@@ -159,6 +162,28 @@ app.post("/api/canvas/collapse", async (c) => {
   if (!valid.length || typeof collapsed !== "boolean") return c.json({ error: "ids of cards or images, and collapsed: boolean" }, 400);
   await record({ type: "collapse", ids: valid, collapsed });
   return c.json({ ok: true });
+});
+
+// The learner asks how two things relate; a card between them finds out.
+app.post("/api/canvas/relate", async (c) => {
+  const body = (await c.req.json()) as { a: string; b: string; x: number; y: number };
+  const [a, b] = await Promise.all([findItem(body.a), findItem(body.b)]);
+  if (a?.kind !== "card" || b?.kind !== "card" || a.id === b.id) return c.json({ error: "two different cards are required" }, 400);
+  if (!Number.isFinite(body.x) || !Number.isFinite(body.y)) return c.json({ error: "x and y are required" }, 400);
+  const card: CardItem = {
+    kind: "card",
+    id: newId(),
+    parentId: a.id,
+    relates: [a.id, b.id],
+    x: body.x,
+    y: body.y,
+    w: CARD_WIDTH,
+    stage: "reading",
+    subject: `${a.subject ?? "this"} ⟷ ${b.subject ?? "that"}`,
+  };
+  await add(card);
+  void explainRelation(card.id);
+  return c.json({ card });
 });
 
 // Removing is a hide event: the log keeps everything, so any removal can be undone.

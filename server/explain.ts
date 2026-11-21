@@ -405,3 +405,62 @@ export function explainSelection(cardId: string) {
     await write(card, subject, quoted, topic, path, sources, [context, guidance].filter(Boolean).join("\n\n"));
   });
 }
+
+// ---- Relations: the learner asks how two things are related ----
+
+const RELATE = `A reader dragged a connection between two things they are studying and asked how they are related.
+They are not claiming they ARE related; they want to find out.
+Return JSON only, no prose:
+{"relation": "a short name for how they relate, 3-8 words, or 'only loosely related' if that's the truth",
+ "searchQuery": "2-6 plain words for BEGINNER material on the relationship between the two ideas, without terms specific to the page"}`;
+
+const RELATION_GUIDANCE = `The reader asked how the two things below are related; they are not claiming they are. Explain the ACTUAL relationship:
+- "why": the chain that links the first to the second, step by step.
+- "what": the relationship in one sentence (gist). If they are only loosely related or not related at all, say so plainly here.
+- "parts": exactly two entries, the first thing then the second; "symbol" is its name, "meaning" its role in the relationship.
+- "together": the connecting idea that joins them.
+- "here": where on this page the link matters, if it does.`;
+
+/** One side of a relation, with everything known about where it came from. */
+async function describe(id: string): Promise<{ name: string; text: string }> {
+  const item = await findItem(id);
+  if (item?.kind !== "card") return { name: "?", text: "" };
+  const name = item.subject ?? item.selection ?? "this";
+  const lines = [
+    `"${name}"`,
+    item.transcription ? `Selected text: ${item.transcription}` : "",
+    item.pageText ? `The page it came from reads:\n${item.pageText}` : "",
+    await trail(item),
+    `Its explanation:\n${cardText(item)}`,
+  ];
+  return { name, text: lines.filter(Boolean).join("\n") };
+}
+
+export function explainRelation(cardId: string) {
+  return guard(cardId, async () => {
+    const card = (await findItem(cardId)) as CardItem;
+    const [aId, bId] = card.relates!;
+    const [a, b] = await Promise.all([describe(aId), describe(bId)]);
+    const config = await loadConfig();
+    const both = `FIRST: ${a.text}\n\nSECOND: ${b.text}`;
+
+    await update(cardId, { stage: "reading" });
+    let relation = `${a.name} and ${b.name}`;
+    let query = `${a.name} ${b.name} relationship`;
+    try {
+      const r = await chatJson<{ relation?: string; searchQuery?: string }>(config.llm, [
+        { role: "system", content: RELATE },
+        { role: "user", content: both },
+      ]);
+      relation = str(r.relation) || relation;
+      query = str(r.searchQuery) || query;
+    } catch {
+      // Fall back to searching the two names together.
+    }
+    const subject = relation;
+    await update(cardId, { stage: "searching", subject });
+    const sources = await search(`${query} introduction`);
+    await update(cardId, { stage: "writing", sources });
+    await write(card, subject, `How are "${a.name}" and "${b.name}" related?`, undefined, [], sources, `${RELATION_GUIDANCE}\n\n${both}`);
+  });
+}

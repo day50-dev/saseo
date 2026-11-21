@@ -98,7 +98,8 @@ export async function withDependents(ids: string[]): Promise<string[]> {
     for (const i of visible) {
       if (out.has(i.id)) continue;
       const parent = i.kind === "region" ? i.imageId : i.kind === "card" ? i.parentId : undefined;
-      if (parent && out.has(parent)) {
+      const viaRelation = i.kind === "card" && i.relates?.some((r) => out.has(r));
+      if ((parent && out.has(parent)) || viaRelation) {
         out.add(i.id);
         grew = true;
       }
@@ -139,7 +140,7 @@ export async function moveItems(moves: Move[]): Promise<{ ok: true } | { ok: fal
   }
   // Check every visible card whose own position or whose parent's position changes.
   for (const card of items) {
-    if (card.kind !== "card" || card.hidden) continue;
+    if (card.kind !== "card" || card.hidden || card.relates) continue;
     const parent = items.find((i) => i.id === card.parentId);
     const parentMoved = parent && (moved.has(parent.id) || (parent.kind === "region" && moved.has(parent.imageId)));
     if (!moved.has(card.id) && !parentMoved) continue;
