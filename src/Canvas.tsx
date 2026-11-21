@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_WIDTH, type CardItem, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { Card, type Side } from "./Card.tsx";
 import { assetUrl, CanvasNotFound, canvasApi, canvasesApi } from "./canvasApi.ts";
 import { renderPages as renderPaperPages } from "./arxiv.ts";
 import { ArxivPanel } from "./ArxivPanel.tsx";
-import { linkTo } from "./router.ts";
+import { ago } from "./Home.tsx";
+import { linkTo, navigate } from "./router.ts";
 import { useIsAdmin } from "./session.ts";
 
 interface View {
@@ -64,6 +65,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const admin = useIsAdmin();
   const api = useMemo(() => canvasApi(canvasId), [canvasId]);
   const [name, setName] = useState("");
+  const [trashedAt, setTrashedAt] = useState<string | undefined>();
   const [notFound, setNotFound] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -125,6 +127,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     try {
       const s = await api.state();
       setName(s.name);
+      setTrashedAt(s.trashedAt);
       // Hidden items stay in the log (undo can bring them back) but aren't drawn or laid out around.
       setItems(s.items.filter((i) => !i.hidden));
       setLoaded(true);
@@ -851,6 +854,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         </a>
         <span className="muted">/</span>
         <CanvasName name={name} onRename={rename} />
+        <CanvasSwitcher currentId={canvasId} />
         <span className="muted small hint">
           Drop or paste an image · Select: drag a box over what stopped you · hold Space to pan · Ctrl+scroll to zoom
         </span>
@@ -915,6 +919,21 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         </button>
         {admin && <a {...linkTo("/settings")}>Settings</a>}
       </div>
+      {trashedAt && (
+        <div className="banner">
+          This canvas is in the trash. Nothing on it is deleted.{" "}
+          <button
+            type="button"
+            className="link"
+            onClick={async () => {
+              await canvasesApi.trash(canvasId, false);
+              setTrashedAt(undefined);
+            }}
+          >
+            Restore it
+          </button>
+        </div>
+      )}
       {error && (
         <div className="banner fail" onClick={() => setError(null)}>
           {error} <span className="muted">(click to dismiss)</span>
@@ -1175,5 +1194,58 @@ function CanvasName({ name, onRename }: { name: string; onRename: (name: string)
         if (e.key === "Escape") setEditing(false);
       }}
     />
+  );
+}
+
+/** Jump to another canvas, start a new one, or go to the list, without leaving the toolbar. */
+function CanvasSwitcher({ currentId }: { currentId: string }) {
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState<CanvasSummary[] | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    canvasesApi.list().then(setList, () => setList([]));
+    const close = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest(".switcher")) setOpen(false);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+  const others = (list ?? []).filter((c) => !c.trashedAt && c.id !== currentId);
+  return (
+    <div className="switcher">
+      <button type="button" className="link switcher-toggle" title="Switch canvas" aria-expanded={open} onClick={() => setOpen(!open)}>
+        ▾
+      </button>
+      {open && (
+        <div className="switcher-menu" role="menu">
+          {list === null ? (
+            <p className="muted small">Loading…</p>
+          ) : (
+            others.slice(0, 12).map((c) => (
+              <a key={c.id} role="menuitem" {...linkTo(`/c/${c.id}`)} className="switcher-item" onClick={(e) => (linkTo(`/c/${c.id}`).onClick(e), setOpen(false))}>
+                <span>{c.name}</span>
+                <span className="muted small">{ago(c.updatedAt)}</span>
+              </a>
+            ))
+          )}
+          {list && others.length === 0 && <p className="muted small">No other canvases yet.</p>}
+          <hr />
+          <button
+            type="button"
+            role="menuitem"
+            className="link switcher-item"
+            onClick={async () => {
+              const c = await canvasesApi.create("");
+              navigate(`/c/${c.id}`);
+            }}
+          >
+            + New canvas
+          </button>
+          <a role="menuitem" {...linkTo("/")} className="switcher-item">
+            All canvases
+          </a>
+        </div>
+      )}
+    </div>
   );
 }

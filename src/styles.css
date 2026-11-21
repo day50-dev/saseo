@@ -468,3 +468,28 @@ kbd {
 .paper-add button { font-size: 13px; padding: 4px 10px; }
 .image-grip a { color: inherit; text-decoration: none; overflow: hidden; text-overflow: ellipsis; }
 .image-grip a:hover { text-decoration: underline; }
+
+/* ---- Managing canvases ---- */
+.canvas-row { display: flex; align-items: center; gap: 12px; }
+.canvas-main { flex: 1; min-width: 0; }
+.canvas-title { font-weight: 600; font-size: 16px; }
+.canvas-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0.55; }
+.canvas-row:hover .canvas-actions { opacity: 1; }
+.canvas-actions button { font-size: 13px; }
+.trash { margin-top: 24px; }
+.trash summary { cursor: pointer; font-weight: 600; }
+.switcher { position: relative; flex-shrink: 0; }
+.switcher-toggle { padding: 2px 6px; font-size: 13px; }
+.switcher-menu {
+  position: absolute; top: 28px; left: 0; z-index: 1000001; min-width: 280px; max-width: 360px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.switcher-item {
+  display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 6px 8px; border-radius: 6px;
+  color: var(--text); text-decoration: none; text-align: left; font-size: 14px; font-weight: 500;
+}
+.switcher-item:hover { background: var(--on); }
+.switcher-item span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switcher-menu hr { border: none; border-top: 1px solid var(--line); margin: 6px 0; }
+.switcher-menu p { margin: 6px 8px; }

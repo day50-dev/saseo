@@ -1,5 +1,5 @@
 import { unreachable } from "./api.ts";
-import type { CanvasInfo, CanvasState, CardItem, ImageItem, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
+import type { CanvasInfo, CanvasState, CanvasSummary, CardItem, ImageItem, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
 
 async function json<T>(res: Response): Promise<T> {
   if (res.status === 401) location.reload();
@@ -18,9 +18,13 @@ const post = (path: string, body: unknown) => send("POST", path, body);
 
 /** The list of canvases, and making or renaming one. */
 export const canvasesApi = {
-  list: () => fetch("/api/canvases").then((r) => json<CanvasInfo[]>(r)),
+  /** Every canvas you can open, trashed ones included, most recently changed first. */
+  list: () => fetch("/api/canvases").then((r) => json<CanvasSummary[]>(r)),
   create: (name: string) => post("/api/canvases", { name }).then((r) => json<CanvasInfo>(r)),
   rename: (id: string, name: string) => send("PATCH", `/api/canvases/${id}`, { name }).then((r) => json<CanvasInfo>(r)),
+  /** Moves a canvas into or out of the trash; nothing in it is deleted. */
+  trash: (id: string, trashed: boolean) => send("PATCH", `/api/canvases/${id}`, { trashed }).then((r) => json<CanvasInfo>(r)),
+  duplicate: (id: string) => post(`/api/canvases/${id}/duplicate`, {}).then((r) => json<CanvasInfo>(r)),
 };
 
 export class CanvasNotFound extends Error {}
