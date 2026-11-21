@@ -79,6 +79,8 @@ export function Card(props: {
   onDescend: (text: string, context: string, clientY: number) => void;
   onRemove: () => void;
   onRetry: () => void;
+  /** Sends a message in this card's conversation. */
+  onAsk: (text: string) => void;
   /** Pointer down on the header: start moving this card and the cards below it. */
   onGrab: (e: React.PointerEvent) => void;
   moving: boolean;
@@ -107,15 +109,17 @@ export function Card(props: {
     return () => ro.disconnect();
   }, []);
 
-  // Only the explanation itself can be selected to go further down: not the header, badge or buttons.
+  // Only the explanation and the conversation can be selected to go further down: not the
+  // header, badge or buttons.
   const explainRef = useRef<HTMLDivElement>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
+  const inText = (n: Node | null) => Boolean(n && (explainRef.current?.contains(n) || chatRef.current?.contains(n)));
 
   const onMouseUp = () => {
     const sel = window.getSelection();
     const text = sel?.toString().replace(/\s+/g, " ").trim() ?? "";
     const el = ref.current;
-    const area = explainRef.current;
-    if (!sel || !text || !el || !area || sel.rangeCount === 0 || !area.contains(sel.anchorNode) || !area.contains(sel.focusNode)) {
+    if (!sel || !text || !el || sel.rangeCount === 0 || !inText(sel.anchorNode) || !inText(sel.focusNode)) {
       setPicked(null);
       return;
     }
@@ -124,7 +128,7 @@ export function Card(props: {
     const scale = box.height / el.offsetHeight || 1;
     // The line the words sit in tells the librarian what they refer to.
     const node = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement;
-    const line = node?.closest(".sem-step, .sem-desc, .sem-part, .sem-together, .sem-aside, .facet p");
+    const line = node?.closest(".sem-step, .sem-desc, .sem-part, .sem-together, .sem-aside, .facet p, .chat-text");
     const context = (line?.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
     setPicked({ text: text.slice(0, 200), context, top: (r.bottom - box.top) / scale + 6, clientY: r.top });
   };
@@ -253,6 +257,9 @@ export function Card(props: {
         </section>
       )}
 
+      <div ref={chatRef}>
+        <ChatBox card={card} sources={sources} onAsk={props.onAsk} />
+      </div>
       </>
       )}
 
@@ -318,6 +325,49 @@ function TermsList({ terms }: { terms: RegisterNote[] }) {
           {t.means && (t.register === "casual" || t.register === "notation") && <span className="term-means">= {t.means}</span>}
         </span>
       ))}
+    </div>
+  );
+}
+
+/** A conversation held at this card: everything said stays here, on the canvas. */
+function ChatBox({ card, sources, onAsk }: { card: CardItem; sources: FoundSource[]; onAsk: (text: string) => void }) {
+  const [draft, setDraft] = useState("");
+  const messages = card.chat ?? [];
+  const send = () => {
+    const text = draft.trim();
+    if (!text || card.chatPending) return;
+    onAsk(text);
+    setDraft("");
+  };
+  return (
+    <div className="chat">
+      {messages.map((m, i) => (
+        <div key={i} className={`chat-msg chat-${m.role}`}>
+          <span className="chat-who">{m.role === "user" ? "You" : "Librarian"}</span>
+          <p className="chat-text">{m.role === "assistant" ? withCitations(m.text, sources) : m.text}</p>
+        </div>
+      ))}
+      {card.chatPending && (
+        <p className="muted card-stage">
+          <span className="spinner" /> Thinking about it…
+        </p>
+      )}
+      <textarea
+        className="chat-input"
+        rows={1}
+        value={draft}
+        placeholder={messages.length ? "Ask a follow-up…" : "Ask about this…"}
+        disabled={card.chatPending}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          // Enter sends; Shift+Enter starts a new line.
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            send();
+          }
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+      />
     </div>
   );
 }

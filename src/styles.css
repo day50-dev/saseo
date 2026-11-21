@@ -387,3 +387,15 @@ kbd {
 .canvas-list { list-style: none; padding: 0; }
 .canvas-list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .canvas-list a { font-weight: 600; font-size: 16px; }
+
+/* ---- Conversation at a card ---- */
+.chat { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+.chat-msg { margin-bottom: 8px; font-size: 13px; line-height: 1.45; }
+.chat-who { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.chat-text { margin: 1px 0 0; white-space: pre-wrap; }
+.chat-user .chat-text { color: var(--muted); }
+.chat-input {
+  width: 100%; resize: vertical; min-height: 34px; padding: 7px 10px; font: inherit; font-size: 13px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); cursor: text;
+}
+.chat-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }

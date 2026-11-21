@@ -131,7 +131,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   }, [refresh]);
 
   // Poll only while some card is still being written.
-  const pending = items.some((i) => i.kind === "card" && isPending(i));
+  const pending = items.some((i) => i.kind === "card" && (isPending(i) || i.chatPending));
   useEffect(() => {
     if (!pending) return;
     const t = setInterval(refresh, 1000);
@@ -931,6 +931,14 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               onHeight={(h) => setHeights((all) => (all[c.id] === h ? all : { ...all, [c.id]: h }))}
               onDescend={(text, context, clientY) => descend(c, text, context, toWorld(0, clientY).y)}
               onRetry={() => retry(c)}
+              onAsk={async (text) => {
+                try {
+                  await api.chat(c.id, text);
+                  await refresh();
+                } catch (e) {
+                  setError(`Couldn't send: ${e}`);
+                }
+              }}
               onGrab={(e) => startMove(c.id, e)}
               onPortDown={(side, e) => startLink(c.id, side, e)}
               linking={!!link && link.from !== c.id}

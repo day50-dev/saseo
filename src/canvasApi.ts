@@ -63,6 +63,9 @@ export function canvasApi(cid: string) {
     retry: (cardId: string, images?: { marked: string; crop: string }) =>
       post(`${base}/cards/${cardId}/retry`, images ?? {}).then((r) => json<{ ok: true }>(r)),
 
+    /** Adds a message to a card's conversation; the answer arrives in the canvas state. */
+    chat: (cardId: string, text: string) => post(`${base}/cards/${cardId}/chat`, { text }).then((r) => json<{ ok: true }>(r)),
+
     show: (ids: string[]) => post(`${base}/show`, { ids }).then((r) => json<{ ids: string[] }>(r)),
   };
 }
