@@ -229,6 +229,7 @@ async function search(query: string): Promise<FoundSource[]> {
 }
 
 async function guard(cardId: string, run: () => Promise<void>) {
+  const limit = (await loadConfig()).llm.timeoutSeconds;
   try {
     await run();
   } catch (err) {
@@ -236,7 +237,9 @@ async function guard(cardId: string, run: () => Promise<void>) {
     const timedOut = err instanceof Error && (err.name === "TimeoutError" || /aborted due to timeout/.test(message));
     await update(cardId, {
       stage: "failed",
-      error: timedOut ? "The language model didn't answer within 5 minutes. It may be busy with another card; try again." : message,
+      error: timedOut
+        ? `The language model didn't answer within ${limit} seconds. It may be busy with another card; retry, or raise the timeout in Settings.`
+        : message,
     });
   }
 }

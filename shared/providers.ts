@@ -94,14 +94,18 @@ export const SEARCHERS: Record<SearcherId, SearcherInfo> = {
 };
 
 export const MODEL_DEFAULTS = {
-  llm: { baseUrl: "https://api.openai.com/v1", model: "" },
-  systemOne: { baseUrl: "https://api.typesafe.ai/v1", model: "jev-latest" },
+  // A local model writing a diagram from a whole page of context can take minutes.
+  llm: { baseUrl: "https://api.openai.com/v1", model: "", timeoutSeconds: 300 },
+  systemOne: { baseUrl: "https://api.typesafe.ai/v1", model: "jev-latest", timeoutSeconds: 30 },
 };
+
+export const TIMEOUT_LIMITS = { min: 5, max: 3600 };
 
 // What the browser sees: keys never leave the server, only whether one is set.
 export interface PublicEndpoint {
   baseUrl: string;
   model: string;
+  timeoutSeconds: number;
   hasKey: boolean;
   keyHint: string;
 }
@@ -123,8 +127,8 @@ export interface PublicConfig {
 export type KeyUpdate = string | null | undefined;
 
 export interface ConfigUpdate {
-  llm?: { baseUrl?: string; model?: string; apiKey?: KeyUpdate };
-  systemOne?: { baseUrl?: string; model?: string; apiKey?: KeyUpdate };
+  llm?: { baseUrl?: string; model?: string; timeoutSeconds?: number; apiKey?: KeyUpdate };
+  systemOne?: { baseUrl?: string; model?: string; timeoutSeconds?: number; apiKey?: KeyUpdate };
   searchers?: Partial<
     Record<SearcherId, { enabled?: boolean; baseUrl?: string; apiKey?: KeyUpdate }>
   >;

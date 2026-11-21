@@ -31,7 +31,7 @@ async function timed(fn: () => Promise<Omit<TestResult, "ms">>): Promise<TestRes
 
 function describe(err: unknown): string {
   if (err instanceof Error) {
-    if (err.name === "TimeoutError") return `No response within ${TIMEOUT_MS / 1000}s`;
+    if (err.name === "TimeoutError") return "No response before the timeout (Settings)";
     const cause = (err as { cause?: { code?: string; message?: string } }).cause;
     return cause?.message ? `${err.message}: ${cause.message}` : err.message;
   }
@@ -55,7 +55,7 @@ export function testLlm(ep: Endpoint): Promise<TestResult> {
     const res = await fetch(`${ep.baseUrl}/chat/completions`, {
       method: "POST",
       headers: headers(ep),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(ep.timeoutSeconds * 1000),
       body: JSON.stringify({
         model: ep.model,
         messages: [{ role: "user", content: "Reply with the single word: ok" }],
@@ -100,7 +100,7 @@ export function testSystemOne(ep: Endpoint): Promise<TestResult> {
     const res = await fetch(`${ep.baseUrl}/systemone`, {
       method: "POST",
       headers: headers(ep),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(ep.timeoutSeconds * 1000),
       body: JSON.stringify({
         model: ep.model,
         state: "Ampère's law relates the magnetic field around a loop to the current through it.",

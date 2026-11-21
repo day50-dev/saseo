@@ -13,7 +13,7 @@ function headers(ep: Endpoint): Record<string, string> {
   return h;
 }
 
-export async function chat(ep: Endpoint, messages: Message[], timeoutMs = 180_000): Promise<string> {
+export async function chat(ep: Endpoint, messages: Message[], timeoutMs = ep.timeoutSeconds * 1000): Promise<string> {
   if (!ep.baseUrl || !ep.model) throw new Error("The language model isn't configured (Settings)");
   const res = await fetch(`${ep.baseUrl}/chat/completions`, {
     method: "POST",
@@ -54,7 +54,7 @@ export async function decideChoice(
   const res = await fetch(`${ep.baseUrl}/systemone`, {
     method: "POST",
     headers: headers(ep),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(ep.timeoutSeconds * 1000),
     body: JSON.stringify({ model: ep.model, state, questions: { q: { type: "choice", instructions, criteria } } }),
   });
   if (!res.ok) throw new Error(`System One: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
@@ -70,7 +70,7 @@ export async function decideYesNo(ep: Endpoint, state: unknown, instructions: st
   const res = await fetch(`${ep.baseUrl}/systemone`, {
     method: "POST",
     headers: headers(ep),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(ep.timeoutSeconds * 1000),
     body: JSON.stringify({ model: ep.model, state, questions: { q: { type: "noul", instructions } } }),
   });
   if (!res.ok) throw new Error(`System One: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);

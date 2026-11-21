@@ -5,6 +5,7 @@ import {
   type ConfigUpdate,
   type KeyUpdate,
   MODEL_DEFAULTS,
+  TIMEOUT_LIMITS,
   type PublicConfig,
   SEARCHER_IDS,
   SEARCHERS,
@@ -15,6 +16,8 @@ export interface Endpoint {
   baseUrl: string;
   model: string;
   apiKey: string;
+  /** How long to wait for one answer before giving up. */
+  timeoutSeconds: number;
 }
 
 export interface Searcher {
@@ -90,6 +93,9 @@ export async function updateConfig(update: ConfigUpdate): Promise<Config> {
     const ep = config[which];
     if (u.baseUrl !== undefined) ep.baseUrl = clean(u.baseUrl);
     if (u.model !== undefined) ep.model = u.model.trim();
+    if (typeof u.timeoutSeconds === "number" && Number.isFinite(u.timeoutSeconds)) {
+      ep.timeoutSeconds = Math.round(Math.min(TIMEOUT_LIMITS.max, Math.max(TIMEOUT_LIMITS.min, u.timeoutSeconds)));
+    }
     ep.apiKey = applyKey(ep.apiKey, u.apiKey);
   }
   for (const id of SEARCHER_IDS) {
@@ -110,6 +116,7 @@ export function toPublic(config: Config): PublicConfig {
   const ep = (e: Endpoint) => ({
     baseUrl: e.baseUrl,
     model: e.model,
+    timeoutSeconds: e.timeoutSeconds,
     hasKey: e.apiKey !== "",
     keyHint: hint(e.apiKey),
   });

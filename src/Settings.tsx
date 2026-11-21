@@ -8,6 +8,7 @@ import {
   SEARCHER_IDS,
   SEARCHERS,
   type SearcherId,
+  TIMEOUT_LIMITS,
   type SearcherResult,
   type TestResult,
 } from "../shared/providers.ts";
@@ -145,6 +146,7 @@ function EndpointSection(props: {
   const { which, endpoint } = props;
   const [baseUrl, setBaseUrl] = useState(endpoint.baseUrl);
   const [model, setModel] = useState(endpoint.model);
+  const [timeout, setTimeoutSeconds] = useState(String(endpoint.timeoutSeconds));
   const [keyDraft, setKeyDraft] = useState("");
   const [clearKey, setClearKey] = useState(false);
   const [busy, setBusy] = useState<"" | "saving" | "testing" | "models">("");
@@ -152,11 +154,25 @@ function EndpointSection(props: {
   const [models, setModels] = useState<string[]>([]);
   const [modelsNote, setModelsNote] = useState("");
 
+  const timeoutNum = Number(timeout);
   const dirty =
-    baseUrl !== endpoint.baseUrl || model !== endpoint.model || keyDraft.trim() !== "" || clearKey;
+    baseUrl !== endpoint.baseUrl ||
+    model !== endpoint.model ||
+    (Number.isFinite(timeoutNum) && timeoutNum !== endpoint.timeoutSeconds) ||
+    keyDraft.trim() !== "" ||
+    clearKey;
 
   const save = async () => {
-    await props.onSave({ [which]: { baseUrl, model, apiKey: keyUpdate(keyDraft, clearKey) } });
+    const next = await props.onSave({
+      [which]: {
+        baseUrl,
+        model,
+        timeoutSeconds: Number.isFinite(timeoutNum) ? timeoutNum : undefined,
+        apiKey: keyUpdate(keyDraft, clearKey),
+      },
+    });
+    // The server clamps the timeout; show what it kept.
+    setTimeoutSeconds(String(next[which].timeoutSeconds));
     setKeyDraft("");
     setClearKey(false);
   };
@@ -209,6 +225,20 @@ function EndpointSection(props: {
           ))}
         </datalist>
         {modelsNote && <small className="muted">{modelsNote}</small>}
+      </label>
+      <label>
+        <span>Timeout (seconds)</span>
+        <input
+          type="number"
+          min={TIMEOUT_LIMITS.min}
+          max={TIMEOUT_LIMITS.max}
+          value={timeout}
+          onChange={(e) => setTimeoutSeconds(e.target.value)}
+          style={{ maxWidth: 140 }}
+        />
+        <small className="muted">
+          How long to wait for one answer. A local model writing from a whole page of context can need several minutes.
+        </small>
       </label>
       <label>
         <span>API key</span>
