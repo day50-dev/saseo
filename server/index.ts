@@ -202,7 +202,12 @@ app.post("/api/canvases/:cid/relate", async (c) => {
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const body = (await c.req.json()) as { a: string; b: string; x: number; y: number };
   const [a, b] = await Promise.all([store.findItem(body.a), store.findItem(body.b)]);
-  if (a?.kind !== "card" || b?.kind !== "card" || a.id === b.id) return c.json({ error: "two different cards are required" }, 400);
+  // Either side may be a card or a whole image (a slide).
+  const relatable = (i: typeof a) => i?.kind === "card" || i?.kind === "image";
+  if (!a || !b || !relatable(a) || !relatable(b) || a.id === b.id) {
+    return c.json({ error: "two different cards or images are required" }, 400);
+  }
+  const label = (i: NonNullable<typeof a>) => (i.kind === "card" ? (i.subject ?? "this") : i.kind === "image" ? (i.topic ?? i.name) : "this");
   if (!Number.isFinite(body.x) || !Number.isFinite(body.y)) return c.json({ error: "x and y are required" }, 400);
   const card: CardItem = {
     kind: "card",
@@ -213,7 +218,7 @@ app.post("/api/canvases/:cid/relate", async (c) => {
     y: body.y,
     w: CARD_WIDTH,
     stage: "reading",
-    subject: `${a.subject ?? "this"} ⟷ ${b.subject ?? "that"}`,
+    subject: `${label(a)} ⟷ ${label(b)}`,
   };
   await store.add(card);
   void explainRelation(store, card.id);

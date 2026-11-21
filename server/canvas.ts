@@ -9,6 +9,7 @@ import {
   type CanvasState,
   type CardItem,
   type Item,
+  type ItemPatch,
   type LoggedEvent,
   MIN_CHILD_GAP,
   type Move,
@@ -99,6 +100,7 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   else if (e.type === "update") {
     const item = s.items.find((i) => i.id === e.id);
     if (item?.kind === "card") Object.assign(item, e.patch);
+    else if (item?.kind === "image") Object.assign(item, { pageText: e.patch.pageText ?? item.pageText, topic: e.patch.topic ?? item.topic });
   } else if (e.type === "z") {
     for (const o of e.order) {
       const item = s.items.find((i) => i.id === o.id);
@@ -225,7 +227,7 @@ export class CanvasStore {
   }
 
   add = (item: Item) => this.record({ type: "add", item });
-  update = (id: string, patch: Partial<CardItem>) => this.record({ type: "update", id, patch });
+  update = (id: string, patch: ItemPatch) => this.record({ type: "update", id, patch });
 
   async findItem(id: string): Promise<Item | undefined> {
     return (await this.getState()).items.find((i) => i.id === id);

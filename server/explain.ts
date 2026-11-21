@@ -2,7 +2,8 @@
 // explanation from what was found, then check that it doesn't climb.
 import { CARD_WIDTH, type CardItem, type FoundSource, type Item, type ObjectKind, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
-import { type CanvasStore, newId } from "./canvas.ts";
+import { readFile } from "node:fs/promises";
+import { assetPath, type CanvasStore, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { runSearch } from "./providers.ts";
@@ -424,8 +425,40 @@ const RELATION_GUIDANCE = `The reader asked how the two things below are related
 - "here": where on this page the link matters, if it does.`;
 
 /** One side of a relation, with everything known about where it came from. */
+const READ_PAGE = `Read this whole page for a reader who will study it.
+Return JSON only, no prose:
+{"pageText": "all of the page's text in reading order, with math as LaTeX", "topic": "what the page is about, a few words"}`;
+
+/**
+ * A whole image's text, read by the vision model the first time anything needs it and kept on the
+ * image, so each page is read once however many relations and questions use it.
+ */
+async function readPage(store: CanvasStore, imageId: string): Promise<{ pageText: string; topic: string }> {
+  const img = await store.findItem(imageId);
+  if (img?.kind !== "image") return { pageText: "", topic: "" };
+  if (img.pageText) return { pageText: img.pageText, topic: img.topic ?? "" };
+  const found = assetPath(img.asset);
+  if (!found) return { pageText: "", topic: "" };
+  const url = `data:${found.mime};base64,${(await readFile(found.file)).toString("base64")}`;
+  const config = await loadConfig();
+  const r = await chatJson<{ pageText?: string; topic?: string }>(config.llm, [
+    { role: "system", content: READ_PAGE },
+    { role: "user", content: [{ type: "text", text: "Here is the page." }, { type: "image_url", image_url: { url } }] },
+  ]);
+  const pageText = str(r.pageText).slice(0, 8000);
+  const topic = str(r.topic);
+  if (pageText) await store.update(imageId, { pageText, topic });
+  return { pageText, topic };
+}
+
 async function describe(store: CanvasStore, id: string): Promise<{ name: string; text: string }> {
   const item = await store.findItem(id);
+  if (item?.kind === "image") {
+    // A whole slide: read it (once) and describe it by what it says.
+    const { pageText, topic } = await readPage(store, id);
+    const name = topic || item.name;
+    return { name, text: [`The whole page "${name}" (${item.name}) reads:`, pageText].filter(Boolean).join("\n") };
+  }
   if (item?.kind !== "card") return { name: "?", text: "" };
   const name = item.subject ?? item.selection ?? "this";
   const lines = [
@@ -442,11 +475,13 @@ export function explainRelation(store: CanvasStore, cardId: string) {
   return guard(store, cardId, async () => {
     const card = (await store.findItem(cardId)) as CardItem;
     const [aId, bId] = card.relates!;
-    const [a, b] = await Promise.all([describe(store, aId), describe(store, bId)]);
+    await store.update(cardId, { stage: "reading" });
+    // One at a time: reading a whole slide is a vision call, and two at once can starve a local model.
+    const a = await describe(store, aId);
+    const b = await describe(store, bId);
     const config = await loadConfig();
     const both = `FIRST: ${a.text}\n\nSECOND: ${b.text}`;
 
-    await store.update(cardId, { stage: "reading" });
     let relation = `${a.name} and ${b.name}`;
     let query = `${a.name} ${b.name} relationship`;
     try {

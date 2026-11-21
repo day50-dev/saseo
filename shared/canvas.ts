@@ -29,7 +29,13 @@ export interface ImageItem extends ItemState {
   h: number;
   naturalW: number;
   naturalH: number;
+  /** The whole page read once, when something first needs it (relating two slides). */
+  pageText?: string;
+  topic?: string;
 }
+
+/** What an update event may change: a card's fields, or what was read off an image. */
+export type ItemPatch = Partial<Omit<CardItem, "kind" | "id">> & Partial<Pick<ImageItem, "pageText" | "topic">>;
 
 /** A rectangle the learner drew on an image; `rect` is in the image's natural pixels. */
 export interface RegionItem extends ItemState {
@@ -139,8 +145,8 @@ export interface CardItem extends ItemState {
   /** For a box on a page: the phrases in it whose register an outsider could misjudge. */
   terms?: RegisterNote[];
   /**
-   * A relation card: the learner asked how two things relate, and this explains it. `parentId`
-   * is the first of the two; the card depends on both.
+   * A relation card: the learner asked how two things relate, and this explains it. Either may be
+   * a card or a whole image. `parentId` is the first of the two; the card depends on both.
    */
   relates?: [string, string];
   /** Height as last drawn, recorded with moves. */
@@ -174,7 +180,7 @@ export type Item = ImageItem | RegionItem | CardItem;
 
 export type CanvasEvent =
   | { type: "add"; item: Item }
-  | { type: "update"; id: string; patch: Partial<CardItem> }
+  | { type: "update"; id: string; patch: ItemPatch }
   | { type: "hide"; ids: string[] }
   | { type: "show"; ids: string[] }
   /** The learner moved things. The system itself never moves anything. */
