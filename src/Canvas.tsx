@@ -136,11 +136,13 @@ export function Canvas({ canvasId }: { canvasId: string }) {
 
   // Poll only while some card is still being written.
   const pending = items.some((i) => i.kind === "card" && (isPending(i) || i.chatPending));
+  // While a diagram is being drawn, poll fast enough to watch it appear.
+  const drawing = items.some((i) => i.kind === "card" && i.objectKind === "diagram" && isPending(i));
   useEffect(() => {
     if (!pending) return;
-    const t = setInterval(refresh, 1000);
+    const t = setInterval(refresh, drawing ? 350 : 1000);
     return () => clearInterval(t);
-  }, [pending, refresh]);
+  }, [pending, drawing, refresh]);
 
   useEffect(() => saveView(canvasId, view), [canvasId, view]);
 

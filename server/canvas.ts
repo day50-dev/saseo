@@ -203,6 +203,27 @@ export class CanvasStore {
     return run;
   }
 
+  /**
+   * Work in progress, such as a diagram being drawn as the model writes it. Held in memory and
+   * shown to viewers, never written to the log: only the finished result is recorded.
+   */
+  private live = new Map<string, Partial<CardItem>>();
+
+  setLive(id: string, patch: Partial<CardItem>) {
+    this.live.set(id, patch);
+  }
+
+  clearLive(id: string) {
+    this.live.delete(id);
+  }
+
+  /** The canvas as viewers should see it: the log's state with any work in progress laid over. */
+  async view(): Promise<CanvasState> {
+    const s = await this.getState();
+    if (!this.live.size) return s;
+    return { ...s, items: s.items.map((i) => (i.kind === "card" && this.live.has(i.id) ? { ...i, ...this.live.get(i.id) } : i)) };
+  }
+
   add = (item: Item) => this.record({ type: "add", item });
   update = (id: string, patch: Partial<CardItem>) => this.record({ type: "update", id, patch });
 

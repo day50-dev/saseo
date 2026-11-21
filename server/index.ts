@@ -65,7 +65,7 @@ app.patch("/api/canvases/:cid", async (c) => {
 app.get("/api/canvases/:cid", async (c) => {
   const store = await canvasStore(c.req.param("cid"));
   if (!store) return c.json({ error: "unknown canvas" }, 404);
-  return c.json({ ...(await getCanvasInfo(store.id)), ...(await store.getState()) });
+  return c.json({ ...(await getCanvasInfo(store.id)), ...(await store.view()) });
 });
 
 app.get("/api/assets/:name", async (c) => {

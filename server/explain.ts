@@ -4,9 +4,9 @@ import { CARD_WIDTH, type CardItem, type FoundSource, type Item, type ObjectKind
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { type CanvasStore, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
-import { chat, chatJson, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
+import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { runSearch } from "./providers.ts";
-import { sanitizeSvg } from "./svg.ts";
+import { partialSvg, sanitizeSvg, svgLabels } from "./svg.ts";
 
 const IDENTIFY = `You help a curious, intelligent reader who is not a specialist. They selected part of an image because they don't understand it.
 The first image is the whole page with a red rectangle around their selection. The second image is the selection enlarged.
@@ -605,7 +605,8 @@ Rules:
 - viewBox="0 0 480 H" with H at most 640. Only rect, circle, ellipse, line, polyline, polygon, path, text, tspan, g, defs, marker.
 - Readable: font-family sans-serif, font-size 12 to 16, dark strokes on a white or light background, arrows with markers, no overlapping labels.
 - No scripts, no images, no external links.
-Return JSON only: {"title": "what the diagram shows, a few words", "caption": "one or two sentences on how to read it", "svg": "<svg ...>...</svg>"}`;
+- Draw in reading order (background and main shapes first, then arrows, then labels), since the reader watches it appear as you write.
+Reply with ONLY the SVG, from <svg to </svg>, no code fences. Its first children are <title> (what it shows, a few words) and <desc> (one or two sentences on how to read it).`;
 
 /** Makes the object an object card asks for. */
 export function makeObject(store: CanvasStore, cardId: string) {
@@ -641,17 +642,32 @@ export function makeObject(store: CanvasStore, cardId: string) {
       await store.update(cardId, { stage: "done", subject: `Reading: ${request}`, object: { type: "links", links } });
     } else if (card.objectKind === "diagram") {
       await store.update(cardId, { stage: "writing" });
-      const r = await chatJson<{ title?: string; caption?: string; svg?: string }>(config.llm, [
-        { role: "system", content: DIAGRAM },
-        { role: "user", content: `They asked for: ${request}\n\nThe card it is about:\n${about.text}` },
-      ]);
-      const svg = sanitizeSvg(str(r.svg));
+      // Draw it as it streams: each frame is the SVG so far, closed and cleaned, shown to viewers
+      // but not logged. Only the finished diagram is recorded.
+      let lastFrame = 0;
+      let drawn = "";
+      try {
+        drawn = await chatStream(
+          config.llm,
+          [
+            { role: "system", content: DIAGRAM },
+            { role: "user", content: `They asked for: ${request}\n\nThe card it is about:\n${about.text}` },
+          ],
+          (soFar) => {
+            const now = Date.now();
+            if (now - lastFrame < 300) return;
+            lastFrame = now;
+            const frame = partialSvg(soFar);
+            if (frame) store.setLive(cardId, { object: { type: "diagram", svg: frame, caption: "" } });
+          },
+        );
+      } finally {
+        store.clearLive(cardId);
+      }
+      const svg = sanitizeSvg(drawn);
       if (!svg) throw new Error("The model's drawing wasn't a usable SVG. Try again.");
-      await store.update(cardId, {
-        stage: "done",
-        subject: str(r.title) || `Diagram: ${request}`,
-        object: { type: "diagram", svg, caption: str(r.caption) },
-      });
+      const { title, caption } = svgLabels(svg);
+      await store.update(cardId, { stage: "done", subject: title || `Diagram: ${request}`, object: { type: "diagram", svg, caption } });
     }
   });
 }
