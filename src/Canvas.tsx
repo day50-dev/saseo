@@ -50,6 +50,8 @@ export function Canvas() {
   const [view, setView] = useState<View>(loadView);
   const [draft, setDraft] = useState<{ imageId: string; start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   // A container being dragged, with everything that hangs off it.
+  // A connection being dragged from one card's port, to ask how it relates to another card.
+  const [link, setLink] = useState<{ from: string; start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   const [drag, setDrag] = useState<{
     ids: string[];
     start: { x: number; y: number };
@@ -454,10 +456,44 @@ export function Canvas() {
     await refresh();
   };
 
+  // ---- Asking how two things relate ----
+
+  const startLink = (fromId: string, side: "left" | "right", e: React.PointerEvent) => {
+    if (panning || e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const c = byId.get(fromId);
+    if (c?.kind !== "card") return;
+    const start = { x: side === "left" ? c.x : c.x + c.w, y: c.y + 28 };
+    setLink({ from: fromId, start, end: start });
+    stageRef.current?.setPointerCapture(e.pointerId);
+  };
+
+  const finishLink = async (l: NonNullable<typeof link>, clientX: number, clientY: number) => {
+    setLink(null);
+    const target = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-card-id]");
+    const toId = target?.dataset.cardId;
+    const a = byId.get(l.from);
+    const b = toId ? byId.get(toId) : undefined;
+    if (a?.kind !== "card" || b?.kind !== "card" || a.id === b.id) return;
+    // The answer sits between the two, below both, where nothing else is.
+    const x = Math.round((a.x + a.w / 2 + b.x + b.w / 2) / 2 - CARD_WIDTH / 2);
+    const below = Math.max(a.y + cardHeight(a), b.y + cardHeight(b)) + 64;
+    try {
+      const res = await canvasApi.relate({ a: a.id, b: b.id, x, y: slotY(x, Math.round(below)) });
+      added(`relate “${(a.subject ?? "").slice(0, 20)}” and “${(b.subject ?? "").slice(0, 20)}”`, [res.card.id]);
+      await refresh();
+    } catch (e) {
+      setError(`Couldn't ask how they relate: ${e}`);
+    }
+  };
+
   const onStagePointerMove = (e: React.PointerEvent) => {
     if (pan.current) {
       const p = pan.current;
       setView((v) => ({ ...v, x: p.vx + e.clientX - p.x, y: p.vy + e.clientY - p.y }));
+    } else if (link) {
+      setLink({ ...link, end: toWorld(e.clientX, e.clientY) });
     } else if (drag) {
       const p = toWorld(e.clientX, e.clientY);
       let dx = p.x - drag.start.x;
@@ -472,8 +508,9 @@ export function Canvas() {
     }
   };
 
-  const onStagePointerUp = async () => {
+  const onStagePointerUp = async (e: React.PointerEvent) => {
     pan.current = null;
+    if (link) return finishLink(link, e.clientX, e.clientY);
     if (drag) return finishMove(drag);
     if (!draft) return;
     const d = draft;
@@ -569,6 +606,24 @@ export function Canvas() {
   // ---- Connectors ----
 
   const connectors = visibleCards.flatMap((c) => {
+    // A relation hangs from both things it relates: a dashed line from the bottom of each.
+    if (c.relates) {
+      return c.relates.flatMap((id, i) => {
+        const s = byId.get(id);
+        if (s?.kind !== "card" || folded.has(id)) return [];
+        const from = { x: s.x + s.w / 2, y: s.y + cardHeight(s) };
+        const to = { x: c.x + c.w / 2 + (i === 0 ? -40 : 40), y: c.y };
+        const my = (from.y + to.y) / 2;
+        const lit = hover === c.id || hover === id;
+        return [
+          <path
+            key={`${c.id}-${i}`}
+            d={`M${from.x} ${from.y} C${from.x} ${my} ${to.x} ${my} ${to.x} ${to.y}`}
+            className={lit ? "connector relation lit" : "connector relation"}
+          />,
+        ];
+      });
+    }
     const left = sideOf(c) === "left";
     const parent = byId.get(c.parentId);
     let from: { x: number; y: number } | null = null;
@@ -770,6 +825,12 @@ export function Canvas() {
             );
           })}
 
+          {link && (
+            <svg className="connectors link-preview">
+              <path d={`M${link.start.x} ${link.start.y} L${link.end.x} ${link.end.y}`} className="connector relation lit" />
+            </svg>
+          )}
+
           {draftRect && <div className="region drafting" style={{ left: draftRect.x, top: draftRect.y, width: draftRect.w, height: draftRect.h }} />}
 
           {visibleCards.map((c) => (
@@ -784,6 +845,12 @@ export function Canvas() {
               onDescend={(text, context, clientY) => descend(c, text, context, toWorld(0, clientY).y)}
               onRetry={() => retry(c)}
               onGrab={(e) => startMove(c.id, e)}
+              onPortDown={(side, e) => startLink(c.id, side, e)}
+              linking={!!link && link.from !== c.id}
+              relatesNames={c.relates?.map((id) => {
+                const s = byId.get(id);
+                return s?.kind === "card" ? (s.subject ?? "this") : "a removed card";
+              })}
               moving={drag?.ids.includes(c.id) ?? false}
               onRemove={() => remove(c.id, `remove “${(c.subject ?? "card").slice(0, 30)}”`)}
             />

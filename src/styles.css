@@ -351,3 +351,23 @@ kbd {
 .term-text { font-weight: 600; }
 .term-reg { color: var(--reg-c); font-size: 10.5px; }
 .term-means { color: var(--text); }
+
+/* ---- Asking how two things relate ---- */
+.port {
+  position: absolute; top: 20px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--card); border: 2px solid var(--sem-line); cursor: crosshair; z-index: 2;
+  opacity: 0.35; transition: opacity 0.1s, transform 0.1s;
+}
+.port-left { left: -8px; }
+.port-right { right: -8px; }
+.card-item:hover .port { opacity: 1; }
+.port:hover { transform: scale(1.3); background: var(--sem-line); }
+.stage.mode-select .port { cursor: crosshair; }
+.card-item.link-target:hover { outline: 3px solid var(--accent); outline-offset: 2px; }
+.card-item.relation { border-style: dashed; border-color: var(--sem-line); }
+.relation-banner {
+  margin-top: 6px; padding: 5px 10px; border-radius: 6px; font-size: 13px;
+  background: color-mix(in srgb, var(--sem-line) 8%, transparent);
+}
+.connector.relation { stroke-dasharray: 6 5; stroke: var(--sem-line); opacity: 0.8; }
+.link-preview { z-index: 4; }

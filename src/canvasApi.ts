@@ -27,6 +27,10 @@ export const canvasApi = {
   addRegion: (body: { imageId: string; rect: Rect; card: { x: number; y: number }; marked: string; crop: string }) =>
     post("/api/canvas/regions", body).then((r) => json<{ region: RegionItem; card: CardItem }>(r)),
 
+  /** Asks how two cards are related; the answer is a new card between them. */
+  relate: (body: { a: string; b: string; x: number; y: number }) =>
+    post("/api/canvas/relate", body).then((r) => json<{ card: CardItem }>(r)),
+
   descend: (body: { parentId: string; selection: string; context: string; x: number; y: number }) =>
     post("/api/canvas/descend", body).then((r) => json<{ card: CardItem }>(r)),
 

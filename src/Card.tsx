@@ -83,6 +83,12 @@ export function Card(props: {
   /** How many cards are folded away below this one while it's collapsed. */
   foldedCount: number;
   onToggleCollapse: () => void;
+  /** Pointer down on a side port: start dragging a connection to ask how this relates to another card. */
+  onPortDown: (side: "left" | "right", e: React.PointerEvent) => void;
+  /** A connection is being dragged from another card: this one can be dropped on. */
+  linking: boolean;
+  /** For a relation card: the names of the two things it relates. */
+  relatesNames?: string[];
 }) {
   const { card, onHeight } = props;
   const ref = useRef<HTMLDivElement>(null);
@@ -127,7 +133,8 @@ export function Card(props: {
   return (
     <div
       ref={ref}
-      className={`card-item ${props.lit ? "lit" : ""} ${props.moving ? "moving" : ""}`}
+      data-card-id={card.id}
+      className={`card-item ${props.lit ? "lit" : ""} ${props.moving ? "moving" : ""} ${props.linking ? "link-target" : ""} ${card.relates ? "relation" : ""}`}
       style={{ left: card.x, top: card.y, width: card.w }}
       onPointerEnter={() => props.onHover(true)}
       onPointerLeave={() => props.onHover(false)}
@@ -181,6 +188,11 @@ export function Card(props: {
         </p>
       ) : (
       <>
+      {props.relatesNames && (
+        <div className="relation-banner">
+          You asked how these relate: <strong>{props.relatesNames[0]}</strong> ⟷ <strong>{props.relatesNames[1]}</strong>
+        </div>
+      )}
       {card.register && <RegisterBanner note={card.register} />}
       {card.transcription && card.transcription !== card.subject && <div className="transcription">{card.transcription}</div>}
       {card.terms && card.terms.length > 0 && <TermsList terms={card.terms} />}
@@ -241,6 +253,15 @@ export function Card(props: {
 
       </>
       )}
+
+      {(["left", "right"] as const).map((side) => (
+        <div
+          key={side}
+          className={`port port-${side}`}
+          title="Drag to another card to ask how the two are related"
+          onPointerDown={(e) => props.onPortDown(side, e)}
+        />
+      ))}
 
       {picked && (
         <button
