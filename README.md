@@ -78,6 +78,33 @@ Then open http://localhost:5173, set up a model under **Settings**, and press **
 
 Shortcuts: **V** for select and **H** for pan. Hold **Space** to pan. Ctrl+scroll zooms. **Ctrl+Z** and **Ctrl+Shift+Z** undo and redo. **Ctrl+]** and **Ctrl+[** restack, and adding Shift goes all the way to the front or back.
 
+## Hosting it for other people
+
+Run locally, Librarian has no accounts: it's yours. To put it on a server for others, turn accounts on. Anyone can then sign up; each person sees only their own canvases, and only admins can see or change the models and searchers that everyone shares.
+
+```bash
+npm install && npm run build
+LIBRARIAN_AUTH=on \
+BETTER_AUTH_URL=https://librarian.example.org \
+BETTER_AUTH_SECRET=$(openssl rand -hex 32) \
+ADMIN_EMAILS=you@example.org \
+npm start
+```
+
+- **Email and password** sign-up works immediately, with no email service.
+- **GitHub and Google** sign-in buttons appear when you set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`, or `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Both are free OAuth apps. Register their callback URLs as `https://<your domain>/api/auth/callback/github` and `.../google`.
+- **A domain with HTTPS** is needed for the OAuth providers. The server listens on 127.0.0.1:8787, so put a reverse proxy in front of it. With [Caddy](https://caddyserver.com), which handles certificates itself, this is the whole config:
+
+  ```
+  librarian.example.org {
+      reverse_proxy 127.0.0.1:8787
+  }
+  ```
+
+- **Admins** are whoever signs in with an email listed in `ADMIN_EMAILS` (comma-separated). They set up the models and searchers under Settings. Canvases from before accounts were turned on belong to the admins.
+- **Accounts** are kept in `data/auth.db` (SQLite), created on first start. Accounts use [Better Auth](https://better-auth.com).
+- **Searching for everyone:** Keenable's free keyless use is limited per IP address, which every user on a server shares. Give it a free key, or run your own [SearXNG](https://docs.searxng.org).
+
 ## Design
 
 The principles, the worked examples from the talk that started this (Jason Zhao's *The Cauchy problem for Manton's Chern-Simons-Schrödinger equation*), prior art, and the roadmap are in [docs/DESIGN.md](docs/DESIGN.md).
