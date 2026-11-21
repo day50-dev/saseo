@@ -127,6 +127,7 @@ async function searchKeenable(
   apiKey: string,
   query: string,
   count: number,
+  site?: string,
 ): Promise<SearchHit[]> {
   const client = new Keenable({
     apiKey: apiKey || undefined,
@@ -134,7 +135,7 @@ async function searchKeenable(
     clientSource: "semshapes",
     timeoutMs: TIMEOUT_MS,
   });
-  const res = await client.search(query, { maxResults: count, snippetMaxLength: 500 });
+  const res = await client.search(query, { maxResults: count, snippetMaxLength: 500, ...(site ? { site } : {}) });
   return res.results.map((r) => ({
     url: r.url,
     title: r.title,
@@ -148,12 +149,14 @@ async function searchOther(
   s: Config["searchers"][SearcherId],
   query: string,
   count: number,
+  site?: string,
 ): Promise<SearchHit[]> {
   const cfg: Record<string, unknown> = { timeoutMs: TIMEOUT_MS };
   if (s.apiKey) cfg.apiKey = s.apiKey;
   if (SEARCHERS[id].needsBaseUrl) cfg.baseUrl = s.baseUrl;
   const client = createSearchClient({ [id]: cfg } as Parameters<typeof createSearchClient>[0]);
-  const res = await client.search({ query, count });
+  // Searchers without a site filter get the operator most of them understand.
+  const res = await client.search({ query: site ? `${query} site:${site}` : query, count });
   const r = res[id];
   if (!r) throw new Error("No response from engine");
   if (!r.ok) throw new Error(`${r.error.kind}: ${r.error.message}`);
@@ -177,6 +180,8 @@ export async function runSearch(
   query: string,
   ids: SearcherId[],
   count = 5,
+  /** Restrict results to one domain, e.g. "youtube.com". */
+  site?: string,
 ): Promise<Partial<Record<SearcherId, SearcherResult>>> {
   const wanted = ids.filter((id) => SEARCHER_IDS.includes(id));
   const entries = await Promise.all(
@@ -188,8 +193,8 @@ export async function runSearch(
       try {
         const hits =
           id === "keenable"
-            ? await searchKeenable(s.apiKey, query, count)
-            : await searchOther(id, s, query, count);
+            ? await searchKeenable(s.apiKey, query, count, site)
+            : await searchOther(id, s, query, count, site);
         return [id, { ok: true, ms: Math.round(performance.now() - start), hits }];
       } catch (err) {
         return [id, { ok: false, ms: Math.round(performance.now() - start), hits: [], error: describe(err) }];
