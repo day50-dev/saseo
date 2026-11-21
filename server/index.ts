@@ -7,7 +7,7 @@ import { CARD_WIDTH, type CardItem, type ImageItem, type Move, type Rect, type R
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { assetPath, canvasStore, createCanvas, getCanvasInfo, listCanvases, newId, renameCanvas, saveAsset } from "./canvas.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
-import { chatAbout, explainRegion, explainRelation, explainSelection } from "./explain.ts";
+import { explainRegion, explainRelation, explainSelection, handleChat, makeObject } from "./explain.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
 
 const app = new Hono();
@@ -153,7 +153,10 @@ app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
   if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
   if (card.stage !== "failed") return c.json({ error: "only a failed card can be retried" }, 409);
   const parent = await store.findItem(card.parentId);
-  if (card.relates) {
+  if (card.objectKind) {
+    await store.update(card.id, { stage: "reading", error: "" });
+    void makeObject(store, card.id);
+  } else if (card.relates) {
     await store.update(card.id, { stage: "reading", error: "" });
     void explainRelation(store, card.id);
   } else if (parent?.kind === "region") {
@@ -229,7 +232,7 @@ app.post("/api/canvases/:cid/cards/:id/chat", async (c) => {
   if (!clean) return c.json({ error: "text is required" }, 400);
   await store.record({ type: "chat", id: card.id, message: { role: "user", text: clean, at: new Date().toISOString() } });
   await store.update(card.id, { chatPending: true });
-  void chatAbout(store, card.id);
+  void handleChat(store, card.id);
   return c.json({ ok: true });
 });
 

@@ -1,11 +1,12 @@
 // The librarian's loop for one card: read the region, go fish, write a descending
 // explanation from what was found, then check that it doesn't climb.
-import type { CardItem, FoundSource, Item, Register, RegisterNote, Sem } from "../shared/canvas.ts";
+import { CARD_WIDTH, type CardItem, type FoundSource, type Item, type ObjectKind, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
-import type { CanvasStore } from "./canvas.ts";
+import { type CanvasStore, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { chat, chatJson, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { runSearch } from "./providers.ts";
+import { sanitizeSvg } from "./svg.ts";
 
 const IDENTIFY = `You help a curious, intelligent reader who is not a specialist. They selected part of an image because they don't understand it.
 The first image is the whole page with a red rectangle around their selection. The second image is the selection enlarged.
@@ -499,4 +500,191 @@ export async function chatAbout(store: CanvasStore, cardId: string) {
   } finally {
     await store.update(cardId, { chatPending: false });
   }
+}
+
+// ---- Things a conversation can make ----
+// Asking for videos, reading or a diagram makes an object on its own card, connected to the card
+// it was asked from, so a card gathers a collection instead of a long transcript.
+
+type Intent = "answer" | ObjectKind;
+
+const INTENT_CRITERIA: Record<Intent, string> = {
+  answer: "A question to be answered in words.",
+  videos: "A request for videos, lectures or talks to watch.",
+  links: "A request for reading: articles, notes, papers, textbooks or other pages.",
+  diagram: "A request to draw, sketch, picture or diagram something.",
+};
+const isIntent = (v: unknown): v is Intent => typeof v === "string" && v in INTENT_CRITERIA;
+
+const INTENT = `A reader typed a message in the conversation box on a card about a topic they are studying.
+Decide what they want: an answer in words, or an object made for them.
+Return JSON only: {"kind": "answer" | "videos" | "links" | "diagram", "request": "what they asked for, restated in a few words"}
+- "videos": they ask for videos, lectures or talks to watch.
+- "links": they ask for things to read: articles, notes, papers, textbook chapters.
+- "diagram": they ask you to draw, sketch, picture or diagram something.
+- "answer": anything else.`;
+
+async function decideIntent(text: string, about: string): Promise<{ kind: Intent; request: string }> {
+  const config = await loadConfig();
+  let kind: Intent = "answer";
+  let request = text;
+  try {
+    const r = await chatJson<{ kind?: string; request?: string }>(config.llm, [
+      { role: "system", content: INTENT },
+      { role: "user", content: `The card is about: ${about}\n\nTheir message: ${text}` },
+    ]);
+    if (isIntent(r.kind)) kind = r.kind;
+    request = str(r.request) || text;
+  } catch {
+    // Default to answering.
+  }
+  // What a message asks for is a typed choice, which is the fast decision model's job.
+  if (systemOneConfigured(config.systemOne)) {
+    try {
+      const d = await decideChoice(config.systemOne, { message: text, card: about }, "What does this message ask for?", INTENT_CRITERIA);
+      if (isIntent(d.choice) && d.confidence >= 0.6) kind = d.choice;
+    } catch {
+      // Keep the LLM's call.
+    }
+  }
+  return { kind, request };
+}
+
+/** A card's likely height before it has ever been measured: object cards vary by what they hold. */
+function expectedHeight(c: CardItem): number {
+  if (c.objectKind === "videos") return 1150;
+  if (c.objectKind === "diagram") return 1100;
+  if (c.objectKind === "links") return 900;
+  return 1000;
+}
+
+/** Where a new object goes: beside the card it came from, below anything already there. */
+async function placeBeside(store: CanvasStore, from: CardItem): Promise<{ x: number; y: number }> {
+  const { items } = await store.getState();
+  const x = from.x + from.w + 64;
+  let y = from.y;
+  const column = items.filter(
+    (i): i is CardItem => i.kind === "card" && !i.hidden && i.x < x + CARD_WIDTH && x < i.x + i.w,
+  );
+  let moved = true;
+  while (moved) {
+    moved = false;
+    for (const c of column) {
+      const bottom = c.y + (c.h ?? expectedHeight(c));
+      if (y < bottom + 24 && y + 1100 > c.y - 24) {
+        y = bottom + 24;
+        moved = true;
+      }
+    }
+  }
+  return { x, y };
+}
+
+const QUERY = `Write a short web search query, 2-6 plain words, for BEGINNER material on what the reader asked for, given the card it was asked about.
+Never use terms specific to the page or paper. Return JSON only: {"searchQuery": "..."}`;
+
+async function queryFor(request: string, about: string, fallback: string): Promise<string> {
+  const config = await loadConfig();
+  try {
+    const r = await chatJson<{ searchQuery?: string }>(config.llm, [
+      { role: "system", content: QUERY },
+      { role: "user", content: `The card is about: ${about}\n\nThey asked for: ${request}` },
+    ]);
+    return str(r.searchQuery) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const YOUTUBE_ID = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
+
+const DIAGRAM = `You draw clear explanatory diagrams for a curious reader who is not a specialist.
+Draw ONE SVG diagram for what they asked, in the context of the card.
+Rules:
+- Descend: use familiar ideas, label things in plain words, and gloss any technical term.
+- viewBox="0 0 480 H" with H at most 640. Only rect, circle, ellipse, line, polyline, polygon, path, text, tspan, g, defs, marker.
+- Readable: font-family sans-serif, font-size 12 to 16, dark strokes on a white or light background, arrows with markers, no overlapping labels.
+- No scripts, no images, no external links.
+Return JSON only: {"title": "what the diagram shows, a few words", "caption": "one or two sentences on how to read it", "svg": "<svg ...>...</svg>"}`;
+
+/** Makes the object an object card asks for. */
+export function makeObject(store: CanvasStore, cardId: string) {
+  return guard(store, cardId, async () => {
+    const card = (await store.findItem(cardId)) as CardItem;
+    const from = await store.findItem(card.parentId);
+    const about = from?.kind === "card" ? await describe(store, from.id) : { name: "this", text: "" };
+    const request = card.request ?? "";
+    const config = await loadConfig();
+    const enabled = SEARCHER_IDS.filter((id) => config.searchers[id].enabled);
+
+    if (card.objectKind === "videos") {
+      await store.update(cardId, { stage: "searching" });
+      const q = await queryFor(request, about.text, `${about.name} explained`);
+      const results = enabled.length ? await runSearch(config, `${q} lecture`, enabled, 10, "youtube.com") : {};
+      const seen = new Set<string>();
+      const videos: Video[] = [];
+      for (const r of Object.values(results)) {
+        for (const h of r?.ok ? r.hits : []) {
+          const id = h.url.match(YOUTUBE_ID)?.[1];
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          videos.push({ url: `https://www.youtube.com/watch?v=${id}`, videoId: id, title: h.title.replace(/\s*-\s*YouTube\s*$/i, ""), snippet: h.snippet.slice(0, 200) });
+        }
+      }
+      if (!videos.length) throw new Error(`No videos found for "${q}". Try asking differently, or enable another searcher.`);
+      await store.update(cardId, { stage: "done", subject: `Videos: ${request}`, object: { type: "videos", videos: videos.slice(0, 6) } });
+    } else if (card.objectKind === "links") {
+      await store.update(cardId, { stage: "searching" });
+      const q = await queryFor(request, about.text, `${about.name} introduction`);
+      const links = await search(`${q} introduction`);
+      if (!links.length) throw new Error(`Nothing found for "${q}".`);
+      await store.update(cardId, { stage: "done", subject: `Reading: ${request}`, object: { type: "links", links } });
+    } else if (card.objectKind === "diagram") {
+      await store.update(cardId, { stage: "writing" });
+      const r = await chatJson<{ title?: string; caption?: string; svg?: string }>(config.llm, [
+        { role: "system", content: DIAGRAM },
+        { role: "user", content: `They asked for: ${request}\n\nThe card it is about:\n${about.text}` },
+      ]);
+      const svg = sanitizeSvg(str(r.svg));
+      if (!svg) throw new Error("The model's drawing wasn't a usable SVG. Try again.");
+      await store.update(cardId, {
+        stage: "done",
+        subject: str(r.title) || `Diagram: ${request}`,
+        object: { type: "diagram", svg, caption: str(r.caption) },
+      });
+    }
+  });
+}
+
+const MADE: Record<ObjectKind, string> = { videos: "Finding videos", links: "Finding reading", diagram: "Drawing a diagram" };
+
+/** Handles the latest message in a card's conversation: answers it, or makes what it asks for. */
+export async function handleChat(store: CanvasStore, cardId: string) {
+  const card = (await store.findItem(cardId)) as CardItem;
+  const last = [...(card.chat ?? [])].reverse().find((m) => m.role === "user");
+  if (!last) return store.update(cardId, { chatPending: false });
+  const { kind, request } = await decideIntent(last.text, card.subject ?? card.selection ?? "this");
+  if (kind === "answer") return chatAbout(store, cardId);
+
+  const at = await placeBeside(store, card);
+  const object: CardItem = {
+    kind: "card",
+    id: newId(),
+    parentId: card.id,
+    objectKind: kind,
+    request,
+    x: at.x,
+    y: at.y,
+    w: CARD_WIDTH,
+    stage: "reading",
+    subject: request,
+  };
+  await store.add(object);
+  await store.record({
+    type: "chat",
+    id: cardId,
+    message: { role: "assistant", text: `${MADE[kind]}: ${request}`, at: new Date().toISOString(), objectId: object.id },
+  });
+  await store.update(cardId, { chatPending: false });
+  await makeObject(store, object.id);
 }

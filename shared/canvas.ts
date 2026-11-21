@@ -99,7 +99,27 @@ export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   at: string;
+  /** When the message made something, the card that holds it. */
+  objectId?: string;
 }
+
+export interface Video {
+  url: string;
+  videoId: string;
+  title: string;
+  snippet: string;
+}
+
+/**
+ * Things a conversation can make. Each lives on its own card, connected to the card it was asked
+ * from, so a card gathers a collection of objects rather than a long transcript.
+ */
+export type CardObject =
+  | { type: "videos"; videos: Video[] }
+  | { type: "links"; links: FoundSource[] }
+  | { type: "diagram"; svg: string; caption: string };
+
+export type ObjectKind = CardObject["type"];
 
 export type CardStage = "reading" | "searching" | "writing" | "checking" | "done" | "failed";
 
@@ -129,6 +149,10 @@ export interface CardItem extends ItemState {
   chat?: ChatMessage[];
   /** The librarian is answering the last message. */
   chatPending?: boolean;
+  /** An object card: what was asked for, and once made, the object itself. */
+  objectKind?: ObjectKind;
+  request?: string;
+  object?: CardObject;
   x: number;
   y: number;
   w: number;
