@@ -16,8 +16,10 @@
     "agent-web-search": "^0.2.0",
     "better-auth": "^1.7.27",
     "better-sqlite3": "^13.2.0",
+    "fast-xml-parser": "^5.12.1",
     "hono": "^4.13.19",
     "keenable": "^0.1.4",
+    "pdfjs-dist": "^6.5.438",
     "zod": "^4.6.7"
   },
   "devDependencies": {
