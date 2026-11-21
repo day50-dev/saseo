@@ -107,21 +107,28 @@ export async function withDependents(ids: string[]): Promise<string[]> {
   return visible.filter((i) => out.has(i.id)).map((i) => i.id);
 }
 
-/** Where an item's right edge is after `moves`, for checking the right-of-parent rule. */
-function rightEdge(items: Item[], id: string, moved: Map<string, Move>): number | null {
+/** An item's left and right edges after `moves`, for checking that cards sit beside their source. */
+function edges(items: Item[], id: string, moved: Map<string, Move>): { left: number; right: number } | null {
   const item = items.find((i) => i.id === id);
   if (!item) return null;
-  if (item.kind === "card") return (moved.get(id)?.x ?? item.x) + item.w;
+  if (item.kind === "card") {
+    const x = moved.get(id)?.x ?? item.x;
+    return { left: x, right: x + item.w };
+  }
   if (item.kind === "region") {
     const img = items.find((i) => i.id === item.imageId);
     if (img?.kind !== "image") return null;
-    const x = moved.get(img.id)?.x ?? img.x;
-    return x + ((item.rect.x + item.rect.w) * img.w) / img.naturalW;
+    const k = img.w / img.naturalW;
+    const x = (moved.get(img.id)?.x ?? img.x) + item.rect.x * k;
+    return { left: x, right: x + item.rect.w * k };
   }
   return null;
 }
 
-/** Applies a set of moves if every card would still sit right of what it explains. */
+/**
+ * Applies a set of moves if every card still sits beside what it explains: wholly to its right or
+ * wholly to its left (a branch can grow either way), never on top of it.
+ */
 export async function moveItems(moves: Move[]): Promise<{ ok: true } | { ok: false; error: string }> {
   const { items } = await getState();
   const moved = new Map(moves.map((m) => [m.id, m]));
@@ -136,10 +143,12 @@ export async function moveItems(moves: Move[]): Promise<{ ok: true } | { ok: fal
     const parent = items.find((i) => i.id === card.parentId);
     const parentMoved = parent && (moved.has(parent.id) || (parent.kind === "region" && moved.has(parent.imageId)));
     if (!moved.has(card.id) && !parentMoved) continue;
-    const edge = rightEdge(items, card.parentId, moved);
+    const e = edges(items, card.parentId, moved);
     const x = moved.get(card.id)?.x ?? card.x;
-    if (edge !== null && x < edge + MIN_CHILD_GAP - 0.5) {
-      return { ok: false, error: "an explanation must stay to the right of what it explains" };
+    const rightOf = e !== null && x >= e.right + MIN_CHILD_GAP - 0.5;
+    const leftOf = e !== null && x + card.w <= e.left - MIN_CHILD_GAP + 0.5;
+    if (e !== null && !rightOf && !leftOf) {
+      return { ok: false, error: "an explanation must sit beside what it explains, to its left or right" };
     }
   }
   await record({ type: "move", moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y) })) });

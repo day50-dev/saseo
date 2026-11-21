@@ -144,7 +144,7 @@ export interface Move {
   y: number;
 }
 
-/** Position is semantic: an explanation stays at least this far right of what it explains. */
+/** Position is semantic: an explanation sits at least this far beside what it explains, left or right. */
 export const MIN_CHILD_GAP = 24;
 
 export interface LoggedEvent {
