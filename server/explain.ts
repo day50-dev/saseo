@@ -7,6 +7,7 @@ import { assetPath, type CanvasStore, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { searchArxiv } from "./arxiv.ts";
+import { readPage as readWebPage } from "./pages.ts";
 import { runSearch } from "./providers.ts";
 import { partialSvg, sanitizeSvg, svgLabels } from "./svg.ts";
 
@@ -61,6 +62,7 @@ async function ancestry(store: CanvasStore, card: CardItem): Promise<{ path: str
 
 /** A card's explanation as plain text: the structure for newer cards, paragraphs for older ones. */
 function cardText(c: CardItem): string {
+  if (c.origin) return c.pageText ?? c.origin.title;
   if (c.sem) {
     const standIns = (c.sem.standIns ?? []).map((s) => `"${s.phrase}" stands for ${s.concept}`);
     return [semText(c.sem), standIns.length ? `Plain-language stand-ins used: ${standIns.join("; ")}` : ""].filter(Boolean).join("\n");
@@ -764,4 +766,23 @@ export async function handleChat(store: CanvasStore, cardId: string) {
   });
   await store.update(cardId, { chatPending: false });
   await makeObject(store, object.id);
+}
+
+// ---- Starting from a link or a statement ----
+
+/** Reads the page a source card links to, keeping its text as the card's page. */
+export function readSource(store: CanvasStore, cardId: string) {
+  return guard(store, cardId, async () => {
+    const card = (await store.findItem(cardId)) as CardItem;
+    if (card.origin?.kind !== "page") return;
+    await store.update(cardId, { stage: "reading" });
+    const page = await readWebPage(card.origin.url);
+    await store.update(cardId, {
+      stage: "done",
+      subject: page.title,
+      topic: page.title,
+      pageText: page.text,
+      origin: { kind: "page", url: page.url, site: page.site, title: page.title },
+    });
+  });
 }

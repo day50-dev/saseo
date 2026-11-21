@@ -3,12 +3,13 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono, type Next } from "hono";
 import { readFile } from "node:fs/promises";
-import { CARD_WIDTH, type CanvasInfo, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { assetPath, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
-import { explainRegion, explainRelation, explainSelection, handleChat, makeObject } from "./explain.ts";
+import { explainRegion, explainRelation, explainSelection, handleChat, makeObject, readSource } from "./explain.ts";
+import { looksLikeLink } from "./pages.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
 
@@ -249,7 +250,10 @@ app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
   if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
   if (card.stage !== "failed") return c.json({ error: "only a failed card can be retried" }, 409);
   const parent = await store.findItem(card.parentId);
-  if (card.objectKind) {
+  if (card.origin?.kind === "page") {
+    await store.update(card.id, { stage: "reading", error: "" });
+    void readSource(store, card.id);
+  } else if (card.objectKind) {
     await store.update(card.id, { stage: "reading", error: "" });
     void makeObject(store, card.id);
   } else if (card.relates) {
@@ -348,6 +352,30 @@ app.post("/api/canvases/:cid/z", async (c) => {
   if (!valid.length) return c.json({ error: "order of cards or images is required" }, 400);
   await store.record({ type: "z", order: valid.map((o) => ({ id: o.id, z: Math.round(o.z) })) });
   return c.json({ ok: true });
+});
+
+// Start from a link (the page is read) or a statement (explained straight away).
+app.post("/api/canvases/:cid/sources", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const body = (await c.req.json()) as { input?: string; x?: number; y?: number };
+  const input = typeof body.input === "string" ? body.input.trim().slice(0, 2000) : "";
+  if (!input) return c.json({ error: "a link or a statement is required" }, 400);
+  if (!Number.isFinite(body.x) || !Number.isFinite(body.y)) return c.json({ error: "x and y are required" }, 400);
+  const at = { x: Math.round(body.x!), y: Math.round(body.y!) };
+  if (looksLikeLink(input)) {
+    const card: CardItem = { kind: "card", id: newId(), parentId: "", origin: { kind: "page", url: input, title: input }, ...at, w: SOURCE_WIDTH, stage: "reading", subject: input };
+    await store.add(card);
+    void readSource(store, card.id);
+    return c.json({ card });
+  }
+  // A statement is what you want to understand, so it is explained right away, beside it.
+  const note: CardItem = { kind: "card", id: newId(), parentId: "", origin: { kind: "note", title: input }, ...at, w: CARD_WIDTH, stage: "done", subject: input, pageText: input };
+  const answer: CardItem = { kind: "card", id: newId(), parentId: note.id, selection: input, context: input, x: at.x + CARD_WIDTH + 64, y: at.y, w: CARD_WIDTH, stage: "reading", subject: input };
+  await store.add(note);
+  await store.add(answer);
+  void explainSelection(store, answer.id);
+  return c.json({ card: note, answer });
 });
 
 // Removing is a hide event: the log keeps everything, so any removal can be undone.

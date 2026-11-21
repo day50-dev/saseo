@@ -174,6 +174,11 @@ export interface CardItem extends ItemState {
   relates?: [string, string];
   /** Height as last drawn, recorded with moves. */
   h?: number;
+  /**
+   * A source card: a starting point that isn't an image. A page someone linked to (its readable
+   * text is in pageText) or a statement or question they typed.
+   */
+  origin?: { kind: "page"; url: string; site?: string; title: string } | { kind: "note"; title: string };
   /** A conversation about this card, held at the card (principle 4), oldest first. */
   chat?: ChatMessage[];
   /** The librarian is answering the last message. */
@@ -256,3 +261,5 @@ export interface CanvasState {
 }
 
 export const CARD_WIDTH = 480;
+/** A page read from a link is wider: it holds an article, not a diagram. */
+export const SOURCE_WIDTH = 640;
