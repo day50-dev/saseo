@@ -69,6 +69,8 @@ function withRegister(text: string, sem: Sem, sources: FoundSource[]): ReactNode
   });
 }
 
+export type Side = "left" | "right" | "top" | "bottom";
+
 export function Card(props: {
   card: CardItem;
   lit: boolean;
@@ -84,7 +86,7 @@ export function Card(props: {
   foldedCount: number;
   onToggleCollapse: () => void;
   /** Pointer down on a side port: start dragging a connection to ask how this relates to another card. */
-  onPortDown: (side: "left" | "right", e: React.PointerEvent) => void;
+  onPortDown: (side: Side, e: React.PointerEvent) => void;
   /** A connection is being dragged from another card: this one can be dropped on. */
   linking: boolean;
   /** For a relation card: the names of the two things it relates. */
@@ -254,7 +256,7 @@ export function Card(props: {
       </>
       )}
 
-      {(["left", "right"] as const).map((side) => (
+      {(["left", "right", "top", "bottom"] as const).map((side) => (
         <div
           key={side}
           className={`port port-${side}`}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CARD_WIDTH, type CardItem, type ImageItem, type Item, MIN_CHILD_GAP, type Rect, type RegionItem } from "../shared/canvas.ts";
-import { Card } from "./Card.tsx";
+import { Card, type Side } from "./Card.tsx";
 import { assetUrl, canvasApi } from "./canvasApi.ts";
 
 interface View {
@@ -30,6 +30,16 @@ function saveView(v: View) {
 
 const isPending = (c: CardItem) => c.stage !== "done" && c.stage !== "failed";
 
+interface Box {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/** Which side of its source a card sits on. Its branch keeps growing that way. */
+type Dir = "left" | "right" | "above" | "below";
+
 type Mode = "select" | "pan";
 
 function loadMode(): Mode {
@@ -51,12 +61,13 @@ export function Canvas() {
   const [draft, setDraft] = useState<{ imageId: string; start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   // A container being dragged, with everything that hangs off it.
   // A connection being dragged from one card's port, to ask how it relates to another card.
-  const [link, setLink] = useState<{ from: string; start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
+  const [link, setLink] = useState<{ from: string; side: Side; start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   const [drag, setDrag] = useState<{
     ids: string[];
     start: { x: number; y: number };
     orig: Record<string, { x: number; y: number }>;
-    band: { lo: number; hi: number; x0: number } | null;
+    /** The source the dragged card must stay off, grown by the gap, and the card's own size. */
+    avoid: { box: Box; w: number; h: number; x0: number; y0: number } | null;
     dx: number;
     dy: number;
   } | null>(null);
@@ -356,21 +367,23 @@ export function Canvas() {
     return [...out];
   };
 
-  /** Left and right edges of what a card explains: the box on the image, or the card above it. */
-  const parentEdges = (card: CardItem): { left: number; right: number } | null => {
+  /** The rectangle of what a card explains: the box on the image, or the card it came from. */
+  const sourceBox = (card: CardItem): Box | null => {
     const parent = byId.get(card.parentId);
-    if (parent?.kind === "card") return { left: parent.x, right: parent.x + parent.w };
+    if (parent?.kind === "card") return { left: parent.x, right: parent.x + parent.w, top: parent.y, bottom: parent.y + cardHeight(parent) };
     if (parent?.kind === "region") {
       const r = regionWorld(parent);
-      return r ? { left: r.x, right: r.x + r.w } : null;
+      return r ? { left: r.x, right: r.x + r.w, top: r.y, bottom: r.y + r.h } : null;
     }
     return null;
   };
 
-  /** Which way a card's branch grows: the side of its source it sits on. New descents follow it. */
-  const sideOf = (card: CardItem): "left" | "right" => {
-    const e = parentEdges(card);
-    return e && card.x + card.w <= e.left ? "left" : "right";
+  /** Which side of its source a card sits on; new descents from it go the same way. */
+  const dirOf = (card: CardItem): Dir => {
+    const s = sourceBox(card);
+    if (!s || card.x >= s.right) return "right";
+    if (card.x + card.w <= s.left) return "left";
+    return card.y >= s.bottom ? "below" : "above";
   };
 
   const startMove = (rootId: string, e: React.PointerEvent) => {
@@ -383,15 +396,16 @@ export function Canvas() {
       const i = byId.get(id);
       if (i && i.kind !== "region") orig[id] = { x: i.x, y: i.y };
     }
-    // A card can go anywhere beside what it explains, on either side, but not on top of it: the
-    // x positions in between are a band the drag snaps out of, to the nearer side.
+    // A card can sit on any side of what it explains, but not on it: a drag that lands on the
+    // source slides out to the nearest free edge.
     const root = byId.get(rootId);
-    let band: { lo: number; hi: number; x0: number } | null = null;
-    if (root?.kind === "card") {
-      const e = parentEdges(root);
-      if (e) band = { lo: e.left - MIN_CHILD_GAP - root.w, hi: e.right + MIN_CHILD_GAP, x0: root.x };
+    let avoid: NonNullable<typeof drag>["avoid"] = null;
+    if (root?.kind === "card" && !root.relates) {
+      const s = sourceBox(root);
+      const g = MIN_CHILD_GAP;
+      if (s) avoid = { box: { left: s.left - g, right: s.right + g, top: s.top - g, bottom: s.bottom + g }, w: root.w, h: cardHeight(root), x0: root.x, y0: root.y };
     }
-    setDrag({ ids, start: toWorld(e.clientX, e.clientY), orig, band, dx: 0, dy: 0 });
+    setDrag({ ids, start: toWorld(e.clientX, e.clientY), orig, avoid, dx: 0, dy: 0 });
     stageRef.current?.setPointerCapture(e.pointerId);
   };
 
@@ -429,8 +443,8 @@ export function Canvas() {
 
     const changed = cards.filter((c) => pos.get(c.id)!.y !== c.y);
     if (!changed.length) return;
-    const to = changed.map((c) => ({ id: c.id, x: c.x, y: Math.round(pos.get(c.id)!.y) }));
-    const from = changed.map((c) => ({ id: c.id, x: c.x, y: c.y }));
+    const to = changed.map((c) => ({ id: c.id, x: c.x, y: Math.round(pos.get(c.id)!.y), h: heights[c.id] }));
+    const from = changed.map((c) => ({ id: c.id, x: c.x, y: c.y, h: heights[c.id] }));
     try {
       await canvasApi.move(to);
       pushStep({ label: "untangle", undo: () => canvasApi.move(from), redo: () => canvasApi.move(to) });
@@ -443,8 +457,10 @@ export function Canvas() {
   const finishMove = async (d: NonNullable<typeof drag>) => {
     setDrag(null);
     if (Math.abs(d.dx) + Math.abs(d.dy) < 3) return;
-    const to = Object.entries(d.orig).map(([id, p]) => ({ id, x: Math.round(p.x + d.dx), y: Math.round(p.y + d.dy) }));
-    const from = Object.entries(d.orig).map(([id, p]) => ({ id, x: p.x, y: p.y }));
+    // Cards report their drawn height, so the server can check above and below as well as beside.
+    const h = (id: string) => (byId.get(id)?.kind === "card" ? heights[id] : undefined);
+    const to = Object.entries(d.orig).map(([id, p]) => ({ id, x: Math.round(p.x + d.dx), y: Math.round(p.y + d.dy), h: h(id) }));
+    const from = Object.entries(d.orig).map(([id, p]) => ({ id, x: p.x, y: p.y, h: h(id) }));
     // Show the new place at once; the refresh confirms it.
     setItems((all) => all.map((i) => (d.orig[i.id] && i.kind !== "region" ? { ...i, x: i.x + d.dx, y: i.y + d.dy } : i)));
     try {
@@ -458,14 +474,18 @@ export function Canvas() {
 
   // ---- Asking how two things relate ----
 
-  const startLink = (fromId: string, side: "left" | "right", e: React.PointerEvent) => {
+  const startLink = (fromId: string, side: Side, e: React.PointerEvent) => {
     if (panning || e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
     const c = byId.get(fromId);
     if (c?.kind !== "card") return;
-    const start = { x: side === "left" ? c.x : c.x + c.w, y: c.y + 28 };
-    setLink({ from: fromId, start, end: start });
+    const start =
+      side === "left" ? { x: c.x, y: c.y + 28 }
+      : side === "right" ? { x: c.x + c.w, y: c.y + 28 }
+      : side === "top" ? { x: c.x + c.w / 2, y: c.y }
+      : { x: c.x + c.w / 2, y: c.y + cardHeight(c) };
+    setLink({ from: fromId, side, start, end: start });
     stageRef.current?.setPointerCapture(e.pointerId);
   };
 
@@ -476,11 +496,26 @@ export function Canvas() {
     const a = byId.get(l.from);
     const b = toId ? byId.get(toId) : undefined;
     if (a?.kind !== "card" || b?.kind !== "card" || a.id === b.id) return;
-    // The answer sits between the two, below both, where nothing else is.
-    const x = Math.round((a.x + a.w / 2 + b.x + b.w / 2) / 2 - CARD_WIDTH / 2);
-    const below = Math.max(a.y + cardHeight(a), b.y + cardHeight(b)) + 64;
+    // The answer goes toward the side the connection was dragged from: under both from a bottom
+    // port, over both from a top port, beside both from a side port.
+    const top = Math.min(a.y, b.y);
+    const bottom = Math.max(a.y + cardHeight(a), b.y + cardHeight(b));
+    const midX = Math.round((a.x + a.w / 2 + b.x + b.w / 2) / 2 - CARD_WIDTH / 2);
+    let x = midX;
+    let y: number;
+    if (l.side === "top") {
+      y = Math.round(top - 64 - PENDING_HEIGHT);
+    } else if (l.side === "left") {
+      x = Math.round(Math.min(a.x, b.x) - GAP - CARD_WIDTH);
+      y = slotY(x, Math.round(top));
+    } else if (l.side === "right") {
+      x = Math.round(Math.max(a.x + a.w, b.x + b.w) + GAP);
+      y = slotY(x, Math.round(top));
+    } else {
+      y = slotY(x, Math.round(bottom + 64));
+    }
     try {
-      const res = await canvasApi.relate({ a: a.id, b: b.id, x, y: slotY(x, Math.round(below)) });
+      const res = await canvasApi.relate({ a: a.id, b: b.id, x, y });
       added(`relate “${(a.subject ?? "").slice(0, 20)}” and “${(b.subject ?? "").slice(0, 20)}”`, [res.card.id]);
       await refresh();
     } catch (e) {
@@ -497,12 +532,25 @@ export function Canvas() {
     } else if (drag) {
       const p = toWorld(e.clientX, e.clientY);
       let dx = p.x - drag.start.x;
-      const b = drag.band;
-      if (b) {
-        const x = b.x0 + dx;
-        if (x > b.lo && x < b.hi) dx = (x - b.lo < b.hi - x ? b.lo : b.hi) - b.x0;
+      let dy = p.y - drag.start.y;
+      const a = drag.avoid;
+      if (a) {
+        const x = a.x0 + dx;
+        const y = a.y0 + dy;
+        const b = a.box;
+        if (x < b.right && x + a.w > b.left && y < b.bottom && y + a.h > b.top) {
+          // Slide out along whichever edge is nearest.
+          const outs = [
+            { d: x + a.w - b.left, x: b.left - a.w, y },
+            { d: b.right - x, x: b.right, y },
+            { d: y + a.h - b.top, x, y: b.top - a.h },
+            { d: b.bottom - y, x, y: b.bottom },
+          ].sort((m, n) => m.d - n.d);
+          dx = outs[0].x - a.x0;
+          dy = outs[0].y - a.y0;
+        }
       }
-      setDrag({ ...drag, dx, dy: p.y - drag.start.y });
+      setDrag({ ...drag, dx, dy });
     } else if (draft) {
       setDraft({ ...draft, end: toWorld(e.clientX, e.clientY) });
     }
@@ -541,10 +589,14 @@ export function Canvas() {
   // ---- Descending from a card ----
 
   const descend = async (parent: CardItem, selection: string, context: string, worldY: number) => {
-    // Grow the same way as the branch: a card moved to the left of its source descends leftward.
-    const x = sideOf(parent) === "left" ? parent.x - GAP - CARD_WIDTH : parent.x + parent.w + GAP;
+    // Grow the same way as the branch: a card put left of, above or below its source sends its
+    // own descents further that way.
+    const dir = dirOf(parent);
+    const x = dir === "left" ? parent.x - GAP - CARD_WIDTH : dir === "right" ? parent.x + parent.w + GAP : parent.x;
+    const vertical = dir === "below" ? parent.y + cardHeight(parent) + STACK_GAP * 2 : dir === "above" ? parent.y - STACK_GAP * 2 - PENDING_HEIGHT : null;
     try {
-      const res = await canvasApi.descend({ parentId: parent.id, selection, context, x, y: slotY(x, Math.round(worldY - 20)) });
+      const y = vertical === null ? slotY(x, Math.round(worldY - 20)) : dir === "below" ? slotY(x, Math.round(vertical)) : Math.round(vertical);
+      const res = await canvasApi.descend({ parentId: parent.id, selection, context, x, y });
       added(`explain “${selection.slice(0, 30)}”`, [res.card.id]);
       await refresh();
     } catch (e) {
@@ -624,27 +676,26 @@ export function Canvas() {
         ];
       });
     }
-    const left = sideOf(c) === "left";
-    const parent = byId.get(c.parentId);
-    let from: { x: number; y: number } | null = null;
-    if (parent?.kind === "region") {
-      const r = regionWorld(parent);
-      if (r) from = { x: left ? r.x : r.x + r.w, y: r.y + r.h / 2 };
-    } else if (parent?.kind === "card") {
-      from = { x: left ? parent.x : parent.x + parent.w, y: parent.y + 28 };
-    }
-    if (!from) return [];
-    // Connect the facing edges, whichever side the card is on.
-    const to = { x: left ? c.x + c.w : c.x, y: c.y + 28 };
-    const mx = (from.x + to.x) / 2;
+    const s = sourceBox(c);
+    if (!s) return [];
+    const dir = dirOf(c);
     const lit = hover === c.id || hover === c.parentId;
-    return [
-      <path
-        key={c.id}
-        d={`M${from.x} ${from.y} C${mx} ${from.y} ${mx} ${to.y} ${to.x} ${to.y}`}
-        className={lit ? "connector lit" : "connector"}
-      />,
-    ];
+    // Connect the facing edges: side to side for left and right, bottom to top for above and below.
+    const parent = byId.get(c.parentId);
+    const midY = parent?.kind === "card" ? s.top + 28 : (s.top + s.bottom) / 2;
+    let d: string;
+    if (dir === "left" || dir === "right") {
+      const from = { x: dir === "left" ? s.left : s.right, y: midY };
+      const to = { x: dir === "left" ? c.x + c.w : c.x, y: c.y + 28 };
+      const mx = (from.x + to.x) / 2;
+      d = `M${from.x} ${from.y} C${mx} ${from.y} ${mx} ${to.y} ${to.x} ${to.y}`;
+    } else {
+      const from = { x: (s.left + s.right) / 2, y: dir === "below" ? s.bottom : s.top };
+      const to = { x: c.x + c.w / 2, y: dir === "below" ? c.y : c.y + cardHeight(c) };
+      const my = (from.y + to.y) / 2;
+      d = `M${from.x} ${from.y} C${from.x} ${my} ${to.x} ${my} ${to.x} ${to.y}`;
+    }
+    return [<path key={c.id} d={d} className={lit ? "connector lit" : "connector"} />];
   });
 
   const draftRect = draft && {

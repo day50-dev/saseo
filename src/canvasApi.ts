@@ -40,7 +40,7 @@ export const canvasApi = {
   collapse: (ids: string[], collapsed: boolean) =>
     post("/api/canvas/collapse", { ids, collapsed }).then((r) => json<{ ok: true }>(r)),
 
-  move: (moves: { id: string; x: number; y: number }[]) =>
+  move: (moves: { id: string; x: number; y: number; h?: number }[]) =>
     post("/api/canvas/move", { moves }).then((r) => json<{ ok: true }>(r)),
 
   retry: (cardId: string, images?: { marked: string; crop: string }) =>
