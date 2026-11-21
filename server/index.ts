@@ -248,7 +248,9 @@ app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const card = await store.findItem(c.req.param("id"));
   if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
-  if (card.stage !== "failed") return c.json({ error: "only a failed card can be retried" }, 409);
+  // A linked page can be read again at any time (it may have changed); anything else only after failing.
+  const reread = card.origin?.kind === "page" && card.stage === "done";
+  if (card.stage !== "failed" && !reread) return c.json({ error: "only a failed card can be retried" }, 409);
   const parent = await store.findItem(card.parentId);
   if (card.origin?.kind === "page") {
     await store.update(card.id, { stage: "reading", error: "" });

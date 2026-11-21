@@ -10,7 +10,7 @@ import { parseHTML } from "linkedom";
 
 const USER_AGENT = "librarian (open-source study tool; https://github.com/kristopolous/librarian)";
 const MAX_BYTES = 3_000_000;
-const MAX_TEXT = 24_000;
+const MAX_TEXT = 40_000;
 const MAX_REDIRECTS = 4;
 
 function privateV4(ip: string): boolean {
@@ -90,26 +90,118 @@ export interface ReadPage {
 const tidy = (s: string) =>
   s
     .replace(/\r/g, "")
-    .replace(/[ \t]+\n/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
     .slice(0, MAX_TEXT);
 
-/** Wikipedia's own API gives clean text, with formulas as LaTeX, rather than the page's HTML. */
+// Math is kept as LaTeX between \( \) (inline) or \[ \] (on its own line), which the canvas
+// renders and the language model reads, instead of the flattened characters a page's text gives.
+
+/** The LaTeX behind a math element: Wikipedia's source, a MathML annotation, or alt text. */
+function texOf(el: Element): string {
+  const mw = el.getAttribute("data-mw");
+  if (mw) {
+    try {
+      const src = JSON.parse(mw)?.body?.extsrc;
+      if (typeof src === "string") return src.trim();
+    } catch {}
+  }
+  const note = el.querySelector('annotation[encoding="application/x-tex"]');
+  if (note?.textContent) return note.textContent.trim();
+  const alt = el.getAttribute("alttext") ?? "";
+  return alt.replace(/^\{\\displaystyle\s*([\s\S]*)\}$/, "$1").trim();
+}
+
+const escapeTex = (s: string) => s.replace(/[\\{}$&#%_^~]/g, (c) => (c === "\\" ? "\\backslash " : `\\${c}`));
+
+/** Replaces every formula in the page with its LaTeX as text, before anything else reads it. */
+function mathToTex(document: Document): void {
+  const swap = (el: Element, tex: string, block: boolean) => {
+    if (!tex) return;
+    el.replaceWith(document.createTextNode(block ? ` \\[${tex}\\] ` : `\\(${tex}\\)`));
+  };
+  for (const el of [...document.querySelectorAll("math")]) {
+    swap(el, texOf(el), el.getAttribute("display") === "block" || /math-element-block/.test(el.getAttribute("class") ?? ""));
+  }
+  // MathJax pages keep their source in script tags.
+  for (const el of [...document.querySelectorAll('script[type^="math/tex"]')]) {
+    swap(el, (el.textContent ?? "").trim(), /mode=display/.test(el.getAttribute("type") ?? ""));
+  }
+  // Wikipedia's lighter {{math}} formulas use HTML subscripts and superscripts.
+  for (const el of [...document.querySelectorAll("sub, sup")]) {
+    const t = (el.textContent ?? "").trim();
+    if (!t || t.length > 20 || /reference/.test(el.getAttribute("class") ?? "")) continue;
+    swap(el, `${el.tagName.toLowerCase() === "sub" ? "_" : "^"}{${escapeTex(t)}}`, false);
+  }
+}
+
+const SKIP =
+  "script, style, noscript, link, meta, nav, footer, form, button, .mw-editsection, .reference, .mw-references-wrap, .reflist, " +
+  ".navbox, .sidebar, .vertical-navbox, .infobox, .side-box, .rightHandSide, .mw-heading .mw-editsection, .hatnote, .metadata, .ambox, .sistersitebox, .noprint, .shortdescription, .mw-cite-backlink, .mw-empty-elt";
+const BLOCK = new Set(["p", "div", "section", "article", "dl", "dd", "dt", "ul", "ol", "table", "tr", "figure", "blockquote", "pre", "center"]);
+const SKIP_SECTIONS = /^(references|notes|external links|further reading|see also|bibliography|citations|sources)$/i;
+
+/** Plain text with paragraphs, "## " headings, bullets and images, from an element's HTML. */
+function textOf(root: Element, base: URL): string {
+  const out: string[] = [];
+  const walk = (n: Node) => {
+    if (n.nodeType === 3) {
+      out.push((n.textContent ?? "").replace(/\s+/g, " "));
+      return;
+    }
+    if (n.nodeType !== 1) return;
+    const el = n as Element;
+    const tag = el.tagName.toLowerCase();
+    if (el.matches(SKIP)) return;
+    if (/^h[1-6]$/.test(tag)) {
+      const t = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (t) out.push(`\n\n## ${t}\n\n`);
+      return;
+    }
+    if (tag === "section") {
+      const h = el.querySelector(":scope > h2, :scope > h3, :scope > h4");
+      if (h && SKIP_SECTIONS.test((h.textContent ?? "").trim())) return;
+    }
+    if (tag === "img") {
+      // Diagrams carry much of the meaning in math pages; icons and spacers don't.
+      const src = el.getAttribute("src") ?? "";
+      const w = Number(el.getAttribute("width") ?? 999);
+      if (!src || w < 40 || src.startsWith("data:")) return;
+      try {
+        const url = new URL(src, base);
+        if (url.protocol !== "https:") return;
+        const alt = (el.getAttribute("alt") ?? "").replace(/[\[\]\n]/g, " ").trim();
+        out.push(`\n\n![${alt}](${url.toString()})\n\n`);
+      } catch {}
+      return;
+    }
+    if (tag === "br") return void out.push("\n");
+    if (tag === "li") out.push("\n• ");
+    const block = BLOCK.has(tag);
+    if (block) out.push("\n\n");
+    for (const c of el.childNodes) walk(c);
+    if (block) out.push("\n\n");
+    else if (tag === "td" || tag === "th") out.push(" ");
+    else if (tag === "li") out.push("\n");
+  };
+  walk(root);
+  // Displayed formulas stand on their own line.
+  return tidy(out.join("").replace(/•\s*\n+/g, "• ").replace(/\s*\\\[([\s\S]*?)\\\]\s*/g, "\n\n\\[$1\\]\n\n"));
+}
+
+/** Wikipedia's own HTML keeps each formula's LaTeX source; its plain-text extract flattens them. */
 async function readWikipedia(url: URL): Promise<ReadPage | null> {
   const m = url.pathname.match(/^\/wiki\/(.+)$/);
   if (!m || !/(^|\.)wikipedia\.org$/.test(url.hostname)) return null;
-  const title = decodeURIComponent(m[1]).replace(/_/g, " ");
-  const api = new URL(`https://${url.hostname}/w/api.php`);
-  for (const [k, v] of Object.entries({ action: "query", prop: "extracts", explaintext: "1", redirects: "1", titles: title, format: "json", formatversion: "2" })) {
-    api.searchParams.set(k, v);
-  }
-  const { body } = await fetchPublic(api.toString());
-  const page = JSON.parse(body)?.query?.pages?.[0];
-  if (!page?.extract) return null;
-  // Section headings come as "== Heading =="; keep them as plain headings.
-  const text = String(page.extract).replace(/^=+\s*(.+?)\s*=+$/gm, "\n$1\n");
-  return { url: `https://${url.hostname}/wiki/${encodeURIComponent(page.title.replace(/ /g, "_"))}`, title: page.title, site: "Wikipedia", text: tidy(text) };
+  const page = await fetchPublic(`https://${url.hostname}/api/rest_v1/page/html/${m[1]}`);
+  const { document } = parseHTML(page.body);
+  mathToTex(document as unknown as Document);
+  const title = (document.querySelector("title")?.textContent ?? decodeURIComponent(m[1]).replace(/_/g, " ")).trim();
+  const text = textOf(document.body as unknown as Element, page.url);
+  if (!text) return null;
+  return { url: `https://${url.hostname}/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`, title, site: "Wikipedia", text };
 }
 
 /** The readable text of a public web page: its title and main content, without navigation and ads. */
@@ -125,8 +217,11 @@ export async function readPage(link: string): Promise<ReadPage> {
     return { url: page.url.toString(), title: page.url.pathname.split("/").pop() || page.url.hostname, site: page.url.hostname, text: tidy(page.body) };
   }
   const { document } = parseHTML(page.body);
+  mathToTex(document as unknown as Document);
+  // Readability drops class names, so side panels and tables of contents go first.
+  for (const el of [...document.querySelectorAll(`${SKIP}, #toc, .toc, .maruku_toc, #Context`)]) el.remove();
   const article = new Readability(document as unknown as Document).parse();
-  const text = tidy(article?.textContent ?? "");
+  const text = article?.content ? textOf(parseHTML(`<!doctype html><html><body>${article.content}</body></html>`).document.body as unknown as Element, page.url) : "";
   if (!text) throw new Error("Couldn't find readable text on that page.");
   return {
     url: page.url.toString(),
