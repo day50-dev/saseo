@@ -59,6 +59,28 @@ export interface Sem {
   name: string;
 }
 
+/**
+ * Principle 9: the same English words can be a strict term of art or casual description, and
+ * an outsider can't tell which. Every phrase the librarian explains or flags carries its register.
+ */
+export type Register = "term" | "idiom" | "casual" | "notation";
+
+export const REGISTERS: Record<Register, { label: string; gloss: string }> = {
+  term: { label: "Term of art", gloss: "a technical term with a strict definition" },
+  idiom: { label: "Idiom", gloss: "a standard move or phrase insiders use, with a precise meaning that's rarely spelled out" },
+  casual: { label: "Informal", gloss: "everyday language the author is using loosely" },
+  notation: { label: "Loosened notation", gloss: "a symbol used roughly, meaning 'morally this, details skipped'" },
+};
+
+export interface RegisterNote {
+  text: string;
+  register: Register;
+  /** For informal language and loosened notation: what is actually meant. For a term: a short gloss. */
+  means: string;
+  /** Where a term of art comes from, when it was borrowed from another field. */
+  field?: string;
+}
+
 export interface FoundSource {
   n: number; // citation number used in the facets, [n]
   url: string;
@@ -78,6 +100,8 @@ export interface CardItem extends ItemState {
   selection?: string;
   /** The sentence or line those words sat in, which says what they refer to. */
   context?: string;
+  /** For a descent: whether the selected words were a strict term, an idiom, casual, or notation. */
+  register?: RegisterNote;
   x: number;
   y: number;
   w: number;

@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import type { CardItem, CardStage, FoundSource } from "../shared/canvas.ts";
+import { type CardItem, type CardStage, type FoundSource, REGISTERS, type RegisterNote } from "../shared/canvas.ts";
 import { SemShapes } from "./SemShapes.tsx";
 
 const STAGE_TEXT: Record<CardStage, string> = {
@@ -152,6 +152,7 @@ export function Card(props: {
         </p>
       ) : (
       <>
+      {card.register && <RegisterBanner note={card.register} />}
       {card.transcription && card.transcription !== card.subject && <div className="transcription">{card.transcription}</div>}
 
       {busy && (
@@ -225,6 +226,24 @@ export function Card(props: {
         >
           Explain “{picked.text.length > 40 ? `${picked.text.slice(0, 40)}…` : picked.text}”
         </button>
+      )}
+    </div>
+  );
+}
+
+/** Says up front whether the selected words were a strict term or casual language (principle 9). */
+function RegisterBanner({ note }: { note: RegisterNote }) {
+  const r = REGISTERS[note.register];
+  const loose = note.register === "casual" || note.register === "notation";
+  return (
+    <div className={`register-banner reg-${note.register}`}>
+      <span className="register-label">{r.label}</span> “{note.text}” is {r.gloss}
+      {note.field ? `, borrowed from ${note.field}` : ""}.
+      {note.means && (
+        <div className="register-means">
+          {loose ? "What's meant: " : ""}
+          {note.means}
+        </div>
       )}
     </div>
   );

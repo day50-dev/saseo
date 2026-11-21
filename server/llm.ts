@@ -44,6 +44,25 @@ export async function chatJson<T>(ep: Endpoint, messages: Message[]): Promise<T>
   }
 }
 
+/** One System One choice question; returns the chosen option and the model's confidence in it. */
+export async function decideChoice(
+  ep: Endpoint,
+  state: unknown,
+  instructions: string,
+  criteria: Record<string, string>,
+): Promise<{ choice: string; confidence: number }> {
+  const res = await fetch(`${ep.baseUrl}/systemone`, {
+    method: "POST",
+    headers: headers(ep),
+    signal: AbortSignal.timeout(30_000),
+    body: JSON.stringify({ model: ep.model, state, questions: { q: { type: "choice", instructions, criteria } } }),
+  });
+  if (!res.ok) throw new Error(`System One: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+  const a = (await res.json())?.answers?.q;
+  if (typeof a?.choice !== "string") throw new Error("System One: no choice in response");
+  return { choice: a.choice, confidence: typeof a.confidence === "number" ? a.confidence : 0 };
+}
+
 export const systemOneConfigured = (ep: Endpoint) => Boolean(ep.baseUrl && ep.model);
 
 /** One yes/no System One question; returns the probability of yes. */

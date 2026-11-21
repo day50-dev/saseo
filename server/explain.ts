@@ -1,10 +1,10 @@
 // The librarian's loop for one card: read the region, go fish, write a descending
 // explanation from what was found, then check that it doesn't climb.
-import type { CardItem, FoundSource, Item, Sem } from "../shared/canvas.ts";
+import type { CardItem, FoundSource, Item, Register, RegisterNote, Sem } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { findItem, update } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
-import { chatJson, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
+import { chatJson, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { runSearch } from "./providers.ts";
 
 const IDENTIFY = `You help a curious, intelligent reader who is not a specialist. They selected part of an image because they don't understand it.
@@ -235,19 +235,41 @@ const RESOLVE = `A reader selected some words inside an explanation because they
 Work out what idea those words refer to IN THAT SENTENCE. Explanations often use everyday stand-ins
 ("an invisible push", "spread-out flow") for a real concept, and searching the literal words finds
 nothing useful. Name the real concept the way an introductory textbook would title it.
+
+Also judge the REGISTER of the selected words as used in that sentence. Mathematical writing switches
+without warning between strict terms of art and casual description, and both look like plain English:
+- "term": a technical term with a strict definition (e.g. "energy space", "well-posed", "Coulomb gauge")
+- "idiom": a standard insider phrase or move with a precise meaning rarely spelled out (e.g. "closes the bootstrap")
+- "casual": everyday words used loosely, often pointing at something precise (e.g. "+ better", "the worst term", "rougher")
+- "notation": a symbol or formula used roughly, e.g. inside quote marks, meaning "morally this"
 Return JSON only, no prose:
 {"concept": "the standard name of the idea, 2-6 words",
- "searchQuery": "2-6 plain words for BEGINNER material (intro notes, textbook chapters, videos) on that concept, without terms specific to the page"}`;
+ "searchQuery": "2-6 plain words for BEGINNER material (intro notes, textbook chapters, videos) on that concept, without terms specific to the page",
+ "register": "term" | "idiom" | "casual" | "notation",
+ "means": "for casual words or notation: what is actually meant, precisely, in one sentence; for a term or idiom: a one-line plain gloss",
+ "field": "for a term borrowed from another area of mathematics or physics, that area; otherwise empty"}`;
+
+const REGISTER_QUESTION =
+  "In the sentence, are the selected words a strict technical term, an insider idiom, casual everyday language, or loosely used notation?";
+
+const REGISTER_CRITERIA: Record<Register, string> = {
+  term: "A technical term with a strict, formal definition.",
+  idiom: "A standard insider phrase or proof move with a precise meaning that is rarely spelled out.",
+  casual: "Everyday words used loosely or descriptively, not a defined term.",
+  notation: "A symbol or formula used roughly, such as inside quote marks, meaning approximately.",
+};
+
+const isRegister = (v: unknown): v is Register => typeof v === "string" && v in REGISTER_CRITERIA;
 
 /** What the selected words name, as a concept and a beginner search; null if the model can't say. */
 async function resolveSelection(
   selection: string,
   sentence: string | undefined,
   context: string,
-): Promise<{ concept: string; searchQuery: string } | null> {
+): Promise<{ concept: string; searchQuery: string; register?: Omit<RegisterNote, "text"> } | null> {
   const config = await loadConfig();
   try {
-    const r = await chatJson<{ concept?: string; searchQuery?: string }>(config.llm, [
+    const r = await chatJson<{ concept?: string; searchQuery?: string; register?: string; means?: string; field?: string }>(config.llm, [
       { role: "system", content: RESOLVE },
       {
         role: "user",
@@ -262,11 +284,44 @@ async function resolveSelection(
     ]);
     const concept = str(r.concept);
     const searchQuery = str(r.searchQuery);
-    return concept && searchQuery ? { concept, searchQuery } : null;
+    if (!concept || !searchQuery) return null;
+    let register = isRegister(r.register) ? r.register : undefined;
+
+    // Register is a typed choice, which is what the fast decision model is for. Its answer wins
+    // when it is confident; the LLM's judgement is the fallback.
+    if (systemOneConfigured(config.systemOne)) {
+      try {
+        const d = await decideChoice(
+          config.systemOne,
+          { selected: selection, sentence: sentence ?? "", context },
+          REGISTER_QUESTION,
+          REGISTER_CRITERIA,
+        );
+        if (isRegister(d.choice) && d.confidence >= 0.6) register = d.choice;
+      } catch {
+        // Advisory: keep the LLM's answer.
+      }
+    }
+    return {
+      concept,
+      searchQuery,
+      register: register ? { register, means: str(r.means), field: str(r.field) || undefined } : undefined,
+    };
   } catch {
     return null;
   }
 }
+
+const REGISTER_GUIDANCE: Record<Register, string> = {
+  term:
+    "The selected words are a TERM OF ART with a strict definition. Give that actual definition, reached by descending from familiar ideas, and don't blur it into a loose analogy.",
+  idiom:
+    "The selected words are an INSIDER IDIOM. Say what the standard move or phrase means precisely, and why insiders say it this way.",
+  casual:
+    "The selected words are INFORMAL: the author is speaking loosely. Explain what they are pointing at, precisely, and make clear the words themselves aren't a defined term.",
+  notation:
+    "The selected notation is used LOOSELY (for example in quote marks). Explain the rough statement and what the exact one would add.",
+};
 
 /** For words the learner selected inside another card: explain them one level further down. */
 export function explainSelection(cardId: string) {
@@ -283,10 +338,12 @@ export function explainSelection(cardId: string) {
     const resolved = await resolveSelection(selection, card.context, context);
     const subject = resolved?.concept ?? selection;
     const quoted = card.context ? `“${selection}” in: ${card.context}` : selection;
-    await update(cardId, { stage: "searching", subject, topic, transcription: card.context ? quoted : undefined });
+    const register: RegisterNote | undefined = resolved?.register ? { text: selection, ...resolved.register } : undefined;
+    await update(cardId, { stage: "searching", subject, topic, transcription: card.context ? quoted : undefined, register });
 
     const sources = await search(resolved ? `${resolved.searchQuery} introduction` : `${selection} explained introduction`);
     await update(cardId, { stage: "writing", sources });
-    await write(card, subject, quoted, topic, path, sources, context);
+    const guidance = register ? `${REGISTER_GUIDANCE[register.register]}${register.means ? ` (${register.means})` : ""}` : "";
+    await write(card, subject, quoted, topic, path, sources, [context, guidance].filter(Boolean).join("\n\n"));
   });
 }
