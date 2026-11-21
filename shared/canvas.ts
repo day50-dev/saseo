@@ -231,6 +231,15 @@ export interface CanvasInfo {
   createdAt: string;
   /** Who it belongs to when accounts are on. Canvases from before accounts belong to the admins. */
   owner?: string;
+  /** In the trash since then. Nothing in it is deleted; it can be restored. */
+  trashedAt?: string;
+}
+
+/** A canvas as the list shows it: its name, plus what it holds and when it last changed. */
+export interface CanvasSummary extends CanvasInfo {
+  updatedAt: string;
+  cards: number;
+  pages: number;
 }
 
 export interface LoggedEvent {
@@ -242,6 +251,8 @@ export interface LoggedEvent {
 export interface CanvasState {
   seq: number;
   items: Item[];
+  /** When the last event was recorded. */
+  updatedAt?: string;
 }
 
 export const CARD_WIDTH = 480;

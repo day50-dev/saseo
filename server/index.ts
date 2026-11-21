@@ -3,9 +3,9 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono, type Next } from "hono";
 import { readFile } from "node:fs/promises";
-import { CARD_WIDTH, type CanvasInfo, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, type CanvasInfo, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
-import { assetPath, type CanvasStore, canvasStore, createCanvas, getCanvasInfo, listCanvases, newId, renameCanvas, saveAsset } from "./canvas.ts";
+import { assetPath, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { explainRegion, explainRelation, explainSelection, handleChat, makeObject } from "./explain.ts";
@@ -111,9 +111,23 @@ app.get("/api/arxiv/pdf", async (c) => {
 
 // ---- Canvas ----
 
+// The list says what each canvas holds and when it last changed, newest first.
 app.get("/api/canvases", async (c) => {
   const user = c.get("user");
-  return c.json((await listCanvases()).filter((info) => canOpen(info, user)));
+  const mine = (await listCanvases()).filter((info) => canOpen(info, user));
+  const summaries: CanvasSummary[] = await Promise.all(
+    mine.map(async (info) => {
+      const state = await (await canvasStore(info.id))!.getState();
+      const visible = state.items.filter((i) => !i.hidden);
+      return {
+        ...info,
+        updatedAt: state.updatedAt ?? info.createdAt,
+        cards: visible.filter((i) => i.kind === "card").length,
+        pages: visible.filter((i) => i.kind === "image").length,
+      };
+    }),
+  );
+  return c.json(summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
 });
 
 app.post("/api/canvases", async (c) => {
@@ -121,10 +135,17 @@ app.post("/api/canvases", async (c) => {
   return c.json(await createCanvas(name ?? "", AUTH_ON ? c.get("user").id : undefined));
 });
 
+// Rename, or move into or out of the trash. Nothing is ever deleted.
 app.patch("/api/canvases/:cid", async (c) => {
-  const { name } = (await c.req.json()) as { name?: string };
+  const { name, trashed } = (await c.req.json()) as { name?: string; trashed?: boolean };
   if (!(await canvasFor(c))) return c.json({ error: "unknown canvas" }, 404);
-  const info = await renameCanvas(c.req.param("cid"), name ?? "");
+  const info = await updateCanvas(c.req.param("cid"), { name, trashed: typeof trashed === "boolean" ? trashed : undefined });
+  return info ? c.json(info) : c.json({ error: "unknown canvas" }, 404);
+});
+
+app.post("/api/canvases/:cid/duplicate", async (c) => {
+  if (!(await canvasFor(c))) return c.json({ error: "unknown canvas" }, 404);
+  const info = await duplicateCanvas(c.req.param("cid"), AUTH_ON ? c.get("user").id : undefined);
   return info ? c.json(info) : c.json({ error: "unknown canvas" }, 404);
 });
 

@@ -85,13 +85,33 @@ export const createCanvas = (name: string, owner?: string) =>
     return info;
   });
 
-export const renameCanvas = (id: string, name: string) =>
+/** Renames a canvas, or moves it into or out of the trash. */
+export const updateCanvas = (id: string, change: { name?: string; trashed?: boolean }) =>
   changeIndex((list) => {
     const info = list.find((c) => c.id === id);
-    const clean = cleanName(name);
-    if (info && clean) info.name = clean;
-    return info ?? null;
+    if (!info) return null;
+    const clean = cleanName(change.name);
+    if (clean) info.name = clean;
+    if (change.trashed === true && !info.trashedAt) info.trashedAt = new Date().toISOString();
+    if (change.trashed === false) delete info.trashedAt;
+    return info;
   });
+
+/** A new canvas holding a copy of everything on another, as of now. */
+export async function duplicateCanvas(id: string, owner?: string): Promise<CanvasInfo | null> {
+  const from = await getCanvasInfo(id);
+  if (!from) return null;
+  const store = await canvasStore(id);
+  await store?.settled();
+  const info = await createCanvas(`Copy of ${from.name}`.slice(0, 120), owner);
+  try {
+    await copyFile(path.join(CANVAS_DIR, `${id}.jsonl`), path.join(CANVAS_DIR, `${info.id}.jsonl`));
+  } catch (err) {
+    // A canvas nothing was ever added to has no log yet; the copy is simply empty too.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  return info;
+}
 
 export async function getCanvasInfo(id: string): Promise<CanvasInfo | undefined> {
   return (await listCanvases()).find((c) => c.id === id);
@@ -127,6 +147,7 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
     for (const item of s.items) if (ids.has(item.id)) item.hidden = e.type === "hide";
   }
   s.seq = logged.seq;
+  s.updatedAt = logged.at;
 }
 
 /** What disappears along with an item: an image takes its boxes, a box its cards, a card the cards below it. */
@@ -229,6 +250,11 @@ export class CanvasStore {
     const s = await this.getState();
     if (!this.live.size) return s;
     return { ...s, items: s.items.map((i) => (i.kind === "card" && this.live.has(i.id) ? { ...i, ...this.live.get(i.id) } : i)) };
+  }
+
+  /** Resolves once every event already sent has been written. */
+  settled(): Promise<void> {
+    return this.queue.then(() => {});
   }
 
   add = (item: Item) => this.record({ type: "add", item });
