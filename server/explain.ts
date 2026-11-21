@@ -28,7 +28,10 @@ Return JSON only, no prose:
  "parts": [{"symbol": "a piece of the formula or name, copied as written", "meaning": "what that piece is, 2-6 words", "note": "one short gloss"}],
  "together": "if there are parts: what they add up to, one sentence; otherwise empty",
  "here": ["1 to 3 steps: how it is used on this page specifically"],
- "name": "what the words of its name mean, or an empty string if that isn't illuminating"}
+ "name": "what the words of its name mean, or an empty string if that isn't illuminating",
+ "terms": ["every technical term of art you used above, copied exactly as you wrote it"],
+ "standIns": [{"phrase": "an everyday phrase you used above in place of a technical term, copied exactly", "concept": "the technical term it stands for"}]}
+Mark the register honestly: a reader can't otherwise tell your strict terms from your plain-language stand-ins.
 Use "parts" only when the subject is a formula or a compound whose pieces each mean something (2 to 5 parts); otherwise return [].`;
 
 const CLIMB_QUESTION =
@@ -50,7 +53,10 @@ async function ancestry(card: CardItem): Promise<{ path: string[]; topic?: strin
 
 /** A card's explanation as plain text: the structure for newer cards, paragraphs for older ones. */
 function cardText(c: CardItem): string {
-  if (c.sem) return semText(c.sem);
+  if (c.sem) {
+    const standIns = (c.sem.standIns ?? []).map((s) => `"${s.phrase}" stands for ${s.concept}`);
+    return [semText(c.sem), standIns.length ? `Plain-language stand-ins used: ${standIns.join("; ")}` : ""].filter(Boolean).join("\n");
+  }
   if (c.facets) return [c.facets.why, c.facets.what, c.facets.how].filter(Boolean).join("\n");
   return "";
 }
@@ -121,6 +127,12 @@ function cleanSem(raw: Record<string, unknown>): Sem {
     together: parts.length >= 2 ? str(raw.together) : "",
     here: strs(raw.here ?? raw.how, 3),
     name: str(raw.name),
+    terms: strs(raw.terms, 12),
+    standIns: (Array.isArray(raw.standIns) ? raw.standIns : [])
+      .map((s) => s as Record<string, unknown>)
+      .map((s) => ({ phrase: str(s.phrase), concept: str(s.concept) }))
+      .filter((s) => s.phrase && s.concept)
+      .slice(0, 8),
   };
 }
 

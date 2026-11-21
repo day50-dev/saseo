@@ -57,6 +57,10 @@ export interface Sem {
   together: string;
   here: string[];
   name: string;
+  /** Terms of art the explanation itself uses, as written: drawn so they read as strict terms. */
+  terms?: string[];
+  /** Everyday phrases standing in for a real term ("an invisible push" for "magnetic field"). */
+  standIns?: { phrase: string; concept: string }[];
 }
 
 /**

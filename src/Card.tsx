@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { type CardItem, type CardStage, type FoundSource, REGISTERS, type RegisterNote } from "../shared/canvas.ts";
+import { type CardItem, type CardStage, type FoundSource, REGISTERS, type RegisterNote, type Sem } from "../shared/canvas.ts";
 import { SemShapes } from "./SemShapes.tsx";
 
 const STAGE_TEXT: Record<CardStage, string> = {
@@ -36,6 +36,35 @@ function withCitations(text: string, sources: FoundSource[]): ReactNode[] {
       <a key={i} className="cite" href={src.url} target="_blank" rel="noreferrer" title={src.title}>
         {src.n}
       </a>
+    );
+  });
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Marks the register of an explanation's own words (principle 9): terms of art read as strict
+ * terms, and everyday stand-ins say which real term they stand for. Citations render inside.
+ */
+function withRegister(text: string, sem: Sem, sources: FoundSource[]): ReactNode[] {
+  const marks = new Map<string, { kind: "term" | "standin"; concept?: string }>();
+  for (const t of sem.terms ?? []) if (t.length > 1) marks.set(t.toLowerCase(), { kind: "term" });
+  for (const s of sem.standIns ?? []) if (s.phrase.length > 1) marks.set(s.phrase.toLowerCase(), { kind: "standin", concept: s.concept });
+  if (!marks.size) return withCitations(text, sources);
+  // Longest first, so "magnetic field" wins over "field".
+  const pattern = new RegExp(`(${[...marks.keys()].sort((a, b) => b.length - a.length).map(escapeRe).join("|")})`, "gi");
+  return text.split(pattern).map((part, i) => {
+    const m = marks.get(part.toLowerCase());
+    if (!m) return <span key={i}>{withCitations(part, sources)}</span>;
+    return m.kind === "term" ? (
+      <span key={i} className="sem-term" title="Term of art: a technical term with a strict definition. Select it to go further down.">
+        {part}
+      </span>
+    ) : (
+      <span key={i} className="sem-standin" title={`Plain-language stand-in for: ${m.concept}`}>
+        {part}
+        <span className="sem-standin-for">{m.concept}</span>
+      </span>
     );
   });
 }
@@ -174,7 +203,7 @@ export function Card(props: {
         <SemShapes
           title={card.subject ?? "Explanation"}
           sem={card.sem}
-          render={(t) => withCitations(t, sources)}
+          render={(t) => withRegister(t, card.sem!, sources)}
           onTitlePointerDown={props.onGrab}
         />
       )}

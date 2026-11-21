@@ -334,3 +334,11 @@ kbd {
 .reg-idiom { --reg-c: var(--sem-parts); }
 .reg-casual { --reg-c: #b06a1d; }
 .reg-notation { --reg-c: #8a5a00; }
+/* A term of art reads as one; a stand-in names the real term it replaces. */
+.sem-term { text-decoration: underline dotted var(--sem-what); text-underline-offset: 3px; text-decoration-thickness: 2px; }
+.sem-standin { background: color-mix(in srgb, #b06a1d 10%, transparent); border-radius: 3px; padding: 0 2px; }
+.sem-standin-for {
+  font-size: 10.5px; font-style: normal; color: #b06a1d; margin-left: 4px; padding: 0 4px;
+  border: 1px solid color-mix(in srgb, #b06a1d 45%, transparent); border-radius: 8px; white-space: nowrap;
+  user-select: none;
+}
