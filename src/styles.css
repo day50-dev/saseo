@@ -312,3 +312,13 @@ kbd {
 .card-head h3 { user-select: none; }
 .card-item.moving { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
 .untangle { font-size: 13px; padding: 4px 10px; font-weight: 500; flex-shrink: 0; }
+
+/* ---- Collapsing ---- */
+.fold-btn {
+  width: 20px; height: 20px; padding: 0; border: none; background: none; flex-shrink: 0;
+  color: var(--muted); font-size: 12px; line-height: 1; cursor: pointer;
+}
+.fold-btn:hover { color: var(--accent); }
+.folded-count { margin: 4px 0 0 26px; font-size: 12px; color: var(--muted); }
+.image-grip .folded-count { margin: 0 0 0 8px; }
+.image-grip .fold-btn { margin-left: -6px; }

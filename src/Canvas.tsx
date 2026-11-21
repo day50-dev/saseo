@@ -517,9 +517,44 @@ export function Canvas() {
     }
   };
 
+  // ---- Collapsing ----
+  // A collapsed image or card keeps its place and shows only its title; everything hanging off
+  // it is out of view until it's expanded. Folded cards still hold their space, so expanding
+  // never lands on top of anything.
+
+  const folded = useMemo(() => {
+    const out = new Set<string>();
+    for (const i of items) if (i.collapsed) for (const id of subtree(i.id)) if (id !== i.id) out.add(id);
+    return out;
+    // `subtree` reads `items`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+  const visibleRegions = regions.filter((r) => !folded.has(r.id));
+  const visibleCards = cards.filter((c) => !folded.has(c.id));
+  const cardsBelow = (id: string) => subtree(id).filter((d) => d !== id && byId.get(d)?.kind === "card").length;
+
+  const toggleCollapse = async (id: string) => {
+    const item = byId.get(id);
+    if (!item) return;
+    const next = !item.collapsed;
+    // Show the change at once; the refresh confirms it.
+    setItems((all) => all.map((i) => (i.id === id ? { ...i, collapsed: next } : i)));
+    try {
+      await canvasApi.collapse([id], next);
+      pushStep({
+        label: next ? "collapse" : "expand",
+        undo: () => canvasApi.collapse([id], !next),
+        redo: () => canvasApi.collapse([id], next),
+      });
+    } catch (e) {
+      setError(`Couldn't ${next ? "collapse" : "expand"}: ${e}`);
+    }
+    await refresh();
+  };
+
   // ---- Connectors ----
 
-  const connectors = cards.flatMap((c) => {
+  const connectors = visibleCards.flatMap((c) => {
     const parent = byId.get(c.parentId);
     let from: { x: number; y: number } | null = null;
     if (parent?.kind === "region") {
@@ -633,7 +668,8 @@ export function Canvas() {
               alt={img.name}
               draggable={false}
               className="source-image"
-              style={{ left: img.x, top: img.y, width: img.w, height: img.h }}
+              // A collapsed image stays loaded (retry reads its pixels) but out of view.
+              style={{ left: img.x, top: img.y, width: img.w, height: img.h, display: img.collapsed ? "none" : undefined }}
               onPointerDown={(e) => {
                 // In pan mode the event bubbles to the stage, which pans.
                 if (e.button !== 0 || panning) return;
@@ -650,12 +686,25 @@ export function Canvas() {
               className="image-grip"
               style={{ left: img.x, top: img.y - 26, width: img.w }}
               title="Drag to move this image with its boxes and explanations"
-              onPointerDown={(e) => startMove(img.id, e)}
+              onPointerDown={(e) => {
+                if ((e.target as HTMLElement).closest("button")) return;
+                startMove(img.id, e);
+              }}
             >
+              <button
+                type="button"
+                className="fold-btn"
+                aria-expanded={!img.collapsed}
+                title={img.collapsed ? "Expand this image and its explanations" : "Collapse this image and everything on it"}
+                onClick={() => toggleCollapse(img.id)}
+              >
+                {img.collapsed ? "▸" : "▾"}
+              </button>
               <span aria-hidden>⠿</span> {img.name}
+              {img.collapsed && <span className="folded-count">{cardsBelow(img.id)} cards folded</span>}
             </div>
           ))}
-          {images.map((img) => (
+          {images.filter((img) => !img.collapsed).map((img) => (
             <button
               key={`x-${img.id}`}
               type="button"
@@ -669,7 +718,7 @@ export function Canvas() {
             </button>
           ))}
 
-          {regions.map((r) => {
+          {visibleRegions.map((r) => {
             const w = regionWorld(r);
             if (!w) return null;
             const card = cards.find((c) => c.parentId === r.id);
@@ -707,10 +756,12 @@ export function Canvas() {
 
           {draftRect && <div className="region drafting" style={{ left: draftRect.x, top: draftRect.y, width: draftRect.w, height: draftRect.h }} />}
 
-          {cards.map((c) => (
+          {visibleCards.map((c) => (
             <Card
               key={c.id}
               card={c}
+              foldedCount={c.collapsed ? cardsBelow(c.id) : 0}
+              onToggleCollapse={() => toggleCollapse(c.id)}
               lit={hover === c.id || hover === c.parentId}
               onHover={(on) => setHover(on ? c.id : null)}
               onHeight={(h) => setHeights((all) => (all[c.id] === h ? all : { ...all, [c.id]: h }))}

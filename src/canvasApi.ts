@@ -30,6 +30,9 @@ export const canvasApi = {
   /** Hides items and whatever depends on them; returns everything that was hidden. */
   hide: (ids: string[]) => post("/api/canvas/hide", { ids }).then((r) => json<{ ids: string[] }>(r)),
 
+  collapse: (ids: string[], collapsed: boolean) =>
+    post("/api/canvas/collapse", { ids, collapsed }).then((r) => json<{ ok: true }>(r)),
+
   move: (moves: { id: string; x: number; y: number }[]) =>
     post("/api/canvas/move", { moves }).then((r) => json<{ ok: true }>(r)),
 

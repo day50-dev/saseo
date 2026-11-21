@@ -51,6 +51,9 @@ export function Card(props: {
   /** Pointer down on the header: start moving this card and the cards below it. */
   onGrab: (e: React.PointerEvent) => void;
   moving: boolean;
+  /** How many cards are folded away below this one while it's collapsed. */
+  foldedCount: number;
+  onToggleCollapse: () => void;
 }) {
   const { card, onHeight } = props;
   const ref = useRef<HTMLDivElement>(null);
@@ -109,8 +112,17 @@ export function Card(props: {
           props.onGrab(e);
         }}
       >
-        {/* With a Sem, the subject is drawn as the diagram's document title instead. */}
-        <h3>{card.sem ? "" : (card.subject ?? (card.stage === "reading" ? "…" : "Explanation"))}</h3>
+        <button
+          type="button"
+          className="fold-btn"
+          aria-expanded={!card.collapsed}
+          title={card.collapsed ? "Expand this card and the cards below it" : "Collapse this card and the cards below it"}
+          onClick={props.onToggleCollapse}
+        >
+          {card.collapsed ? "▸" : "▾"}
+        </button>
+        {/* With a Sem, the subject is drawn as the diagram's document title instead, unless collapsed. */}
+        <h3>{card.sem && !card.collapsed ? "" : (card.subject ?? (card.stage === "reading" ? "…" : "Explanation"))}</h3>
         {card.climb !== undefined && (
           <span
             className={`badge ${card.climb < 0.5 ? "ok" : "fail"}`}
@@ -129,6 +141,13 @@ export function Card(props: {
           ×
         </button>
       </div>
+      {card.collapsed ? (
+        <p className="folded-count">
+          {props.foldedCount ? `${props.foldedCount} ${props.foldedCount === 1 ? "card" : "cards"} folded below` : "Collapsed"}
+          {busy ? ` · ${STAGE_TEXT[card.stage]}` : ""}
+        </p>
+      ) : (
+      <>
       {card.transcription && card.transcription !== card.subject && <div className="transcription">{card.transcription}</div>}
 
       {busy && (
@@ -183,6 +202,9 @@ export function Card(props: {
             ))}
           </ol>
         </section>
+      )}
+
+      </>
       )}
 
       {picked && (
