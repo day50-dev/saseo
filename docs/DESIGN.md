@@ -46,7 +46,7 @@ Later: the system identifies where the image came from (a slide title and theore
 
 ## Principles
 
-Eight principles define the medium. Each one is also a condition for flow: right difficulty, clear small goals, instant feedback, visible progress, and no lost context.
+Nine principles define the medium. Each one is also a condition for flow: right difficulty, clear small goals, instant feedback, visible progress, and no lost context.
 
 ### 1. Explanations descend
 
@@ -83,6 +83,25 @@ Breaking text into the canvas is a change of notation, not a dilution. The words
 ### 8. Personal enrichment only
 
 No grades, rankings, leagues or credentials. Understanding is checked by masked self-tests, a human version of a train/test split: hide a node or edge of material the learner hasn't been shown and ask "what goes here?", with hints that descend until they reach it. The point is to separate "I think I get it" from getting it, never to compare people.
+
+### 9. Mark the register
+
+Mathematical writing code-switches without warning between strict terms of art and casual description, and to an outsider both are just English words. It is like a fan convention where someone quotes a line from season 4, episode 5: insiders laugh, and you are left asking what show this is. The insider decodes the register without thinking; the outsider gets no signal at all. That is a barrier separate from the jargon loop: searching "worst term" goes nowhere, and treating "energy space" as casual gets a vague answer to a question that has an exact one.
+
+| On the slide | Register | What an insider hears |
+| --- | --- | --- |
+| "energy space", "well-posed", "Coulomb gauge", "log-Lipschitz" | Term of art | A strict definition exists, and every word of it matters |
+| "tension field" | Term of art, borrowed | Imported from harmonic maps; "tension" isn't loose here |
+| "+ better" | Casual | "plus terms that are easier to control, which I'm not writing out" |
+| "the worst term", "rougher" | Casual, pointing at something precise | "the hardest term to bound", "less regular" |
+| "closes the bootstrap" | Idiom | A standard move with a precise meaning that's rarely written down |
+| "≲" and ":=" in quotes | Notation, deliberately loosened | "morally this, up to details I'm skipping" |
+
+So the register is classified and shown everywhere:
+
+- **Selected words are classified before they are explained**, a typed choice made by the System One model when one is configured. A term of art gets its actual definition, reached by descending, and the card says it has a strict definition. Casual language gets "this is informal; the speaker means …" and the precise thing it points at. Loosened notation gets what the quotes are hiding.
+- **Explanations mark their own words.** Terms of art carry a distinct style (a dotted underline), and the everyday stand-ins an explanation uses ("an invisible push") are marked with the real term they stand in for.
+- **Boxing part of a page lists its terms by register**, so the first card says which words are strict and which are informal.
 
 ### Explanation facets and their semshapes
 
