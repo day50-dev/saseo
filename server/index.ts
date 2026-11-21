@@ -148,6 +148,18 @@ app.post("/api/canvas/move", async (c) => {
   return result.ok ? c.json(result) : c.json(result, 409);
 });
 
+app.post("/api/canvas/collapse", async (c) => {
+  const { ids, collapsed } = (await c.req.json()) as { ids: string[]; collapsed: boolean };
+  const known = new Map((await getState()).items.map((i) => [i.id, i]));
+  const valid = (Array.isArray(ids) ? ids : []).filter((id) => {
+    const kind = known.get(id)?.kind;
+    return kind === "card" || kind === "image";
+  });
+  if (!valid.length || typeof collapsed !== "boolean") return c.json({ error: "ids of cards or images, and collapsed: boolean" }, 400);
+  await record({ type: "collapse", ids: valid, collapsed });
+  return c.json({ ok: true });
+});
+
 // Removing is a hide event: the log keeps everything, so any removal can be undone.
 app.post("/api/canvas/hide", async (c) => {
   const { ids } = (await c.req.json()) as { ids: string[] };

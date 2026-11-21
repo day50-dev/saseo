@@ -26,6 +26,9 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   else if (e.type === "update") {
     const item = s.items.find((i) => i.id === e.id);
     if (item?.kind === "card") Object.assign(item, e.patch);
+  } else if (e.type === "collapse") {
+    const ids = new Set(e.ids);
+    for (const item of s.items) if (ids.has(item.id)) item.collapsed = e.collapsed;
   } else if (e.type === "move") {
     for (const m of e.moves) {
       const item = s.items.find((i) => i.id === m.id);

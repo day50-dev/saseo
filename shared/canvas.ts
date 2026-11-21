@@ -8,7 +8,15 @@ export interface Rect {
   h: number;
 }
 
-export interface ImageItem {
+/** State every item can carry, set by events. */
+interface ItemState {
+  /** Set by a hide event. Hidden items stay in the log and can be shown again. */
+  hidden?: boolean;
+  /** Folded: an image or card shows only its title, and everything below it is out of view. */
+  collapsed?: boolean;
+}
+
+export interface ImageItem extends ItemState {
   kind: "image";
   id: string;
   asset: string; // file name under the assets endpoint
@@ -22,7 +30,7 @@ export interface ImageItem {
 }
 
 /** A rectangle the learner drew on an image; `rect` is in the image's natural pixels. */
-export interface RegionItem {
+export interface RegionItem extends ItemState {
   kind: "region";
   id: string;
   imageId: string;
@@ -61,7 +69,7 @@ export interface FoundSource {
 
 export type CardStage = "reading" | "searching" | "writing" | "checking" | "done" | "failed";
 
-export interface CardItem {
+export interface CardItem extends ItemState {
   kind: "card";
   id: string;
   /** The region or card this explains part of. */
@@ -85,10 +93,7 @@ export interface CardItem {
   error?: string;
 }
 
-export type Item = (ImageItem | RegionItem | CardItem) & {
-  /** Set by a hide event. Hidden items stay in the log and can be shown again. */
-  hidden?: boolean;
-};
+export type Item = ImageItem | RegionItem | CardItem;
 
 export type CanvasEvent =
   | { type: "add"; item: Item }
@@ -96,7 +101,8 @@ export type CanvasEvent =
   | { type: "hide"; ids: string[] }
   | { type: "show"; ids: string[] }
   /** The learner moved things. The system itself never moves anything. */
-  | { type: "move"; moves: Move[] };
+  | { type: "move"; moves: Move[] }
+  | { type: "collapse"; ids: string[]; collapsed: boolean };
 
 export interface Move {
   id: string;
