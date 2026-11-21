@@ -14,8 +14,23 @@ import {
 } from "../shared/providers.ts";
 import { api } from "./api.ts";
 import { linkTo } from "./router.ts";
+import { useIsAdmin } from "./session.ts";
 
 export function Settings() {
+  if (!useIsAdmin())
+    return (
+      <main className="settings">
+        <a {...linkTo("/")} className="back">
+          ← All canvases
+        </a>
+        <h1>Settings</h1>
+        <p className="muted">Models and searchers are shared by everyone here, so only an admin can change them.</p>
+      </main>
+    );
+  return <AdminSettings />;
+}
+
+function AdminSettings() {
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
 

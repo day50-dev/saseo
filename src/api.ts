@@ -17,6 +17,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
+  if (res.status === 401) location.reload();
   if (!res.ok) throw new Error(unreachable(res.status) ?? `${path}: HTTP ${res.status}`);
   return res.json() as Promise<T>;
 }

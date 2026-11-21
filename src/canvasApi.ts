@@ -2,6 +2,7 @@ import { unreachable } from "./api.ts";
 import type { CanvasInfo, CanvasState, CardItem, ImageItem, Rect, RegionItem } from "../shared/canvas.ts";
 
 async function json<T>(res: Response): Promise<T> {
+  if (res.status === 401) location.reload();
   if (!res.ok) {
     const down = unreachable(res.status);
     if (down) throw new Error(down);

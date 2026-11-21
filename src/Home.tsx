@@ -2,12 +2,15 @@ import { useEffect, useState } from "react";
 import type { CanvasInfo } from "../shared/canvas.ts";
 import { canvasesApi } from "./canvasApi.ts";
 import { linkTo, navigate } from "./router.ts";
+import { signOut, useIsAdmin, useMe } from "./session.ts";
 
 /** The list of canvases; each opens at its own stable URL. */
 export function Home() {
   const [list, setList] = useState<CanvasInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const me = useMe();
+  const admin = useIsAdmin();
 
   useEffect(() => {
     document.title = "Librarian";
@@ -28,7 +31,17 @@ export function Home() {
     <main className="settings home">
       <header className="home-head">
         <h1>Librarian</h1>
-        <a {...linkTo("/settings")}>Settings</a>
+        <span className="home-links">
+          {admin && <a {...linkTo("/settings")}>Settings</a>}
+          {me.accounts && me.user && (
+            <>
+              <span className="muted small">{me.user.email}</span>
+              <button type="button" className="link" onClick={signOut}>
+                Sign out
+              </button>
+            </>
+          )}
+        </span>
       </header>
       {error && <p className="error">{error}</p>}
       <form className="row new-canvas" onSubmit={create}>

@@ -3,6 +3,7 @@ import { CARD_WIDTH, type CardItem, type ImageItem, type Item, MIN_CHILD_GAP, ty
 import { Card, type Side } from "./Card.tsx";
 import { assetUrl, CanvasNotFound, canvasApi, canvasesApi } from "./canvasApi.ts";
 import { linkTo } from "./router.ts";
+import { useIsAdmin } from "./session.ts";
 
 interface View {
   x: number;
@@ -58,6 +59,7 @@ const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
 export function Canvas({ canvasId }: { canvasId: string }) {
+  const admin = useIsAdmin();
   const api = useMemo(() => canvasApi(canvasId), [canvasId]);
   const [name, setName] = useState("");
   const [notFound, setNotFound] = useState(false);
@@ -877,7 +879,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         <button type="button" className="link" title="Reset zoom" onClick={() => setView({ x: 40, y: 80, scale: 1 })}>
           {Math.round(view.scale * 100)}%
         </button>
-        <a {...linkTo("/settings")}>Settings</a>
+        {admin && <a {...linkTo("/settings")}>Settings</a>}
       </div>
       {error && (
         <div className="banner fail" onClick={() => setError(null)}>

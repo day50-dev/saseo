@@ -446,3 +446,9 @@ kbd {
 /* Ports on a slide are placed by the page at its edge points; the side rules above are for cards. */
 .port.image-port { opacity: 0.55; }
 .source-image.link-target:hover { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+/* ---- Accounts ---- */
+.home-links { display: flex; gap: 14px; align-items: baseline; }
+.signin { max-width: 440px; }
+.signin .social { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.signin .or { text-align: center; margin: 4px 0 0; }
