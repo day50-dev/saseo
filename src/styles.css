@@ -304,6 +304,11 @@ kbd {
   border-radius: 6px 6px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .image-grip:hover { background: var(--card); color: var(--text); }
-.stage.mode-select .card-head { cursor: move; }
+.stage.mode-select .card-head,
+.stage.mode-select .sem-title,
+.stage.mode-select .card-item { cursor: move; }
+.stage.mode-select .card-explanation, .stage.mode-select .found { cursor: text; }
+.card-head, .sem-title, .badge { user-select: none; }
 .card-head h3 { user-select: none; }
 .card-item.moving { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+.untangle { font-size: 13px; padding: 4px 10px; font-weight: 500; flex-shrink: 0; }

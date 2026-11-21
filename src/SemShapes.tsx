@@ -34,7 +34,18 @@ interface Drawn {
   story: string[]; // filled story-arrow polygons
 }
 
-export function SemShapes({ title, sem, render }: { title: string; sem: Sem; render: Render }) {
+export function SemShapes({
+  title,
+  sem,
+  render,
+  onTitlePointerDown,
+}: {
+  title: string;
+  sem: Sem;
+  render: Render;
+  /** The title doubles as the card's move handle. */
+  onTitlePointerDown?: (e: React.PointerEvent) => void;
+}) {
   const root = useRef<HTMLDivElement>(null);
   const [drawn, setDrawn] = useState<Drawn>({ thick: [], thin: [], plain: [], story: [] });
   const marker = `sem-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -153,7 +164,7 @@ export function SemShapes({ title, sem, render }: { title: string; sem: Sem; ren
         ))}
       </svg>
 
-      <div className="sem-title" data-a="title">
+      <div className="sem-title" data-a="title" title="Drag to move this card" onPointerDown={onTitlePointerDown}>
         {title}
       </div>
       <div className="sem-body">

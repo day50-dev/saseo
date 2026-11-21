@@ -67,11 +67,15 @@ export function Card(props: {
     return () => ro.disconnect();
   }, []);
 
+  // Only the explanation itself can be selected to go further down: not the header, badge or buttons.
+  const explainRef = useRef<HTMLDivElement>(null);
+
   const onMouseUp = () => {
     const sel = window.getSelection();
     const text = sel?.toString().replace(/\s+/g, " ").trim() ?? "";
     const el = ref.current;
-    if (!sel || !text || !el || sel.rangeCount === 0 || !el.contains(sel.anchorNode)) {
+    const area = explainRef.current;
+    if (!sel || !text || !el || !area || sel.rangeCount === 0 || !area.contains(sel.anchorNode) || !area.contains(sel.focusNode)) {
       setPicked(null);
       return;
     }
@@ -92,6 +96,10 @@ export function Card(props: {
       onPointerEnter={() => props.onHover(true)}
       onPointerLeave={() => props.onHover(false)}
       onMouseUp={onMouseUp}
+      // The card's padding is a handle too, so there's always somewhere to grab.
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget) props.onGrab(e);
+      }}
     >
       <div
         className="card-head"
@@ -137,8 +145,14 @@ export function Card(props: {
         </div>
       )}
 
+      <div ref={explainRef} className="card-explanation">
       {card.sem && (
-        <SemShapes title={card.subject ?? "Explanation"} sem={card.sem} render={(t) => withCitations(t, sources)} />
+        <SemShapes
+          title={card.subject ?? "Explanation"}
+          sem={card.sem}
+          render={(t) => withCitations(t, sources)}
+          onTitlePointerDown={props.onGrab}
+        />
       )}
 
       {!card.sem &&
@@ -151,6 +165,7 @@ export function Card(props: {
             </section>
           ) : null,
         )}
+      </div>
 
       {sources.length > 0 && (
         <section className="found">
