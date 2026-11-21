@@ -44,6 +44,8 @@ type Dir = "left" | "right" | "above" | "below";
 
 type Mode = "select" | "pan";
 
+type Restack = "front" | "back" | "forward" | "backward";
+
 function loadMode(): Mode {
   try {
     return localStorage.getItem("librarian.mode") === "pan" ? "pan" : "select";
@@ -77,6 +79,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     dy: number;
   } | null>(null);
   const [hover, setHover] = useState<string | null>(null);
+  // The image or card the stacking buttons act on.
+  const [selected, setSelected] = useState<string | null>(null);
   const [heights, setHeights] = useState<Record<string, number>>({});
   const stageRef = useRef<HTMLDivElement>(null);
   const imgRefs = useRef<Record<string, HTMLImageElement | null>>({});
@@ -217,6 +221,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
 
   const undoRef = useRef(undo);
   const redoRef = useRef(redo);
+  const restackRef = useRef<(op: Restack) => void>(() => {});
   undoRef.current = undo;
   redoRef.current = redo;
   useEffect(() => {
@@ -229,6 +234,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       } else if ((k === "z" && e.shiftKey) || k === "y") {
         e.preventDefault();
         redoRef.current();
+      } else if (e.code === "BracketRight" || e.code === "BracketLeft") {
+        // The usual stacking shortcuts: Ctrl+] forward, Ctrl+[ backward, with Shift to the very front or back.
+        e.preventDefault();
+        const up = e.code === "BracketRight";
+        restackRef.current(e.shiftKey ? (up ? "front" : "back") : up ? "forward" : "backward");
       }
     };
     window.addEventListener("keydown", onKey);
@@ -365,6 +375,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     const isButton = (e.target as HTMLElement).closest("button, a");
     if (!(panning || e.button === 1 || (onBackground && e.button === 0)) || (isButton && !panning)) return;
     e.preventDefault();
+    if (onBackground) setSelected(null);
     pan.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
@@ -410,6 +421,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
 
   const startMove = (rootId: string, e: React.PointerEvent) => {
     if (panning || e.button !== 0) return;
+    setSelected(rootId);
     e.stopPropagation();
     e.preventDefault();
     const ids = subtree(rootId);
@@ -647,6 +659,43 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   // it is out of view until it's expanded. Folded cards still hold their space, so expanding
   // never lands on top of anything.
 
+  // ---- Stacking: front, back, forward, backward ----
+  // Images and cards are drawn in stack order: their z, then the order they were added.
+
+  const stack = shown
+    .filter((i): i is ImageItem | CardItem => i.kind !== "region")
+    .map((item, added) => ({ item, added }))
+    .sort((a, b) => (a.item.z ?? 0) - (b.item.z ?? 0) || a.added - b.added)
+    .map(({ item }) => item);
+  const rank = new Map(stack.map((item, i) => [item.id, i + 1]));
+
+  const restack = async (op: Restack) => {
+    const id = selected;
+    if (!id || !rank.has(id)) return;
+    const order = stack.map((i) => i.id);
+    const at = order.indexOf(id);
+    order.splice(at, 1);
+    const to = op === "front" ? order.length : op === "back" ? 0 : op === "forward" ? Math.min(order.length, at + 1) : Math.max(0, at - 1);
+    order.splice(to, 0, id);
+    // Renumber, and send only what changed.
+    const before = new Map(stack.map((i) => [i.id, i.z ?? 0]));
+    const next = order.map((oid, i) => ({ id: oid, z: i })).filter((o) => before.get(o.id) !== o.z);
+    if (!next.length) return;
+    const prev = next.map((o) => ({ id: o.id, z: before.get(o.id)! }));
+    setItems((all) => all.map((i) => {
+      const n = next.find((o) => o.id === i.id);
+      return n ? { ...i, z: n.z } : i;
+    }));
+    try {
+      await api.restack(next);
+      pushStep({ label: `stack ${op}`, undo: () => api.restack(prev), redo: () => api.restack(next) });
+    } catch (e) {
+      setError(`Couldn't restack: ${e}`);
+    }
+    await refresh();
+  };
+  restackRef.current = restack;
+
   const folded = useMemo(() => {
     const out = new Set<string>();
     for (const i of items) if (i.collapsed) for (const id of subtree(i.id)) if (id !== i.id) out.add(id);
@@ -757,6 +806,20 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         >
           Untangle
         </button>
+        <div className="stacking" role="group" aria-label="Stacking order">
+          {(
+            [
+              ["front", "⤒", "Bring to front (Ctrl+Shift+])"],
+              ["forward", "↑", "Bring forward (Ctrl+])"],
+              ["backward", "↓", "Send backward (Ctrl+[)"],
+              ["back", "⤓", "Send to back (Ctrl+Shift+[)"],
+            ] as const
+          ).map(([op, icon, label]) => (
+            <button key={op} type="button" className="secondary" disabled={!selected} title={selected ? label : `${label}: select a card or an image's grip first`} onClick={() => restack(op)}>
+              {icon}
+            </button>
+          ))}
+        </div>
         <div className="history">
           <button type="button" className="secondary" disabled={!nextUndo} title={nextUndo ? `Undo ${nextUndo.label} (Ctrl+Z)` : "Nothing to undo"} onClick={undo}>
             ↶ Undo
@@ -825,9 +888,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               src={assetUrl(img.asset)}
               alt={img.name}
               draggable={false}
-              className="source-image"
+              className={`source-image ${selected === img.id ? "selected" : ""}`}
               // A collapsed image stays loaded (retry reads its pixels) but out of view.
-              style={{ left: img.x, top: img.y, width: img.w, height: img.h, display: img.collapsed ? "none" : undefined }}
+              style={{ left: img.x, top: img.y, width: img.w, height: img.h, display: img.collapsed ? "none" : undefined, zIndex: rank.get(img.id) }}
               onPointerDown={(e) => {
                 // In pan mode the event bubbles to the stage, which pans.
                 if (e.button !== 0 || panning) return;
@@ -842,7 +905,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             <div
               key={`grip-${img.id}`}
               className="image-grip"
-              style={{ left: img.x, top: img.y - 26, width: img.w }}
+              style={{ left: img.x, top: img.y - 26, width: img.w, zIndex: rank.get(img.id) }}
               title="Drag to move this image with its boxes and explanations"
               onPointerDown={(e) => {
                 if ((e.target as HTMLElement).closest("button")) return;
@@ -867,7 +930,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               key={`x-${img.id}`}
               type="button"
               className="remove-btn on-image"
-              style={{ left: img.x + img.w - 30, top: img.y + 6 }}
+              style={{ left: img.x + img.w - 30, top: img.y + 6, zIndex: rank.get(img.id) }}
               title="Remove this image and everything on it (Ctrl+Z brings it back)"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => remove(img.id, "remove image")}
@@ -885,7 +948,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               <div
                 key={r.id}
                 className={lit ? "region lit" : "region"}
-                style={{ left: w.x, top: w.y, width: w.w, height: w.h }}
+                // Boxes stack with their image.
+                style={{ left: w.x, top: w.y, width: w.w, height: w.h, zIndex: rank.get(r.imageId) }}
                 onPointerEnter={() => setHover(r.id)}
                 onPointerLeave={() => setHover(null)}
                 onPointerDown={(e) => {
@@ -947,6 +1011,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 return s?.kind === "card" ? (s.subject ?? "this") : "a removed card";
               })}
               moving={drag?.ids.includes(c.id) ?? false}
+              z={rank.get(c.id) ?? 0}
+              selected={selected === c.id}
               onRemove={() => remove(c.id, `remove “${(c.subject ?? "card").slice(0, 30)}”`)}
             />
           ))}

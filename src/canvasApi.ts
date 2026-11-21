@@ -66,6 +66,9 @@ export function canvasApi(cid: string) {
     /** Adds a message to a card's conversation; the answer arrives in the canvas state. */
     chat: (cardId: string, text: string) => post(`${base}/cards/${cardId}/chat`, { text }).then((r) => json<{ ok: true }>(r)),
 
+    /** Sets stacking order: higher z draws on top. */
+    restack: (order: { id: string; z: number }[]) => post(`${base}/z`, { order }).then((r) => json<{ ok: true }>(r)),
+
     show: (ids: string[]) => post(`${base}/show`, { ids }).then((r) => json<{ ids: string[] }>(r)),
   };
 }

@@ -84,6 +84,9 @@ export function Card(props: {
   /** Pointer down on the header: start moving this card and the cards below it. */
   onGrab: (e: React.PointerEvent) => void;
   moving: boolean;
+  /** Stacking position: higher draws on top. */
+  z: number;
+  selected: boolean;
   /** How many cards are folded away below this one while it's collapsed. */
   foldedCount: number;
   onToggleCollapse: () => void;
@@ -140,8 +143,8 @@ export function Card(props: {
     <div
       ref={ref}
       data-card-id={card.id}
-      className={`card-item ${props.lit ? "lit" : ""} ${props.moving ? "moving" : ""} ${props.linking ? "link-target" : ""} ${card.relates ? "relation" : ""}`}
-      style={{ left: card.x, top: card.y, width: card.w }}
+      className={`card-item ${props.lit ? "lit" : ""} ${props.moving ? "moving" : ""} ${props.linking ? "link-target" : ""} ${card.relates ? "relation" : ""} ${props.selected ? "selected" : ""}`}
+      style={{ left: card.x, top: card.y, width: card.w, zIndex: props.moving ? 100000 : props.z }}
       onPointerEnter={() => props.onHover(true)}
       onPointerLeave={() => props.onHover(false)}
       onMouseUp={onMouseUp}

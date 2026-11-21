@@ -399,3 +399,11 @@ kbd {
   border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); cursor: text;
 }
 .chat-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* ---- Stacking ---- */
+.stacking { display: flex; gap: 2px; flex-shrink: 0; }
+.stacking button { font-size: 14px; padding: 2px 8px; font-weight: 500; }
+.card-item.selected { outline: 2px solid var(--accent); outline-offset: 3px; }
+.source-image.selected { outline: 3px solid var(--accent); outline-offset: 3px; }
+.connectors { z-index: 0; }
+.link-preview { z-index: 100001 !important; }
