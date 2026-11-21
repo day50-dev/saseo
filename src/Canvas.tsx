@@ -11,7 +11,7 @@ interface View {
 
 const GAP = 64; // horizontal gap between a source and its explanations
 const STACK_GAP = 24; // vertical gap between cards in one column
-const PENDING_HEIGHT = 380; // space reserved for a card that hasn't filled in yet
+const PENDING_HEIGHT = 900; // space reserved for a card that hasn't been written yet; diagram cards run 700-1100px
 const MAX_IMAGE_WIDTH = 900;
 
 function loadView(): View {
@@ -232,13 +232,31 @@ export function Canvas() {
     return { x: img.x + region.rect.x * k, y: img.y + region.rect.y * k, w: region.rect.w * k, h: region.rect.h * k };
   };
 
-  /** First free y in the column at x, at or below `wanted`. Placement is decided once and never revisited. */
+  /** How tall a card is, or will be: an unfinished card still grows, so it gets the full reserve. */
+  const cardHeight = (c: CardItem) => {
+    const measured = heights[c.id] ?? 0;
+    return isPending(c) ? Math.max(measured, PENDING_HEIGHT) : measured || PENDING_HEIGHT;
+  };
+
+  /**
+   * First free y at or below `wanted` for a new card at x. The new card is assumed to be as tall
+   * as the reserve, since it hasn't been written yet. Placement is decided once and never revisited.
+   */
   const slotY = (x: number, wanted: number) => {
     let y = wanted;
-    const column = cards.filter((c) => Math.abs(c.x - x) < 1).sort((a, b) => a.y - b.y);
-    for (const c of column) {
-      const bottom = c.y + (heights[c.id] ?? PENDING_HEIGHT);
-      if (y < bottom + STACK_GAP && y + 120 > c.y - STACK_GAP) y = bottom + STACK_GAP;
+    const column = cards
+      .filter((c) => c.x < x + CARD_WIDTH && x < c.x + c.w)
+      .sort((a, b) => a.y - b.y);
+    let moved = true;
+    while (moved) {
+      moved = false;
+      for (const c of column) {
+        const bottom = c.y + cardHeight(c);
+        if (y < bottom + STACK_GAP && y + PENDING_HEIGHT > c.y - STACK_GAP) {
+          y = bottom + STACK_GAP;
+          moved = true;
+        }
+      }
     }
     return y;
   };
@@ -368,6 +386,51 @@ export function Canvas() {
     stageRef.current?.setPointerCapture(e.pointerId);
   };
 
+  /**
+   * The learner's "make room": pushes overlapping cards straight down, each bringing the cards
+   * below it in the descent, until nothing overlaps. Only y changes, so every card stays right
+   * of what it explains. One undoable step.
+   */
+  const untangle = async () => {
+    const pos = new Map(cards.map((c) => [c.id, { x: c.x, y: c.y }]));
+    const kids = new Map<string, string[]>();
+    for (const c of cards) kids.set(c.parentId, [...(kids.get(c.parentId) ?? []), c.id]);
+    const below = (id: string): string[] => (kids.get(id) ?? []).flatMap((k) => [k, ...below(k)]);
+    const h = new Map(cards.map((c) => [c.id, cardHeight(c)]));
+    const w = new Map(cards.map((c) => [c.id, c.w]));
+
+    for (let pass = 0; pass < 500; pass++) {
+      let fix: { id: string; dy: number } | null = null;
+      const order = [...pos.entries()].sort((a, b) => a[1].y - b[1].y || a[1].x - b[1].x);
+      outer: for (let i = 0; i < order.length; i++) {
+        for (let j = i + 1; j < order.length; j++) {
+          const [aId, a] = order[i];
+          const [bId, b] = order[j];
+          const xOverlap = a.x < b.x + w.get(bId)! && b.x < a.x + w.get(aId)!;
+          const yOverlap = b.y < a.y + h.get(aId)! + STACK_GAP;
+          if (xOverlap && yOverlap) {
+            fix = { id: bId, dy: a.y + h.get(aId)! + STACK_GAP - b.y };
+            break outer;
+          }
+        }
+      }
+      if (!fix) break;
+      for (const id of [fix.id, ...below(fix.id)]) pos.get(id)!.y += fix.dy;
+    }
+
+    const changed = cards.filter((c) => pos.get(c.id)!.y !== c.y);
+    if (!changed.length) return;
+    const to = changed.map((c) => ({ id: c.id, x: c.x, y: Math.round(pos.get(c.id)!.y) }));
+    const from = changed.map((c) => ({ id: c.id, x: c.x, y: c.y }));
+    try {
+      await canvasApi.move(to);
+      pushStep({ label: "untangle", undo: () => canvasApi.move(from), redo: () => canvasApi.move(to) });
+    } catch (e) {
+      setError(`Couldn't untangle: ${e}`);
+    }
+    await refresh();
+  };
+
   const finishMove = async (d: NonNullable<typeof drag>) => {
     setDrag(null);
     if (Math.abs(d.dx) + Math.abs(d.dy) < 3) return;
@@ -493,6 +556,14 @@ export function Canvas() {
           Drop or paste an image · Select: drag a box over what stopped you · hold Space to pan · Ctrl+scroll to zoom
         </span>
         <span className="spacer" />
+        <button
+          type="button"
+          className="secondary untangle"
+          title="Push overlapping cards down so nothing overlaps (Ctrl+Z undoes it)"
+          onClick={untangle}
+        >
+          Untangle
+        </button>
         <div className="history">
           <button type="button" className="secondary" disabled={!nextUndo} title={nextUndo ? `Undo ${nextUndo.label} (Ctrl+Z)` : "Nothing to undo"} onClick={undo}>
             ↶ Undo
