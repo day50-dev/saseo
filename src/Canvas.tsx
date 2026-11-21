@@ -510,32 +510,43 @@ export function Canvas({ canvasId }: { canvasId: string }) {
 
   // ---- Asking how two things relate ----
 
+  /** The drawn box of something a relation can join: a card, or a whole image (a collapsed one is its grip). */
+  const relBox = (id: string): { x: number; y: number; w: number; h: number } | null => {
+    const i = byId.get(id);
+    if (i?.kind === "card") return { x: i.x, y: i.y, w: i.w, h: cardHeight(i) };
+    if (i?.kind === "image") return i.collapsed ? { x: i.x, y: i.y - 26, w: i.w, h: 22 } : { x: i.x, y: i.y, w: i.w, h: i.h };
+    return null;
+  };
+
   const startLink = (fromId: string, side: Side, e: React.PointerEvent) => {
     if (panning || e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
-    const c = byId.get(fromId);
-    if (c?.kind !== "card") return;
+    const c = relBox(fromId);
+    if (!c) return;
     const start =
       side === "left" ? { x: c.x, y: c.y + 28 }
       : side === "right" ? { x: c.x + c.w, y: c.y + 28 }
       : side === "top" ? { x: c.x + c.w / 2, y: c.y }
-      : { x: c.x + c.w / 2, y: c.y + cardHeight(c) };
+      : { x: c.x + c.w / 2, y: c.y + c.h };
     setLink({ from: fromId, side, start, end: start });
     stageRef.current?.setPointerCapture(e.pointerId);
   };
 
   const finishLink = async (l: NonNullable<typeof link>, clientX: number, clientY: number) => {
     setLink(null);
-    const target = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-card-id]");
-    const toId = target?.dataset.cardId;
-    const a = byId.get(l.from);
-    const b = toId ? byId.get(toId) : undefined;
-    if (a?.kind !== "card" || b?.kind !== "card" || a.id === b.id) return;
+    // Drop on a card, or on a slide (the image itself or its grip).
+    const target = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-card-id], [data-image-id]");
+    const toId = target?.dataset.cardId ?? target?.dataset.imageId;
+    const a = relBox(l.from);
+    const b = toId ? relBox(toId) : null;
+    if (!a || !b || !toId || toId === l.from) return;
+    const aId = l.from;
+    const bId = toId;
     // The answer goes toward the side the connection was dragged from: under both from a bottom
     // port, over both from a top port, beside both from a side port.
     const top = Math.min(a.y, b.y);
-    const bottom = Math.max(a.y + cardHeight(a), b.y + cardHeight(b));
+    const bottom = Math.max(a.y + a.h, b.y + b.h);
     const midX = Math.round((a.x + a.w / 2 + b.x + b.w / 2) / 2 - CARD_WIDTH / 2);
     let x = midX;
     let y: number;
@@ -551,8 +562,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       y = slotY(x, Math.round(bottom + 64));
     }
     try {
-      const res = await api.relate({ a: a.id, b: b.id, x, y });
-      added(`relate “${(a.subject ?? "").slice(0, 20)}” and “${(b.subject ?? "").slice(0, 20)}”`, [res.card.id]);
+      const res = await api.relate({ a: aId, b: bId, x, y });
+      added("relate", [res.card.id]);
       await refresh();
     } catch (e) {
       setError(`Couldn't ask how they relate: ${e}`);
@@ -745,8 +756,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     if (c.relates) {
       return c.relates.flatMap((id, i) => {
         const s = byId.get(id);
-        if (s?.kind !== "card" || folded.has(id)) return [];
-        const from = { x: s.x + s.w / 2, y: s.y + cardHeight(s) };
+        const box = relBox(id);
+        if (!s || !box || folded.has(id)) return [];
+        const from = { x: box.x + box.w / 2, y: box.y + box.h };
         const to = { x: c.x + c.w / 2 + (i === 0 ? -40 : 40), y: c.y };
         const my = (from.y + to.y) / 2;
         const lit = hover === c.id || hover === id;
@@ -888,7 +900,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             <p className="muted" data-pan="1">A slide, a page, a screenshot. Then drag a box over the part you want explained.</p>
           </div>
         )}
-        <div className="world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
+        <div
+          className="world"
+          // --zoom lets handles keep the same size on screen at any zoom.
+          style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, ["--zoom" as string]: view.scale }}
+        >
           <svg className="connectors">{connectors}</svg>
 
           {images.map((img) => (
@@ -900,7 +916,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               src={assetUrl(img.asset)}
               alt={img.name}
               draggable={false}
-              className={`source-image ${selected === img.id ? "selected" : ""}`}
+              data-image-id={img.id}
+              className={`source-image ${selected === img.id ? "selected" : ""} ${link && link.from !== img.id ? "link-target" : ""}`}
               // A collapsed image stays loaded (retry reads its pixels) but out of view.
               style={{ left: img.x, top: img.y, width: img.w, height: img.h, display: img.collapsed ? "none" : undefined, zIndex: rank.get(img.id) }}
               onPointerDown={(e) => {
@@ -917,6 +934,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             <div
               key={`grip-${img.id}`}
               className="image-grip"
+              data-image-id={img.id}
               style={{ left: img.x, top: img.y - 26, width: img.w, zIndex: rank.get(img.id) }}
               title="Drag to move this image with its boxes and explanations"
               onPointerDown={(e) => {
@@ -933,10 +951,27 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               >
                 {img.collapsed ? "▸" : "▾"}
               </button>
-              <span aria-hidden>⠿</span> {img.name}
+              <span aria-hidden>⠿</span> {img.topic ?? img.name}
               {img.collapsed && <span className="folded-count">{cardsBelow(img.id)} cards folded</span>}
             </div>
           ))}
+          {/* Ports on a slide: drag from one to another slide or a card to ask how they relate. */}
+          {images.filter((img) => !img.collapsed).flatMap((img) =>
+            (["left", "right", "top", "bottom"] as const).map((side) => (
+              <div
+                key={`port-${img.id}-${side}`}
+                className={`port image-port port-${side}`}
+                title="Drag to another slide or card to ask how they are related"
+                // Centered on the edge point; drawn after the image at the same level, so on top of it.
+                style={{
+                  left: side === "left" ? img.x : side === "right" ? img.x + img.w : img.x + img.w / 2,
+                  top: side === "top" ? img.y : side === "bottom" ? img.y + img.h : img.y + 28,
+                  zIndex: rank.get(img.id),
+                }}
+                onPointerDown={(e) => startLink(img.id, side, e)}
+              />
+            )),
+          )}
           {images.filter((img) => !img.collapsed).map((img) => (
             <button
               key={`x-${img.id}`}
@@ -1021,7 +1056,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               linking={!!link && link.from !== c.id}
               relatesNames={c.relates?.map((id) => {
                 const s = byId.get(id);
-                return s?.kind === "card" ? (s.subject ?? "this") : "a removed card";
+                return s?.kind === "card" ? (s.subject ?? "this") : s?.kind === "image" ? (s.topic ?? s.name) : "a removed card";
               })}
               moving={drag?.ids.includes(c.id) ?? false}
               z={rank.get(c.id) ?? 0}

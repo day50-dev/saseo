@@ -353,17 +353,20 @@ kbd {
 .term-means { color: var(--text); }
 
 /* ---- Asking how two things relate ---- */
+/* A port is centered on its edge point and keeps one size on screen whatever the zoom. */
 .port {
-  position: absolute; top: 20px; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--card); border: 2px solid var(--sem-line); cursor: crosshair; z-index: 2;
-  opacity: 0.35; transition: opacity 0.1s, transform 0.1s;
+  position: absolute; z-index: 2; box-sizing: border-box;
+  width: calc(14px / var(--zoom, 1)); height: calc(14px / var(--zoom, 1));
+  border: calc(2px / var(--zoom, 1)) solid var(--sem-line); border-radius: 50%;
+  background: var(--card); cursor: crosshair; opacity: 0.35;
+  transform: translate(-50%, -50%); transition: opacity 0.1s, transform 0.1s;
 }
-.port-left { left: -8px; }
-.port-right { right: -8px; }
-.port-top { top: -8px; left: calc(50% - 7px); }
-.port-bottom { top: auto; bottom: -8px; left: calc(50% - 7px); }
+.port-left { left: 0; top: 28px; }
+.port-right { left: 100%; top: 28px; }
+.port-top { left: 50%; top: 0; }
+.port-bottom { left: 50%; top: 100%; }
 .card-item:hover .port { opacity: 1; }
-.port:hover { transform: scale(1.3); background: var(--sem-line); }
+.port:hover { transform: translate(-50%, -50%) scale(1.3); background: var(--sem-line); opacity: 1; }
 .stage.mode-select .port { cursor: crosshair; }
 .card-item.link-target:hover { outline: 3px solid var(--accent); outline-offset: 2px; }
 .card-item.relation { border-style: dashed; border-color: var(--sem-line); }
@@ -439,3 +442,7 @@ kbd {
 .sem-part { overflow-wrap: anywhere; hyphens: auto; }
 .sem-standin-for { white-space: normal; display: inline-block; max-width: 100%; overflow-wrap: anywhere; line-height: 1.25; }
 .sem-part .sem-standin-for { margin-left: 0; }
+
+/* Ports on a slide are placed by the page at its edge points; the side rules above are for cards. */
+.port.image-port { opacity: 0.55; }
+.source-image.link-target:hover { outline: 3px solid var(--accent); outline-offset: 3px; }
