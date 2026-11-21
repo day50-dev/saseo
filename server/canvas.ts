@@ -1,9 +1,11 @@
-// Append-only canvas log (data/canvas.jsonl) and image assets (data/assets/).
+// Canvases: each is an append-only log (data/canvases/<id>.jsonl) named in data/canvases/index.json.
+// Image assets (data/assets/) are shared, stored by content hash.
 import { createHash, randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   type CanvasEvent,
+  type CanvasInfo,
   type CanvasState,
   type CardItem,
   type Item,
@@ -13,12 +15,83 @@ import {
 } from "../shared/canvas.ts";
 
 const DATA_DIR = process.env.LIBRARIAN_DATA ?? path.resolve("data");
-const LOG_PATH = path.join(DATA_DIR, "canvas.jsonl");
+const CANVAS_DIR = path.join(DATA_DIR, "canvases");
+const INDEX_PATH = path.join(CANVAS_DIR, "index.json");
+/** Where the single canvas lived before there were several. Copied once, then left as a backup. */
+const LEGACY_LOG = path.join(DATA_DIR, "canvas.jsonl");
 export const ASSET_DIR = path.join(DATA_DIR, "assets");
 
-let state: CanvasState | null = null;
-// Appends are serialized so seq numbers and file order always agree.
-let queue: Promise<unknown> = Promise.resolve();
+export const newId = () => randomUUID().slice(0, 8);
+
+// ---- The index of canvases ----
+
+let index: CanvasInfo[] | null = null;
+let indexQueue: Promise<unknown> = Promise.resolve();
+
+async function saveIndex(list: CanvasInfo[]) {
+  await mkdir(CANVAS_DIR, { recursive: true });
+  const tmp = `${INDEX_PATH}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(list, null, 2)}\n`);
+  await rename(tmp, INDEX_PATH);
+}
+
+export async function listCanvases(): Promise<CanvasInfo[]> {
+  if (index) return index;
+  try {
+    index = JSON.parse(await readFile(INDEX_PATH, "utf8")) as CanvasInfo[];
+    return index;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  // First run with several canvases: an older single canvas becomes the first one. Its log is
+  // copied, not moved, so the original stays as a backup.
+  const list: CanvasInfo[] = [];
+  try {
+    const id = newId();
+    await mkdir(CANVAS_DIR, { recursive: true });
+    await copyFile(LEGACY_LOG, path.join(CANVAS_DIR, `${id}.jsonl`));
+    list.push({ id, name: "First canvas", createdAt: new Date().toISOString() });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  await saveIndex(list);
+  index = list;
+  return list;
+}
+
+function changeIndex<T>(fn: (list: CanvasInfo[]) => T): Promise<T> {
+  const run = indexQueue.then(async () => {
+    const list = await listCanvases();
+    const result = fn(list);
+    await saveIndex(list);
+    return result;
+  });
+  indexQueue = run.catch(() => {});
+  return run;
+}
+
+const cleanName = (name: unknown) => (typeof name === "string" ? name.trim().replace(/\s+/g, " ").slice(0, 120) : "");
+
+export const createCanvas = (name: string) =>
+  changeIndex((list) => {
+    const info: CanvasInfo = { id: newId(), name: cleanName(name) || "Untitled canvas", createdAt: new Date().toISOString() };
+    list.push(info);
+    return info;
+  });
+
+export const renameCanvas = (id: string, name: string) =>
+  changeIndex((list) => {
+    const info = list.find((c) => c.id === id);
+    const clean = cleanName(name);
+    if (info && clean) info.name = clean;
+    return info ?? null;
+  });
+
+export async function getCanvasInfo(id: string): Promise<CanvasInfo | undefined> {
+  return (await listCanvases()).find((c) => c.id === id);
+}
+
+// ---- One canvas ----
 
 function apply(s: CanvasState, logged: LoggedEvent): void {
   const e = logged.event;
@@ -41,74 +114,7 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   s.seq = logged.seq;
 }
 
-export async function getState(): Promise<CanvasState> {
-  if (state) return state;
-  const s: CanvasState = { seq: 0, items: [] };
-  try {
-    const text = await readFile(LOG_PATH, "utf8");
-    for (const line of text.split("\n")) if (line.trim()) apply(s, JSON.parse(line));
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-  }
-  // A card left mid-flight by a restart can't finish; record that rather than spin forever.
-  const stuck = s.items.filter(
-    (i): i is CardItem => i.kind === "card" && i.stage !== "done" && i.stage !== "failed",
-  );
-  state = s;
-  for (const card of stuck) await record({ type: "update", id: card.id, patch: { stage: "failed", error: "Interrupted by a server restart" } });
-  return s;
-}
-
-export function record(event: CanvasEvent): Promise<LoggedEvent> {
-  const run = queue.then(async () => {
-    const s = await getState();
-    const logged: LoggedEvent = { seq: s.seq + 1, at: new Date().toISOString(), event };
-    await mkdir(DATA_DIR, { recursive: true });
-    await appendFile(LOG_PATH, `${JSON.stringify(logged)}\n`);
-    apply(s, logged);
-    return logged;
-  });
-  queue = run.catch(() => {});
-  return run;
-}
-
-export const add = (item: Item) => record({ type: "add", item });
-export const update = (id: string, patch: Partial<CardItem>) => record({ type: "update", id, patch });
-
-/**
- * What disappears along with `ids`: an image takes its boxes, a box its cards, a card the
- * cards below it. Removing the only card on a box also removes the box, which would be
- * meaningless on its own.
- */
-export async function withDependents(ids: string[]): Promise<string[]> {
-  const { items } = await getState();
-  const visible = items.filter((i) => !i.hidden);
-  const out = new Set(ids);
-  for (const id of ids) {
-    const item = visible.find((i) => i.id === id);
-    if (item?.kind === "card") {
-      const parent = visible.find((i) => i.id === item.parentId);
-      const siblings = visible.filter((i) => i.kind === "card" && i.parentId === item.parentId);
-      if (parent?.kind === "region" && siblings.every((s) => out.has(s.id))) out.add(parent.id);
-    }
-  }
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const i of visible) {
-      if (out.has(i.id)) continue;
-      const parent = i.kind === "region" ? i.imageId : i.kind === "card" ? i.parentId : undefined;
-      const viaRelation = i.kind === "card" && i.relates?.some((r) => out.has(r));
-      if ((parent && out.has(parent)) || viaRelation) {
-        out.add(i.id);
-        grew = true;
-      }
-    }
-  }
-  return visible.filter((i) => out.has(i.id)).map((i) => i.id);
-}
-
-/** An item's left and right edges after `moves`, for checking that cards sit beside their source. */
+/** What disappears along with an item: an image takes its boxes, a box its cards, a card the cards below it. */
 interface Box {
   left: number;
   right: number;
@@ -145,42 +151,131 @@ function bounds(items: Item[], id: string, moved: Map<string, Move>): Box | null
 const overlaps = (a: Box, b: Box, gap: number) =>
   !(a.right + gap <= b.left + 0.5 || b.right + gap <= a.left + 0.5 || a.bottom + gap <= b.top + 0.5 || b.bottom + gap <= a.top + 0.5);
 
-/**
- * Applies a set of moves if no card sits on what it explains. Any side is fine (left, right,
- * above, below), and a branch grows whichever way its first card was put.
- */
-export async function moveItems(moves: Move[]): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { items } = await getState();
-  const moved = new Map(moves.map((m) => [m.id, m]));
-  for (const m of moves) {
-    const item = items.find((i) => i.id === m.id);
-    if (!item || item.kind === "region") return { ok: false, error: `can't move ${m.id}` };
-    if (!Number.isFinite(m.x) || !Number.isFinite(m.y)) return { ok: false, error: "x and y must be numbers" };
+export class CanvasStore {
+  private state: CanvasState | null = null;
+  // Appends are serialized so seq numbers and file order always agree.
+  private queue: Promise<unknown> = Promise.resolve();
+  private readonly logPath: string;
+
+  constructor(readonly id: string) {
+    this.logPath = path.join(CANVAS_DIR, `${id}.jsonl`);
   }
-  // Check every visible card whose own position or whose parent's position changes.
-  for (const card of items) {
-    if (card.kind !== "card" || card.hidden || card.relates) continue;
-    const parent = items.find((i) => i.id === card.parentId);
-    const parentMoved = parent && (moved.has(parent.id) || (parent.kind === "region" && moved.has(parent.imageId)));
-    if (!moved.has(card.id) && !parentMoved) continue;
-    const source = bounds(items, card.parentId, moved);
-    const self = bounds(items, card.id, moved);
-    if (source && self && overlaps(self, source, MIN_CHILD_GAP)) {
-      return { ok: false, error: "an explanation can sit on any side of what it explains, but not on it" };
+
+  async getState(): Promise<CanvasState> {
+    if (this.state) return this.state;
+    const s: CanvasState = { seq: 0, items: [] };
+    try {
+      const text = await readFile(this.logPath, "utf8");
+      for (const line of text.split("\n")) if (line.trim()) apply(s, JSON.parse(line));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
+    // A card left mid-flight by a restart can't finish; record that rather than spin forever.
+    const stuck = s.items.filter((i): i is CardItem => i.kind === "card" && i.stage !== "done" && i.stage !== "failed");
+    this.state = s;
+    for (const card of stuck) await this.update(card.id, { stage: "failed", error: "Interrupted by a server restart" });
+    return s;
   }
-  await record({
-    type: "move",
-    moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y), ...(m.h ? { h: Math.round(m.h) } : {}) })),
-  });
-  return { ok: true };
+
+  record(event: CanvasEvent): Promise<LoggedEvent> {
+    const run = this.queue.then(async () => {
+      const s = await this.getState();
+      const logged: LoggedEvent = { seq: s.seq + 1, at: new Date().toISOString(), event };
+      await mkdir(CANVAS_DIR, { recursive: true });
+      await appendFile(this.logPath, `${JSON.stringify(logged)}\n`);
+      apply(s, logged);
+      return logged;
+    });
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
+  add = (item: Item) => this.record({ type: "add", item });
+  update = (id: string, patch: Partial<CardItem>) => this.record({ type: "update", id, patch });
+
+  async findItem(id: string): Promise<Item | undefined> {
+    return (await this.getState()).items.find((i) => i.id === id);
+  }
+
+  /**
+   * What disappears along with `ids`: an image takes its boxes, a box its cards, a card the
+   * cards below it, and a relation either of the things it relates. Removing the only card on a
+   * box also removes the box, which would be meaningless on its own.
+   */
+  async withDependents(ids: string[]): Promise<string[]> {
+    const { items } = await this.getState();
+    const visible = items.filter((i) => !i.hidden);
+    const out = new Set(ids);
+    for (const id of ids) {
+      const item = visible.find((i) => i.id === id);
+      if (item?.kind === "card") {
+        const parent = visible.find((i) => i.id === item.parentId);
+        const siblings = visible.filter((i) => i.kind === "card" && i.parentId === item.parentId);
+        if (parent?.kind === "region" && siblings.every((s) => out.has(s.id))) out.add(parent.id);
+      }
+    }
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const i of visible) {
+        if (out.has(i.id)) continue;
+        const parent = i.kind === "region" ? i.imageId : i.kind === "card" ? i.parentId : undefined;
+        const viaRelation = i.kind === "card" && i.relates?.some((r) => out.has(r));
+        if ((parent && out.has(parent)) || viaRelation) {
+          out.add(i.id);
+          grew = true;
+        }
+      }
+    }
+    return visible.filter((i) => out.has(i.id)).map((i) => i.id);
+  }
+
+  /**
+   * Applies a set of moves if no card sits on what it explains. Any side is fine (left, right,
+   * above, below), and a branch grows whichever way its first card was put.
+   */
+  async moveItems(moves: Move[]): Promise<{ ok: true } | { ok: false; error: string }> {
+    const { items } = await this.getState();
+    const moved = new Map(moves.map((m) => [m.id, m]));
+    for (const m of moves) {
+      const item = items.find((i) => i.id === m.id);
+      if (!item || item.kind === "region") return { ok: false, error: `can't move ${m.id}` };
+      if (!Number.isFinite(m.x) || !Number.isFinite(m.y)) return { ok: false, error: "x and y must be numbers" };
+    }
+    // Check every visible card whose own position or whose parent's position changes.
+    for (const card of items) {
+      if (card.kind !== "card" || card.hidden || card.relates) continue;
+      const parent = items.find((i) => i.id === card.parentId);
+      const parentMoved = parent && (moved.has(parent.id) || (parent.kind === "region" && moved.has(parent.imageId)));
+      if (!moved.has(card.id) && !parentMoved) continue;
+      const source = bounds(items, card.parentId, moved);
+      const self = bounds(items, card.id, moved);
+      if (source && self && overlaps(self, source, MIN_CHILD_GAP)) {
+        return { ok: false, error: "an explanation can sit on any side of what it explains, but not on it" };
+      }
+    }
+    await this.record({
+      type: "move",
+      moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y), ...(m.h ? { h: Math.round(m.h) } : {}) })),
+    });
+    return { ok: true };
+  }
 }
 
-export async function findItem(id: string): Promise<Item | undefined> {
-  return (await getState()).items.find((i) => i.id === id);
+const stores = new Map<string, CanvasStore>();
+
+/** The store for a canvas that exists, or undefined. One store per canvas, shared by all requests. */
+export async function canvasStore(id: string): Promise<CanvasStore | undefined> {
+  if (!(await getCanvasInfo(id))) return undefined;
+  let s = stores.get(id);
+  if (!s) {
+    s = new CanvasStore(id);
+    stores.set(id, s);
+  }
+  return s;
 }
 
-export const newId = () => randomUUID().slice(0, 8);
+// ---- Assets, shared by every canvas ----
 
 const MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" };
 

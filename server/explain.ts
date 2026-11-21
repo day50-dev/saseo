@@ -2,7 +2,7 @@
 // explanation from what was found, then check that it doesn't climb.
 import type { CardItem, FoundSource, Item, Register, RegisterNote, Sem } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
-import { findItem, update } from "./canvas.ts";
+import type { CanvasStore } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { chatJson, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { runSearch } from "./providers.ts";
@@ -42,16 +42,16 @@ Use "parts" only when the subject is a formula or a compound whose pieces each m
 const CLIMB_QUESTION =
   "Does this explanation rely on terms or ideas that are more specialized or obscure than its subject, without explaining them in plain words?";
 
-async function ancestry(card: CardItem): Promise<{ path: string[]; topic?: string; root?: CardItem }> {
+async function ancestry(store: CanvasStore, card: CardItem): Promise<{ path: string[]; topic?: string; root?: CardItem }> {
   const path: string[] = [];
   let topic: string | undefined;
   let root: CardItem | undefined;
-  let cur: Item | undefined = await findItem(card.parentId);
+  let cur: Item | undefined = await store.findItem(card.parentId);
   while (cur?.kind === "card") {
     if (cur.subject) path.unshift(cur.subject);
     topic ??= cur.topic;
     root = cur;
-    cur = await findItem(cur.parentId);
+    cur = await store.findItem(cur.parentId);
   }
   return { path, topic: topic ?? root?.topic, root };
 }
@@ -70,12 +70,12 @@ function cardText(c: CardItem): string {
  * Everything the librarian knows about how the reader got to this card: what they boxed on the
  * page, every card on the way down with its gist, and the full explanation they selected from.
  */
-async function trail(card: CardItem): Promise<string> {
+async function trail(store: CanvasStore, card: CardItem): Promise<string> {
   const chain: CardItem[] = [];
-  let cur: Item | undefined = await findItem(card.parentId);
+  let cur: Item | undefined = await store.findItem(card.parentId);
   while (cur?.kind === "card") {
     chain.unshift(cur);
-    cur = await findItem(cur.parentId);
+    cur = await store.findItem(cur.parentId);
   }
   if (!chain.length) return "";
   const root = chain[0];
@@ -161,6 +161,7 @@ const semText = (s: Sem) =>
     .join("\n");
 
 async function write(
+  store: CanvasStore,
   card: CardItem,
   subject: string,
   quoted: string,
@@ -192,7 +193,7 @@ async function write(
   let rewritten = false;
 
   if (systemOneConfigured(config.systemOne)) {
-    await update(card.id, { stage: "checking", sem, sources });
+    await store.update(card.id, { stage: "checking", sem, sources });
     const check = (s: Sem) => decideYesNo(config.systemOne, { subject, explanation: semText(s) }, CLIMB_QUESTION);
     try {
       climb = await check(sem);
@@ -218,7 +219,7 @@ async function write(
       // The check is advisory; a failure leaves the draft as written.
     }
   }
-  await update(card.id, { stage: "done", sem, sources, climb, rewritten });
+  await store.update(card.id, { stage: "done", sem, sources, climb, rewritten });
 }
 
 async function search(query: string): Promise<FoundSource[]> {
@@ -228,14 +229,14 @@ async function search(query: string): Promise<FoundSource[]> {
   return mergeHits(await runSearch(config, query, enabled, 4));
 }
 
-async function guard(cardId: string, run: () => Promise<void>) {
+async function guard(store: CanvasStore, cardId: string, run: () => Promise<void>) {
   const limit = (await loadConfig()).llm.timeoutSeconds;
   try {
     await run();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const timedOut = err instanceof Error && (err.name === "TimeoutError" || /aborted due to timeout/.test(message));
-    await update(cardId, {
+    await store.update(cardId, {
       stage: "failed",
       error: timedOut
         ? `The language model didn't answer within ${limit} seconds. It may be busy with another card; retry, or raise the timeout in Settings.`
@@ -245,8 +246,8 @@ async function guard(cardId: string, run: () => Promise<void>) {
 }
 
 /** For a rectangle on an image: `marked` is the whole page with the rectangle drawn, `crop` the region. */
-export function explainRegion(cardId: string, images: { marked: string; crop: string }) {
-  return guard(cardId, async () => {
+export function explainRegion(store: CanvasStore, cardId: string, images: { marked: string; crop: string }) {
+  return guard(store, cardId, async () => {
     const config = await loadConfig();
     const content = [
       { type: "text" as const, text: "Here is the page and the part I selected." },
@@ -270,11 +271,11 @@ export function explainRegion(cardId: string, images: { marked: string; crop: st
     const subject = id.subject?.trim() || "this";
     const pageText = str(id.pageText).slice(0, 6000) || undefined;
     const terms = cleanTerms(id.terms);
-    await update(cardId, { stage: "searching", subject, transcription: id.transcription, topic: id.topic, pageText, terms });
+    await store.update(cardId, { stage: "searching", subject, transcription: id.transcription, topic: id.topic, pageText, terms });
     // Ask for introductions explicitly; left alone, searches on a slide's words find the paper itself.
     const sources = await search(`${id.searchQuery?.trim() || subject} introduction`);
-    await update(cardId, { stage: "writing", sources });
-    const card = (await findItem(cardId)) as CardItem;
+    await store.update(cardId, { stage: "writing", sources });
+    const card = (await store.findItem(cardId)) as CardItem;
     const context = [
       pageText ? `The whole page reads:\n${pageText}` : "",
       terms.length
@@ -285,7 +286,7 @@ export function explainRegion(cardId: string, images: { marked: string; crop: st
     ]
       .filter(Boolean)
       .join("\n\n");
-    await write(card, subject, id.transcription ?? subject, id.topic, [], sources, context);
+    await write(store, card, subject, id.transcription ?? subject, id.topic, [], sources, context);
   });
 }
 
@@ -382,27 +383,27 @@ const REGISTER_GUIDANCE: Record<Register, string> = {
 };
 
 /** For words the learner selected inside another card: explain them one level further down. */
-export function explainSelection(cardId: string) {
-  return guard(cardId, async () => {
-    const card = (await findItem(cardId)) as CardItem;
+export function explainSelection(store: CanvasStore, cardId: string) {
+  return guard(store, cardId, async () => {
+    const card = (await store.findItem(cardId)) as CardItem;
     const selection = card.selection ?? "";
-    const { path, topic } = await ancestry(card);
-    const context = await trail(card);
+    const { path, topic } = await ancestry(store, card);
+    const context = await trail(store, card);
 
     // First work out what the words mean where they were selected: the literal words of a plain
     // gloss ("invisible push") find nothing, while the page topic pulls the search back toward the
     // specialist material. Search for the concept itself, at beginner level.
-    await update(cardId, { stage: "reading" });
+    await store.update(cardId, { stage: "reading" });
     const resolved = await resolveSelection(selection, card.context, context);
     const subject = resolved?.concept ?? selection;
     const quoted = card.context ? `“${selection}” in: ${card.context}` : selection;
     const register: RegisterNote | undefined = resolved?.register ? { text: selection, ...resolved.register } : undefined;
-    await update(cardId, { stage: "searching", subject, topic, transcription: card.context ? quoted : undefined, register });
+    await store.update(cardId, { stage: "searching", subject, topic, transcription: card.context ? quoted : undefined, register });
 
     const sources = await search(resolved ? `${resolved.searchQuery} introduction` : `${selection} explained introduction`);
-    await update(cardId, { stage: "writing", sources });
+    await store.update(cardId, { stage: "writing", sources });
     const guidance = register ? `${REGISTER_GUIDANCE[register.register]}${register.means ? ` (${register.means})` : ""}` : "";
-    await write(card, subject, quoted, topic, path, sources, [context, guidance].filter(Boolean).join("\n\n"));
+    await write(store, card, subject, quoted, topic, path, sources, [context, guidance].filter(Boolean).join("\n\n"));
   });
 }
 
@@ -422,29 +423,29 @@ const RELATION_GUIDANCE = `The reader asked how the two things below are related
 - "here": where on this page the link matters, if it does.`;
 
 /** One side of a relation, with everything known about where it came from. */
-async function describe(id: string): Promise<{ name: string; text: string }> {
-  const item = await findItem(id);
+async function describe(store: CanvasStore, id: string): Promise<{ name: string; text: string }> {
+  const item = await store.findItem(id);
   if (item?.kind !== "card") return { name: "?", text: "" };
   const name = item.subject ?? item.selection ?? "this";
   const lines = [
     `"${name}"`,
     item.transcription ? `Selected text: ${item.transcription}` : "",
     item.pageText ? `The page it came from reads:\n${item.pageText}` : "",
-    await trail(item),
+    await trail(store, item),
     `Its explanation:\n${cardText(item)}`,
   ];
   return { name, text: lines.filter(Boolean).join("\n") };
 }
 
-export function explainRelation(cardId: string) {
-  return guard(cardId, async () => {
-    const card = (await findItem(cardId)) as CardItem;
+export function explainRelation(store: CanvasStore, cardId: string) {
+  return guard(store, cardId, async () => {
+    const card = (await store.findItem(cardId)) as CardItem;
     const [aId, bId] = card.relates!;
-    const [a, b] = await Promise.all([describe(aId), describe(bId)]);
+    const [a, b] = await Promise.all([describe(store, aId), describe(store, bId)]);
     const config = await loadConfig();
     const both = `FIRST: ${a.text}\n\nSECOND: ${b.text}`;
 
-    await update(cardId, { stage: "reading" });
+    await store.update(cardId, { stage: "reading" });
     let relation = `${a.name} and ${b.name}`;
     let query = `${a.name} ${b.name} relationship`;
     try {
@@ -458,9 +459,9 @@ export function explainRelation(cardId: string) {
       // Fall back to searching the two names together.
     }
     const subject = relation;
-    await update(cardId, { stage: "searching", subject });
+    await store.update(cardId, { stage: "searching", subject });
     const sources = await search(`${query} introduction`);
-    await update(cardId, { stage: "writing", sources });
-    await write(card, subject, `How are "${a.name}" and "${b.name}" related?`, undefined, [], sources, `${RELATION_GUIDANCE}\n\n${both}`);
+    await store.update(cardId, { stage: "writing", sources });
+    await write(store, card, subject, `How are "${a.name}" and "${b.name}" related?`, undefined, [], sources, `${RELATION_GUIDANCE}\n\n${both}`);
   });
 }

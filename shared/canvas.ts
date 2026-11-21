@@ -156,6 +156,13 @@ export interface Move {
 /** Position is semantic: an explanation sits at least this far from what it explains, on any side, never on it. */
 export const MIN_CHILD_GAP = 24;
 
+/** A canvas: a name and a stable id, which is what its URL (/c/<id>) is built from. */
+export interface CanvasInfo {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
 export interface LoggedEvent {
   seq: number;
   at: string;

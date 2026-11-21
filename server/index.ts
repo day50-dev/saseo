@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { readFile } from "node:fs/promises";
 import { CARD_WIDTH, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
-import { add, assetPath, findItem, getState, moveItems, newId, record, saveAsset, update, withDependents } from "./canvas.ts";
+import { assetPath, canvasStore, createCanvas, getCanvasInfo, listCanvases, newId, renameCanvas, saveAsset } from "./canvas.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { explainRegion, explainRelation, explainSelection } from "./explain.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
@@ -49,7 +49,24 @@ app.post("/api/search", async (c) => {
 
 // ---- Canvas ----
 
-app.get("/api/canvas", async (c) => c.json(await getState()));
+app.get("/api/canvases", async (c) => c.json(await listCanvases()));
+
+app.post("/api/canvases", async (c) => {
+  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string };
+  return c.json(await createCanvas(name ?? ""));
+});
+
+app.patch("/api/canvases/:cid", async (c) => {
+  const { name } = (await c.req.json()) as { name?: string };
+  const info = await renameCanvas(c.req.param("cid"), name ?? "");
+  return info ? c.json(info) : c.json({ error: "unknown canvas" }, 404);
+});
+
+app.get("/api/canvases/:cid", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  return c.json({ ...(await getCanvasInfo(store.id)), ...(await store.getState()) });
+});
 
 app.get("/api/assets/:name", async (c) => {
   const found = assetPath(c.req.param("name"));
@@ -62,7 +79,9 @@ app.get("/api/assets/:name", async (c) => {
   }
 });
 
-app.post("/api/canvas/images", async (c) => {
+app.post("/api/canvases/:cid/images", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
   const body = await c.req.parseBody();
   const file = body.file;
   if (!(file instanceof File)) return c.json({ error: "file is required" }, 400);
@@ -83,11 +102,13 @@ app.post("/api/canvas/images", async (c) => {
   if ([item.x, item.y, item.w, item.h, item.naturalW, item.naturalH].some((n) => !Number.isFinite(n))) {
     return c.json({ error: "x, y, w, h, naturalW and naturalH are required numbers" }, 400);
   }
-  await add(item);
+  await store.add(item);
   return c.json(item);
 });
 
-app.post("/api/canvas/regions", async (c) => {
+app.post("/api/canvases/:cid/regions", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
   const body = (await c.req.json()) as {
     imageId: string;
     rect: Rect;
@@ -95,79 +116,89 @@ app.post("/api/canvas/regions", async (c) => {
     marked: string;
     crop: string;
   };
-  const image = await findItem(body.imageId);
+  const image = await store.findItem(body.imageId);
   if (image?.kind !== "image") return c.json({ error: "unknown image" }, 404);
   if (!body.marked?.startsWith("data:image/") || !body.crop?.startsWith("data:image/")) {
     return c.json({ error: "marked and crop must be image data URLs" }, 400);
   }
   const region: RegionItem = { kind: "region", id: newId(), imageId: image.id, rect: body.rect };
   const card: CardItem = { kind: "card", id: newId(), parentId: region.id, x: body.card.x, y: body.card.y, w: CARD_WIDTH, stage: "reading" };
-  await add(region);
-  await add(card);
-  void explainRegion(card.id, { marked: body.marked, crop: body.crop });
+  await store.add(region);
+  await store.add(card);
+  void explainRegion(store, card.id, { marked: body.marked, crop: body.crop });
   return c.json({ region, card });
 });
 
-app.post("/api/canvas/descend", async (c) => {
+app.post("/api/canvases/:cid/descend", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
   const body = (await c.req.json()) as { parentId: string; selection: string; context?: string; x: number; y: number };
-  const parent = await findItem(body.parentId);
+  const parent = await store.findItem(body.parentId);
   if (parent?.kind !== "card") return c.json({ error: "unknown card" }, 404);
   const selection = body.selection?.trim().slice(0, 300);
   if (!selection) return c.json({ error: "selection is required" }, 400);
   const context = typeof body.context === "string" ? body.context.trim().slice(0, 500) : undefined;
   const card: CardItem = { kind: "card", id: newId(), parentId: parent.id, selection, context, x: body.x, y: body.y, w: CARD_WIDTH, stage: "reading", subject: selection };
-  await add(card);
-  void explainSelection(card.id);
+  await store.add(card);
+  void explainSelection(store, card.id);
   return c.json({ card });
 });
 
 // Runs a failed card again in place. A card from a box needs the images re-sent, since
 // only the box's position is stored, not the pixels sent to the model.
-app.post("/api/canvas/cards/:id/retry", async (c) => {
-  const card = await findItem(c.req.param("id"));
+app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const card = await store.findItem(c.req.param("id"));
   if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
   if (card.stage !== "failed") return c.json({ error: "only a failed card can be retried" }, 409);
-  const parent = await findItem(card.parentId);
+  const parent = await store.findItem(card.parentId);
   if (card.relates) {
-    await update(card.id, { stage: "reading", error: "" });
-    void explainRelation(card.id);
+    await store.update(card.id, { stage: "reading", error: "" });
+    void explainRelation(store, card.id);
   } else if (parent?.kind === "region") {
     const body = (await c.req.json().catch(() => ({}))) as { marked?: string; crop?: string };
     if (!body.marked?.startsWith("data:image/") || !body.crop?.startsWith("data:image/")) {
       return c.json({ error: "marked and crop must be image data URLs" }, 400);
     }
-    await update(card.id, { stage: "reading", error: "" });
-    void explainRegion(card.id, { marked: body.marked, crop: body.crop });
+    await store.update(card.id, { stage: "reading", error: "" });
+    void explainRegion(store, card.id, { marked: body.marked, crop: body.crop });
   } else {
-    await update(card.id, { stage: "reading", error: "" });
-    void explainSelection(card.id);
+    await store.update(card.id, { stage: "reading", error: "" });
+    void explainSelection(store, card.id);
   }
   return c.json({ ok: true });
 });
 
-app.post("/api/canvas/move", async (c) => {
+app.post("/api/canvases/:cid/move", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
   const { moves } = (await c.req.json()) as { moves: Move[] };
   if (!Array.isArray(moves) || !moves.length) return c.json({ error: "moves is required" }, 400);
-  const result = await moveItems(moves);
+  const result = await store.moveItems(moves);
   return result.ok ? c.json(result) : c.json(result, 409);
 });
 
-app.post("/api/canvas/collapse", async (c) => {
+app.post("/api/canvases/:cid/collapse", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
   const { ids, collapsed } = (await c.req.json()) as { ids: string[]; collapsed: boolean };
-  const known = new Map((await getState()).items.map((i) => [i.id, i]));
+  const known = new Map((await store.getState()).items.map((i) => [i.id, i]));
   const valid = (Array.isArray(ids) ? ids : []).filter((id) => {
     const kind = known.get(id)?.kind;
     return kind === "card" || kind === "image";
   });
   if (!valid.length || typeof collapsed !== "boolean") return c.json({ error: "ids of cards or images, and collapsed: boolean" }, 400);
-  await record({ type: "collapse", ids: valid, collapsed });
+  await store.record({ type: "collapse", ids: valid, collapsed });
   return c.json({ ok: true });
 });
 
 // The learner asks how two things relate; a card between them finds out.
-app.post("/api/canvas/relate", async (c) => {
+app.post("/api/canvases/:cid/relate", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
   const body = (await c.req.json()) as { a: string; b: string; x: number; y: number };
-  const [a, b] = await Promise.all([findItem(body.a), findItem(body.b)]);
+  const [a, b] = await Promise.all([store.findItem(body.a), store.findItem(body.b)]);
   if (a?.kind !== "card" || b?.kind !== "card" || a.id === b.id) return c.json({ error: "two different cards are required" }, 400);
   if (!Number.isFinite(body.x) || !Number.isFinite(body.y)) return c.json({ error: "x and y are required" }, 400);
   const card: CardItem = {
@@ -181,31 +212,43 @@ app.post("/api/canvas/relate", async (c) => {
     stage: "reading",
     subject: `${a.subject ?? "this"} ⟷ ${b.subject ?? "that"}`,
   };
-  await add(card);
-  void explainRelation(card.id);
+  await store.add(card);
+  void explainRelation(store, card.id);
   return c.json({ card });
 });
 
 // Removing is a hide event: the log keeps everything, so any removal can be undone.
-app.post("/api/canvas/hide", async (c) => {
+app.post("/api/canvases/:cid/hide", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
   const { ids } = (await c.req.json()) as { ids: string[] };
-  const hidden = await withDependents(Array.isArray(ids) ? ids : []);
-  if (hidden.length) await record({ type: "hide", ids: hidden });
+  const hidden = await store.withDependents(Array.isArray(ids) ? ids : []);
+  if (hidden.length) await store.record({ type: "hide", ids: hidden });
   return c.json({ ids: hidden });
 });
 
-app.post("/api/canvas/show", async (c) => {
+app.post("/api/canvases/:cid/show", async (c) => {
+  const store = await canvasStore(c.req.param("cid"));
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
   const { ids } = (await c.req.json()) as { ids: string[] };
-  const known = new Set((await getState()).items.map((i) => i.id));
+  const known = new Set((await store.getState()).items.map((i) => i.id));
   const shown = (Array.isArray(ids) ? ids : []).filter((id) => known.has(id));
-  if (shown.length) await record({ type: "show", ids: shown });
+  if (shown.length) await store.record({ type: "show", ids: shown });
   return c.json({ ids: shown });
 });
 
-// In production, serve the built panel too.
+// In production, serve the built panel too; app paths like /c/<id> get the page and route there.
 app.use("/*", serveStatic({ root: "./dist" }));
+app.get("*", async (c) => {
+  if (c.req.path.startsWith("/api/")) return c.notFound();
+  try {
+    return c.html(await readFile("./dist/index.html", "utf8"));
+  } catch {
+    return c.notFound();
+  }
+});
 
 const port = Number(process.env.PORT ?? 8787);
 serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, () => {
-  console.log(`semshapes API on http://127.0.0.1:${port} (config: ${CONFIG_PATH})`);
+  console.log(`librarian API on http://127.0.0.1:${port} (config: ${CONFIG_PATH})`);
 });
