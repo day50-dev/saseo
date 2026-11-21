@@ -32,7 +32,7 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   } else if (e.type === "move") {
     for (const m of e.moves) {
       const item = s.items.find((i) => i.id === m.id);
-      if (item && item.kind !== "region") Object.assign(item, { x: m.x, y: m.y });
+      if (item && item.kind !== "region") Object.assign(item, { x: m.x, y: m.y }, item.kind === "card" && m.h ? { h: m.h } : {});
     }
   } else {
     const ids = new Set(e.ids);
@@ -109,26 +109,45 @@ export async function withDependents(ids: string[]): Promise<string[]> {
 }
 
 /** An item's left and right edges after `moves`, for checking that cards sit beside their source. */
-function edges(items: Item[], id: string, moved: Map<string, Move>): { left: number; right: number } | null {
+interface Box {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/** Height assumed for a card that has never been measured (it has never been moved). */
+const UNKNOWN_HEIGHT = 200;
+
+/** An item's rectangle after `moves`, for checking that a card doesn't sit on its source. */
+function bounds(items: Item[], id: string, moved: Map<string, Move>): Box | null {
   const item = items.find((i) => i.id === id);
   if (!item) return null;
   if (item.kind === "card") {
-    const x = moved.get(id)?.x ?? item.x;
-    return { left: x, right: x + item.w };
+    const m = moved.get(id);
+    const x = m?.x ?? item.x;
+    const y = m?.y ?? item.y;
+    return { left: x, right: x + item.w, top: y, bottom: y + (m?.h ?? item.h ?? UNKNOWN_HEIGHT) };
   }
   if (item.kind === "region") {
     const img = items.find((i) => i.id === item.imageId);
     if (img?.kind !== "image") return null;
     const k = img.w / img.naturalW;
-    const x = (moved.get(img.id)?.x ?? img.x) + item.rect.x * k;
-    return { left: x, right: x + item.rect.w * k };
+    const m = moved.get(img.id);
+    const x = (m?.x ?? img.x) + item.rect.x * k;
+    const y = (m?.y ?? img.y) + item.rect.y * k;
+    return { left: x, right: x + item.rect.w * k, top: y, bottom: y + item.rect.h * k };
   }
   return null;
 }
 
+/** Whether two boxes come closer than `gap` on every axis, i.e. one sits on the other. */
+const overlaps = (a: Box, b: Box, gap: number) =>
+  !(a.right + gap <= b.left + 0.5 || b.right + gap <= a.left + 0.5 || a.bottom + gap <= b.top + 0.5 || b.bottom + gap <= a.top + 0.5);
+
 /**
- * Applies a set of moves if every card still sits beside what it explains: wholly to its right or
- * wholly to its left (a branch can grow either way), never on top of it.
+ * Applies a set of moves if no card sits on what it explains. Any side is fine (left, right,
+ * above, below), and a branch grows whichever way its first card was put.
  */
 export async function moveItems(moves: Move[]): Promise<{ ok: true } | { ok: false; error: string }> {
   const { items } = await getState();
@@ -144,15 +163,16 @@ export async function moveItems(moves: Move[]): Promise<{ ok: true } | { ok: fal
     const parent = items.find((i) => i.id === card.parentId);
     const parentMoved = parent && (moved.has(parent.id) || (parent.kind === "region" && moved.has(parent.imageId)));
     if (!moved.has(card.id) && !parentMoved) continue;
-    const e = edges(items, card.parentId, moved);
-    const x = moved.get(card.id)?.x ?? card.x;
-    const rightOf = e !== null && x >= e.right + MIN_CHILD_GAP - 0.5;
-    const leftOf = e !== null && x + card.w <= e.left - MIN_CHILD_GAP + 0.5;
-    if (e !== null && !rightOf && !leftOf) {
-      return { ok: false, error: "an explanation must sit beside what it explains, to its left or right" };
+    const source = bounds(items, card.parentId, moved);
+    const self = bounds(items, card.id, moved);
+    if (source && self && overlaps(self, source, MIN_CHILD_GAP)) {
+      return { ok: false, error: "an explanation can sit on any side of what it explains, but not on it" };
     }
   }
-  await record({ type: "move", moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y) })) });
+  await record({
+    type: "move",
+    moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y), ...(m.h ? { h: Math.round(m.h) } : {}) })),
+  });
   return { ok: true };
 }
 

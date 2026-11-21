@@ -115,6 +115,8 @@ export interface CardItem extends ItemState {
    * is the first of the two; the card depends on both.
    */
   relates?: [string, string];
+  /** Height as last drawn, recorded with moves. */
+  h?: number;
   x: number;
   y: number;
   w: number;
@@ -147,9 +149,11 @@ export interface Move {
   id: string;
   x: number;
   y: number;
+  /** A card's height as drawn when it was moved, so overlap above and below can be checked. */
+  h?: number;
 }
 
-/** Position is semantic: an explanation sits at least this far beside what it explains, left or right. */
+/** Position is semantic: an explanation sits at least this far from what it explains, on any side, never on it. */
 export const MIN_CHILD_GAP = 24;
 
 export interface LoggedEvent {
