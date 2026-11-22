@@ -43,10 +43,16 @@ export function SemShapes({
   sem,
   render,
   onTitlePointerDown,
+  extra,
+  labels,
 }: {
   title: string;
   sem: Sem;
   render: Render;
+  /** Anything to show under a piece, by its key ("why-0", "what-0", "part-1", "together", "here-2"). */
+  extra?: (key: string) => ReactNode;
+  /** Section headings to use instead of the usual ones. */
+  labels?: Partial<Record<Section["key"], string>>;
   /** The title doubles as the card's move handle. */
   onTitlePointerDown?: (e: React.PointerEvent) => void;
 }) {
@@ -182,19 +188,21 @@ export function SemShapes({
         {present.map((s) => (
           <div key={s.key} className={`sem-section facet-${s.key}`}>
             <div className="sem-cat" data-a={`cat-${s.key}`}>
-              {s.label}
+              {labels?.[s.key] ?? s.label}
             </div>
             <div className="sem-kids">
               {(s.key === "why" || s.key === "here") &&
                 sem[s.key].map((step, i) => (
                   <div key={i} className="sem-step" data-a={`${s.key}-${i}`} style={{ marginLeft: Math.min(i, 3) * 22 }}>
                     {render(step)}
+                    {extra?.(`${s.key}-${i}`)}
                   </div>
                 ))}
               {s.key === "what" &&
                 [sem.what.gist, ...sem.what.details].filter(Boolean).map((t, i) => (
                   <div key={i} className={`sem-desc ${i === 0 ? "gist" : ""}`} data-a={`what-${i}`}>
                     {render(t)}
+                    {extra?.(`what-${i}`)}
                   </div>
                 ))}
               {s.key === "parts" && (
@@ -205,12 +213,14 @@ export function SemShapes({
                         {/\\[(\[]/.test(p.symbol) ? withMath(p.symbol) : looksLikeTex(p.symbol) ? <Tex tex={p.symbol} /> : <code>{p.symbol}</code>}
                         <div className="sem-part-meaning">{render(p.meaning)}</div>
                         {p.note && <div className="sem-part-note">{render(p.note)}</div>}
+                        {extra?.(`part-${i}`)}
                       </div>
                     ))}
                   </div>
                   {sem.together && (
                     <div className="sem-together" data-a="together">
                       {render(sem.together)}
+                      {extra?.("together")}
                     </div>
                   )}
                 </>

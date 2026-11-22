@@ -534,3 +534,22 @@ kbd {
 .example:hover:not(:disabled) { border-color: var(--accent); }
 .example-kind { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.6; }
 .example-title { font-size: 14px; font-weight: 500; }
+
+/* A linked page: its shapes or its text, and the links between them. */
+.view-switch { display: flex; align-items: center; gap: 4px; margin: 6px 0 8px; }
+.view-switch button { padding: 3px 12px; font-size: 13px; border-radius: 999px; background: transparent; color: inherit; border: 1px solid var(--line); }
+.view-switch button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.view-switch button:disabled { opacity: 0.45; }
+.view-switch .muted, .view-switch .fail { margin-left: 8px; }
+.from-page { display: inline; }
+.from-toggle { display: inline; margin-left: 6px; padding: 0 5px; font-size: 12px; line-height: 1.4; border-radius: 4px; background: transparent;
+  border: 1px solid var(--line); color: var(--accent); cursor: pointer; vertical-align: 1px; }
+.from-quote { display: block; margin: 6px 0 2px; padding: 6px 10px; border-left: 3px solid var(--accent); background: rgba(127, 127, 127, 0.07);
+  font-size: 13px; font-weight: 400; }
+.from-para { display: block; margin: 0 0 6px; }
+.source-para.anchored { position: relative; }
+.to-shape { position: absolute; left: -18px; top: 2px; padding: 0; border: none; background: none; color: var(--accent); cursor: pointer; font-size: 11px; }
+@keyframes flash { from { background: rgba(255, 200, 0, 0.55); } to { background: transparent; } }
+.flash { animation: flash 1.8s ease-out; border-radius: 4px; }
+.sem-part .from-quote { font-size: 12px; padding: 4px 6px; margin-top: 4px; }
+.sem-part .from-para { overflow-wrap: anywhere; }

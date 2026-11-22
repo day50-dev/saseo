@@ -1,5 +1,15 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { type CardItem, type CardStage, type Clarify, type FoundSource, type Paper, REGISTERS, type RegisterNote, type Sem } from "../shared/canvas.ts";
+import {
+  type CardItem,
+  type CardStage,
+  type Clarify,
+  type FoundSource,
+  type Paper,
+  paragraphs,
+  REGISTERS,
+  type RegisterNote,
+  type Sem,
+} from "../shared/canvas.ts";
 import { PaperRow } from "./ArxivPanel.tsx";
 import { looksLikeTex, selectedText, Tex, textWithTex, withMath } from "./MathText.tsx";
 import { SemShapes } from "./SemShapes.tsx";
@@ -133,6 +143,18 @@ export function Card(props: {
   // Only the explanation and the conversation can be selected to go further down: not the
   // header, badge or buttons.
   const explainRef = useRef<HTMLDivElement>(null);
+  // A linked page shows as shapes or as its text, and each links to the other.
+  const pageCard = card.origin?.kind === "page" && card.stage === "done";
+  const [view, setView] = useState<"shapes" | "page">("shapes");
+  const showShapes = Boolean(card.sem) && (!pageCard || view === "shapes");
+  const [flash, setFlash] = useState<string | null>(null);
+  useEffect(() => {
+    if (!flash || !showShapes) return;
+    const el = explainRef.current?.querySelector(`[data-a="${flash}"]`);
+    el?.classList.add("flash");
+    const t = setTimeout(() => (el?.classList.remove("flash"), setFlash(null)), 1800);
+    return () => clearTimeout(t);
+  }, [flash, showShapes]);
   const chatRef = useRef<HTMLDivElement>(null);
   const inText = (n: Node | null) => Boolean(n && (explainRef.current?.contains(n) || chatRef.current?.contains(n)));
 
@@ -189,7 +211,7 @@ export function Card(props: {
           {card.collapsed ? "▸" : "▾"}
         </button>
         {/* With a Sem, the subject is drawn as the diagram's document title instead, unless collapsed. */}
-        <h3>{card.sem && !card.collapsed ? "" : (card.subject ?? (card.stage === "reading" ? "…" : "Explanation"))}</h3>
+        <h3>{showShapes && !card.collapsed ? "" : (card.subject ?? (card.stage === "reading" ? "…" : "Explanation"))}</h3>
         {card.climb !== undefined && (
           <span
             className={`badge ${card.climb < 0.5 ? "ok" : "fail"}`}
@@ -245,14 +267,34 @@ export function Card(props: {
       )}
 
       <div ref={explainRef} className="card-explanation">
-      {card.origin && card.stage === "done" && <SourceView card={card} onReread={props.onRetry} />}
+      {pageCard && (
+        <div className="view-switch" onPointerDown={(e) => e.stopPropagation()}>
+          <button type="button" className={view === "shapes" ? "on" : ""} disabled={!card.sem} onClick={() => setView("shapes")}>
+            Shapes
+          </button>
+          <button type="button" className={view === "page" ? "on" : ""} onClick={() => setView("page")}>
+            Page
+          </button>
+          {card.shaping === "working" && (
+            <span className="muted small">
+              <span className="spinner" /> Drawing the page's shapes…
+            </span>
+          )}
+          {card.shaping === "failed" && <span className="fail small">Couldn't draw its shapes; "Read again" tries once more.</span>}
+        </div>
+      )}
+      {card.origin && card.stage === "done" && !showShapes && (
+        <SourceView card={card} onReread={props.onRetry} onShowPiece={(key) => (setView("shapes"), setFlash(key))} />
+      )}
       {card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} />}
-      {card.sem && (
+      {showShapes && card.sem && (
         <SemShapes
           title={card.subject ?? "Explanation"}
           sem={card.sem}
           render={(t) => withRegister(t, card.sem!, sources)}
           onTitlePointerDown={props.onGrab}
+          labels={pageCard ? { here: "Where the page goes" } : undefined}
+          extra={pageCard ? (key) => <FromPage card={card} anchorKey={key} onOpenPage={() => setView("page")} /> : undefined}
         />
       )}
 
@@ -478,6 +520,51 @@ function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: 
   );
 }
 
+/** Under a piece of a page's shapes: the page's own words it came from, opened on demand. */
+function FromPage({ card, anchorKey, onOpenPage }: { card: CardItem; anchorKey: string; onOpenPage: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ns = card.anchors?.[anchorKey];
+  if (!ns?.length) return null;
+  const paras = paragraphs(card.pageText ?? "");
+  return (
+    <span className="from-page">
+      <button
+        type="button"
+        className="from-toggle"
+        title={open ? "Hide the page's words" : "Show the page's own words for this"}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => setOpen(!open)}
+      >
+        ¶
+      </button>
+      {open && (
+        <span className="from-quote">
+          {ns.map((n) => (
+            <span key={n} className="source-para from-para">
+              {withMath((paras[n] ?? "").replace(/^## /, ""))}
+            </span>
+          ))}
+          <button type="button" className="link small" onPointerDown={(e) => e.stopPropagation()} onClick={onOpenPage}>
+            Read it in the page
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** The text of one piece of a Sem, by its key. */
+function pieceText(sem: Sem, key: string): string {
+  const [kind, n] = key.split("-");
+  const i = Number(n);
+  if (kind === "why") return sem.why[i] ?? "";
+  if (kind === "here") return sem.here[i] ?? "";
+  if (kind === "what") return [sem.what.gist, ...sem.what.details].filter(Boolean)[i] ?? "";
+  if (kind === "part") return sem.parts[i] ? `${sem.parts[i].symbol}: ${sem.parts[i].meaning}` : "";
+  if (kind === "together") return sem.together;
+  return "";
+}
+
 /** The librarian's question before explaining: likely answers to click, your own words, or skip. */
 function AskView({ clarify, onAnswer }: { clarify: Clarify; onAnswer: (answer: string) => void }) {
   const [text, setText] = useState("");
@@ -522,12 +609,15 @@ function transcription(t: string): ReactNode {
 }
 
 /** A starting point that isn't an image: a page someone linked to, or a statement they typed. */
-function SourceView({ card, onReread }: { card: CardItem; onReread: () => void }) {
+function SourceView({ card, onReread, onShowPiece }: { card: CardItem; onReread: () => void; onShowPiece: (key: string) => void }) {
   const [all, setAll] = useState(false);
   const o = card.origin!;
   if (o.kind === "note") return <p className="source-para source-note">{withMath(o.title)}</p>;
   // Paragraphs, "## " headings, images as ![alt](url), and formulas between \( \) or \[ \].
-  const paras = (card.pageText ?? "").split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const paras = paragraphs(card.pageText ?? "");
+  // Each paragraph a piece of the shapes came from links back to that piece.
+  const pieceOf = new Map<number, string>();
+  for (const [key, ns] of Object.entries(card.anchors ?? {})) for (const n of ns) if (!pieceOf.has(n)) pieceOf.set(n, key);
   const LIMIT = 6000;
   let used = 0;
   const shown = all ? paras : paras.filter((p) => (used += p.length) <= LIMIT || used === p.length);
@@ -549,7 +639,23 @@ function SourceView({ card, onReread }: { card: CardItem; onReread: () => void }
           );
         }
         if (para.startsWith("## ")) return <p key={i} className="source-para source-heading">{withMath(para.slice(3))}</p>;
-        return <p key={i} className="source-para">{withMath(para)}</p>;
+        const key = pieceOf.get(i);
+        return (
+          <p key={i} className={`source-para ${key ? "anchored" : ""}`}>
+            {key && card.sem && (
+              <button
+                type="button"
+                className="to-shape"
+                title={`In the shapes: ${pieceText(card.sem, key)}`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => onShowPiece(key)}
+              >
+                ◆
+              </button>
+            )}
+            {withMath(para)}
+          </p>
+        );
       })}
       {shown.length < paras.length && (
         <button type="button" className="link small" onClick={() => setAll(true)}>

@@ -208,6 +208,13 @@ export interface CardItem extends ItemState {
   stage: CardStage;
   /** A question asked before explaining; the card waits at stage "asking" until it's answered. */
   clarify?: Clarify;
+  /**
+   * For a linked page: which paragraphs each piece of its shapes (sem) came from, by the piece's
+   * key ("why-0", "what-0", "part-1", "together", "here-2") and paragraph number in pageText.
+   */
+  anchors?: Record<string, number[]>;
+  /** For a linked page: its shapes are being drawn, or couldn't be. */
+  shaping?: "working" | "failed" | "done";
   /** The beginner search the explanation will use, kept so it can resume after a question. */
   searchQuery?: string;
   subject?: string;
@@ -249,6 +256,13 @@ export interface Move {
 export const MIN_CHILD_GAP = 24;
 
 /** A canvas: a name and a stable id, which is what its URL (/c/<id>) is built from. */
+/** A page's text as paragraphs, numbered the same way on the server and in the browser. */
+export const paragraphs = (text: string): string[] =>
+  text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
 export interface CanvasInfo {
   id: string;
   name: string;

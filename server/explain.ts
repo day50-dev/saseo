@@ -1,6 +1,6 @@
 // The librarian's loop for one card: read the region, go fish, write a descending
 // explanation from what was found, then check that it doesn't climb.
-import { CARD_WIDTH, type CardItem, type FoundSource, type Item, type ObjectKind, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
+import { CARD_WIDTH, paragraphs, type CardItem, type FoundSource, type Item, type ObjectKind, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { readFile } from "node:fs/promises";
 import { assetPath, type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
@@ -875,5 +875,87 @@ export function readSource(store: CanvasStore, cardId: string) {
       pageText: page.text,
       origin: { kind: "page", url: page.url, site: page.site, title: page.title },
     });
+    void shapePage(store, cardId);
   });
+}
+
+// ---- A linked page, restructured into shapes ----
+
+const RESTRUCTURE = `${EXPLAIN}
+
+This time you are not explaining a selection. You are RESTRUCTURING a whole page the reader linked, so they can see
+its shape before (or instead of) reading it. Restructure, don't summarize: keep what the page actually says and
+how it fits together, in the shape above. Add nothing the page doesn't support, except plain glosses of background.
+- "why": the problem or question the page's subject answers.
+- "what": what it is, in familiar terms; details are the page's key facts about it.
+- "parts": its ingredients as the page defines them (for a definition with several pieces, one entry per piece).
+- "together": how the parts combine, as the page says.
+- "here": what the page goes on to do, in order: its main sections or results, one step each.
+The page's paragraphs are numbered [P0], [P1], ... Also return "from": an object mapping each piece to the numbers of
+the paragraphs it comes from. Keys: "why-0", "why-1", ...; "what-0" for the gist, "what-1", ... for details;
+"part-0", ...; "together"; "here-0", .... Leave out pieces that are background, not from the page.
+Never write paragraph numbers in the pieces' text; they go only in "from".`;
+
+/** Paragraph numbers in a reference like "P3", "P3-P5", "3, 7" or "P23–45"; a range gives at most 4. */
+function paraNumbers(ref: string): number[] {
+  const out: number[] = [];
+  for (const m of ref.matchAll(/(\d+)(?:\s*[-–]\s*P?\s*(\d+))?/g)) {
+    const a = Number(m[1]);
+    const b = m[2] ? Number(m[2]) : a;
+    for (let n = a; n <= Math.min(b, a + 3); n++) out.push(n);
+  }
+  return out;
+}
+
+/** Draws a linked page as shapes, each piece pointing back at the paragraphs it came from. */
+export async function shapePage(store: CanvasStore, cardId: string) {
+  const card = (await store.findItem(cardId)) as CardItem | undefined;
+  if (!card?.pageText) return;
+  await store.update(cardId, { shaping: "working" });
+  try {
+    const paras = paragraphs(card.pageText);
+    const numbered: string[] = [];
+    let size = 0;
+    for (const [i, p] of paras.entries()) {
+      if (/^!\[/.test(p)) continue; // an image: nothing to read
+      const line = `[P${i}] ${p.slice(0, 700)}`;
+      if ((size += line.length) > 20_000) break;
+      numbered.push(line);
+    }
+    const told = await readerNotes(store);
+    const raw = await chatJson<Record<string, unknown>>((await loadConfig()).llm, [
+      { role: "system", content: RESTRUCTURE },
+      {
+        role: "user",
+        content: [`Page: ${card.origin?.title ?? card.subject ?? ""}`, told, `The page:\n${numbered.join("\n\n")}`].filter(Boolean).join("\n\n"),
+      },
+    ]);
+    const sem = cleanSem(raw);
+    if (!sem.why.length && !sem.what.gist) throw new Error("no shapes in the answer");
+    const found: Record<string, number[]> = {};
+    const from = raw.from && typeof raw.from === "object" ? (raw.from as Record<string, unknown>) : {};
+    for (const [key, v] of Object.entries(from)) {
+      found[key] = (Array.isArray(v) ? v : [v]).flatMap((x) => paraNumbers(String(x)));
+    }
+    // Models often cite paragraphs inline ("… [P23-P45]") instead: take those, and take them out of the text.
+    const cite = (key: string, text: string) => {
+      const refs = [...text.matchAll(/\s*\[(P\s*\d+[^\]]*)\]/g)];
+      if (refs.length) found[key] = [...(found[key] ?? []), ...refs.flatMap((m) => paraNumbers(m[1]))];
+      return text.replace(/\s*\[(P\s*\d+[^\]]*)\]/g, "").trim();
+    };
+    sem.why = sem.why.map((t, i) => cite(`why-${i}`, t));
+    sem.here = sem.here.map((t, i) => cite(`here-${i}`, t));
+    const whats = [sem.what.gist, ...sem.what.details].filter(Boolean).map((t, i) => cite(`what-${i}`, t));
+    sem.what = { gist: whats[0] ?? "", details: whats.slice(1) };
+    sem.parts = sem.parts.map((p, i) => ({ ...p, meaning: cite(`part-${i}`, p.meaning), note: cite(`part-${i}`, p.note) }));
+    sem.together = cite("together", sem.together);
+    const anchors: Record<string, number[]> = {};
+    for (const [key, ns] of Object.entries(found)) {
+      const ok = [...new Set(ns)].filter((n) => n < paras.length && !/^!\[/.test(paras[n]));
+      if (/^(why|what|part|here)-\d+$|^together$/.test(key) && ok.length) anchors[key] = ok.slice(0, 4);
+    }
+    await store.update(cardId, { sem, anchors, shaping: "done" });
+  } catch {
+    await store.update(cardId, { shaping: "failed" });
+  }
 }
