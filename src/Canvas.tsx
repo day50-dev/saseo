@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CARD_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { Card, type Side } from "./Card.tsx";
 import { assetUrl, CanvasNotFound, canvasApi, canvasesApi } from "./canvasApi.ts";
@@ -56,6 +56,18 @@ type Dir = "left" | "right" | "above" | "below";
 
 type Mode = "select" | "pan";
 
+interface Pending {
+  key: string;
+  x: number;
+  y: number;
+  /** The words being explained; empty for a box drawn on an image. */
+  label: string;
+  parentId?: string;
+  box?: { x: number; y: number; w: number; h: number };
+}
+
+const NONE: string[] = [];
+
 type Restack = "front" | "back" | "forward" | "backward";
 
 function loadMode(): Mode {
@@ -96,6 +108,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const [hover, setHover] = useState<string | null>(null);
   // The image or card the stacking buttons act on.
   const [selected, setSelected] = useState<string | null>(null);
+  // Explanations asked for but not on the canvas yet: a placeholder shows where each will land,
+  // so a selection is answered at once rather than after the server replies.
+  const [expected, setExpected] = useState<Pending[]>([]);
   const [heights, setHeights] = useState<Record<string, number>>({});
   const stageRef = useRef<HTMLDivElement>(null);
   const imgRefs = useRef<Record<string, HTMLImageElement | null>>({});
@@ -770,14 +785,18 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     const rect = { x: Math.round((x0 - img.x) * k), y: Math.round((y0 - img.y) * k), w: Math.round((x1 - x0) * k), h: Math.round((y1 - y0) * k) };
     const el = imgRefs.current[img.id];
     if (!el) return;
+    const cardX = img.x + img.w + GAP;
+    const cardY = slotY(cardX, Math.round(y0));
+    const done = expect({ x: cardX, y: cardY, label: "", box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } });
     try {
       const { marked, crop } = renderRegion(el, rect);
-      const cardX = img.x + img.w + GAP;
-      const res = await api.addRegion({ imageId: img.id, rect, card: { x: cardX, y: slotY(cardX, Math.round(y0)) }, marked, crop });
+      const res = await api.addRegion({ imageId: img.id, rect, card: { x: cardX, y: cardY }, marked, crop });
       added("box", [res.region.id]);
       await refresh();
     } catch (e) {
       setError(`Couldn't send the selection: ${e}`);
+    } finally {
+      done();
     }
   };
 
@@ -789,15 +808,26 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     const dir = dirOf(parent);
     const x = dir === "left" ? parent.x - GAP - CARD_WIDTH : dir === "right" ? parent.x + parent.w + GAP : parent.x;
     const vertical = dir === "below" ? parent.y + cardHeight(parent) + STACK_GAP * 2 : dir === "above" ? parent.y - STACK_GAP * 2 - PENDING_HEIGHT : null;
+    const y = vertical === null ? slotY(x, Math.round(worldY - 20)) : dir === "below" ? slotY(x, Math.round(vertical)) : Math.round(vertical);
+    const done = expect({ x, y, label: selection, parentId: parent.id });
     try {
-      const y = vertical === null ? slotY(x, Math.round(worldY - 20)) : dir === "below" ? slotY(x, Math.round(vertical)) : Math.round(vertical);
       const res = await api.descend({ parentId: parent.id, selection, context, x, y });
       added(`explain “${selection.slice(0, 30)}”`, [res.card.id]);
       await refresh();
     } catch (e) {
       setError(`Couldn't go further down: ${e}`);
+    } finally {
+      done();
     }
   };
+
+  /** Shows a placeholder where a card is about to land, and returns a function that removes it. */
+  const expect = (p: Omit<Pending, "key">) => {
+    const key = `${Date.now()}-${Math.random()}`;
+    setExpected((all) => [...all, { ...p, key }]);
+    return () => setExpected((all) => all.filter((q) => q.key !== key));
+  };
+
 
   const answer = async (card: CardItem, text: string) => {
     try {
@@ -905,6 +935,37 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     setView((v) => ({ ...v, x: r.width / 2 - (item.x + item.w / 2) * v.scale, y: 80 - item.y * v.scale }));
     setSelected(id);
   };
+
+  // What each card's words have already been explained by, and what's still being explained.
+  const explainedIn = new Map<string, string[]>();
+  const explainingIn = new Map<string, string[]>();
+  for (const p of expected) if (p.parentId) explainingIn.set(p.parentId, [...(explainingIn.get(p.parentId) ?? []), p.label]);
+  for (const c of visibleCards) {
+    if (!c.selection) continue;
+    const into = isPending(c) ? explainingIn : explainedIn;
+    into.set(c.parentId, [...(into.get(c.parentId) ?? []), c.selection]);
+  }
+
+  // Work in progress that's out of view gets a pointer at the edge of the screen, so nothing
+  // happens out of sight, and the view only moves if you ask it to.
+  const stageBox = stageRef.current?.getBoundingClientRect();
+  const offscreen = !stageBox
+    ? []
+    : [
+        ...expected.map((p) => ({ key: p.key, id: null as string | null, x: p.x, y: p.y, label: p.label || "the box you drew" })),
+        ...visibleCards.filter(isPending).map((c) => ({ key: c.id, id: c.id as string | null, x: c.x, y: c.y, label: c.selection ?? c.subject ?? "a new card" })),
+      ].flatMap((w) => {
+        const sx = w.x * view.scale + view.x;
+        const sy = w.y * view.scale + view.y;
+        const ex = sx + CARD_WIDTH * view.scale;
+        const ey = sy + 120 * view.scale;
+        if (ex > 0 && sx < stageBox.width && ey > 0 && sy < stageBox.height) return [];
+        const dir = sy >= stageBox.height ? "↓" : ey <= 0 ? "↑" : sx >= stageBox.width ? "→" : "←";
+        const m = 12;
+        const left = dir === "→" ? undefined : dir === "←" ? m : Math.min(Math.max(sx, m), stageBox.width - 260);
+        const top = dir === "↓" ? undefined : dir === "↑" ? m : Math.min(Math.max(sy, m + 40), stageBox.height - 60);
+        return [{ ...w, dir, style: { left, top, right: dir === "→" ? m : undefined, bottom: dir === "↓" ? 72 : undefined } }];
+      });
 
   // ---- Connectors ----
 
@@ -1075,6 +1136,23 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         onPointerMove={onStagePointerMove}
         onPointerUp={onStagePointerUp}
       >
+        {offscreen.map((w) => (
+          <button
+            key={w.key}
+            type="button"
+            className="offscreen"
+            style={w.style}
+            title="Show it"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => {
+              if (w.id) return focusOn(w.id);
+              const r = stageRef.current!.getBoundingClientRect();
+              setView((v) => ({ ...v, x: r.width / 2 - (w.x + CARD_WIDTH / 2) * v.scale, y: 80 - w.y * v.scale }));
+            }}
+          >
+            <span className="spinner" /> {w.dir} Explaining “{w.label.length > 32 ? `${w.label.slice(0, 32)}…` : w.label}”
+          </button>
+        ))}
         {loaded && shown.length === 0 && (
           // An empty canvas asks where to start, in the middle of the screen where the eye is.
           <div className="empty" data-pan="1">
@@ -1229,6 +1307,16 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             </svg>
           )}
 
+          {expected.map((p) => (
+            <Fragment key={p.key}>
+              {p.box && <div className="region sending" style={{ left: p.box.x, top: p.box.y, width: p.box.w, height: p.box.h }} />}
+              <div className="ghost-card" style={{ left: p.x, top: p.y, width: CARD_WIDTH }}>
+                <span className="spinner" />
+                {p.label ? <>Explaining “{p.label.length > 60 ? `${p.label.slice(0, 60)}…` : p.label}”…</> : "Reading the box you drew…"}
+              </div>
+            </Fragment>
+          ))}
+
           {draftRect && <div className="region drafting" style={{ left: draftRect.x, top: draftRect.y, width: draftRect.w, height: draftRect.h }} />}
 
           {visibleCards.map((c) => (
@@ -1263,6 +1351,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               moving={drag?.ids.includes(c.id) ?? false}
               z={rank.get(c.id) ?? 0}
               selected={selected === c.id}
+              explained={explainedIn.get(c.id) ?? NONE}
+              explaining={explainingIn.get(c.id) ?? NONE}
               onRemove={() => remove(c.id, `remove “${(c.subject ?? "card").slice(0, 30)}”`)}
             />
           ))}

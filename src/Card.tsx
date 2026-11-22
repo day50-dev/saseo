@@ -11,6 +11,7 @@ import {
   type Sem,
 } from "../shared/canvas.ts";
 import { PaperRow } from "./ArxivPanel.tsx";
+import { clearMarks, findPhrases, setMarks } from "./marks.ts";
 import { looksLikeTex, selectedText, Tex, textWithTex, withMath } from "./MathText.tsx";
 import { SemShapes } from "./SemShapes.tsx";
 
@@ -124,6 +125,10 @@ export function Card(props: {
   linking: boolean;
   /** For a relation card: the names of the two things it relates. */
   relatesNames?: string[];
+  /** Words in this card that already have a card of their own. */
+  explained: string[];
+  /** Words in this card being explained right now. */
+  explaining: string[];
 }) {
   const { card, onHeight } = props;
   const ref = useRef<HTMLDivElement>(null);
@@ -156,6 +161,14 @@ export function Card(props: {
     return () => clearTimeout(t);
   }, [flash, showShapes]);
   const chatRef = useRef<HTMLDivElement>(null);
+  // Mark what has been explained, and what's on its way, right where it was selected.
+  const markKey = JSON.stringify([props.explained, props.explaining]);
+  useEffect(() => {
+    const roots = [explainRef.current, chatRef.current];
+    setMarks(card.id, { explained: findPhrases(roots, props.explained), explaining: findPhrases(roots, props.explaining) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markKey, card, view, showShapes]);
+  useEffect(() => () => clearMarks(card.id), [card.id]);
   const inText = (n: Node | null) => Boolean(n && (explainRef.current?.contains(n) || chatRef.current?.contains(n)));
 
   const onMouseUp = () => {
