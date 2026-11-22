@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CanvasSummary } from "../shared/canvas.ts";
+import { Examples } from "./Canvas.tsx";
 import { canvasesApi } from "./canvasApi.ts";
+import type { Example } from "./examples.ts";
 import { linkTo, navigate } from "./router.ts";
-import { signOut, useIsAdmin, useMe } from "./session.ts";
+import { signOut, useIsAdmin, useIsAnonymous, useMe } from "./session.ts";
 
 /** "3 minutes ago", "yesterday", or a date. */
 export function ago(iso: string): string {
@@ -21,6 +23,7 @@ export function Home() {
   const [name, setName] = useState("");
   const me = useMe();
   const admin = useIsAdmin();
+  const anonymous = useIsAnonymous();
 
   const load = useCallback(() => {
     canvasesApi.list().then(setList, (e) => setError(String(e)));
@@ -59,7 +62,12 @@ export function Home() {
         <h1>Librarian</h1>
         <span className="home-links">
           {admin && <a {...linkTo("/settings")}>Settings</a>}
-          {me.accounts && me.user && (
+          {anonymous && (
+            <a {...linkTo("/signin")} className="save-link">
+              Sign in to save your canvases
+            </a>
+          )}
+          {me.accounts && me.user && !anonymous && (
             <>
               <span className="muted small">{me.user.email}</span>
               <button type="button" className="link" onClick={signOut}>
@@ -69,6 +77,9 @@ export function Home() {
           )}
         </span>
       </header>
+      {anonymous && (
+        <p className="muted small">You're not signed in. You can use everything; your canvases are kept in this browser until you sign in.</p>
+      )}
       {error && (
         <p className="error" onClick={() => setError(null)}>
           {error}
@@ -78,6 +89,16 @@ export function Home() {
         <input value={name} placeholder="Name a new canvas, e.g. CSS talk, Sobolev inequalities" onChange={(e) => setName(e.target.value)} />
         <button type="submit">New canvas</button>
       </form>
+      <Examples
+        onPick={async (ex: Example) => {
+          try {
+            const c = await canvasesApi.create(ex.title.slice(0, 60));
+            navigate(`/c/${c.id}?example=${ex.key}`);
+          } catch (err) {
+            setError(String(err));
+          }
+        }}
+      />
       {list === null ? (
         <p className="muted">Loading…</p>
       ) : live.length === 0 ? (

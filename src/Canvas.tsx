@@ -4,9 +4,10 @@ import { Card, type Side } from "./Card.tsx";
 import { assetUrl, CanvasNotFound, canvasApi, canvasesApi } from "./canvasApi.ts";
 import { renderPages as renderPaperPages } from "./arxiv.ts";
 import { ArxivPanel } from "./ArxivPanel.tsx";
+import { EXAMPLES, type Example, exampleByKey, runExample } from "./examples.ts";
 import { ago } from "./Home.tsx";
 import { linkTo, navigate } from "./router.ts";
-import { useIsAdmin } from "./session.ts";
+import { useIsAdmin, useIsAnonymous } from "./session.ts";
 
 interface View {
   x: number;
@@ -63,6 +64,7 @@ const isTyping = (t: EventTarget | null) =>
 
 export function Canvas({ canvasId }: { canvasId: string }) {
   const admin = useIsAdmin();
+  const anonymous = useIsAnonymous();
   const api = useMemo(() => canvasApi(canvasId), [canvasId]);
   const [name, setName] = useState("");
   const [trashedAt, setTrashedAt] = useState<string | undefined>();
@@ -363,6 +365,26 @@ export function Canvas({ canvasId }: { canvasId: string }) {
    * Renders the chosen pages of a paper and lays them side by side, starting at `at` (or near the
    * middle of the view). One step to undo, however many pages.
    */
+  const tryExample = async (ex: Example) => {
+    try {
+      await runExample(ex, startFrom, (paper, pages) => addPaperPages(paper, pages));
+    } catch (e) {
+      setError(`Couldn't start the example: ${e}`);
+    }
+  };
+
+  // A canvas made from an example on the home page (/c/<id>?example=<key>) starts it once, when empty.
+  const exampleStarted = useRef(false);
+  useEffect(() => {
+    if (!loaded || exampleStarted.current) return;
+    exampleStarted.current = true;
+    const ex = exampleByKey(new URLSearchParams(location.search).get("example"));
+    if (!ex) return;
+    history.replaceState(null, "", location.pathname);
+    if (shown.length === 0) void tryExample(ex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
   const addPaperPages = async (paper: Paper, pagesSpec: string, at?: { x: number; y: number }) => {
     const { pages } = await renderPaperPages(paper, pagesSpec);
     if (!pages.length) throw new Error("none of those pages exist in this paper");
@@ -706,6 +728,15 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     }
   };
 
+  const answer = async (card: CardItem, text: string) => {
+    try {
+      await api.answer(card.id, text);
+      await refresh();
+    } catch (e) {
+      setError(`Couldn't send your answer: ${e}`);
+    }
+  };
+
   const retry = async (card: CardItem) => {
     try {
       const parent = byId.get(card.parentId);
@@ -874,6 +905,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         <span className="muted">/</span>
         <CanvasName name={name} onRename={rename} />
         <CanvasSwitcher currentId={canvasId} />
+        {anonymous && (
+          <a {...linkTo("/signin")} className="save-link" title="Not signed in: sign in to keep this canvas">
+            Sign in to save
+          </a>
+        )}
         <span className="muted small hint">
           Drop or paste an image · Select: drag a box over what stopped you · hold Space to pan · Ctrl+scroll to zoom
         </span>
@@ -977,6 +1013,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               Paste a link (a Wikipedia page, an article) or type a question. Or drop or paste an image of a slide, a page or a
               screenshot, then drag a box over the part you want explained.
             </p>
+            <Examples onPick={tryExample} />
           </div>
         )}
         {/* On a canvas with things on it, starting points live in a bar that stays at the bottom. */}
@@ -1134,6 +1171,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               onHeight={(h) => setHeights((all) => (all[c.id] === h ? all : { ...all, [c.id]: h }))}
               onDescend={(text, context, clientY) => descend(c, text, context, toWorld(0, clientY).y)}
               onRetry={() => retry(c)}
+              onAnswer={(text) => answer(c, text)}
               onFocus={focusOn}
               onAddPaper={(paper) => addPaperPages(paper, "1-2", { x: c.x + c.w + GAP, y: c.y })}
               onAsk={async (text) => {
@@ -1306,5 +1344,34 @@ function StartBox({ onStart, big = false }: { onStart: (input: string) => Promis
         onChange={(e) => setValue(e.target.value)}
       />
     </form>
+  );
+}
+
+/** One-click starting points, for a first visit. */
+export function Examples({ onPick }: { onPick: (ex: Example) => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  return (
+    <div className="examples">
+      <span className="muted small">Or try an example:</span>
+      {EXAMPLES.map((ex) => (
+        <button
+          key={ex.key}
+          type="button"
+          className="example"
+          disabled={busy !== null}
+          onClick={async () => {
+            setBusy(ex.key);
+            try {
+              await onPick(ex);
+            } finally {
+              setBusy(null);
+            }
+          }}
+        >
+          <span className="example-kind">{ex.kind}</span>
+          <span className="example-title">{busy === ex.key ? "Starting…" : ex.title}</span>
+        </button>
+      ))}
+    </div>
   );
 }
