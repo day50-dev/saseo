@@ -12,8 +12,18 @@ export function parse(path: string): Route {
   return { page: "missing" };
 }
 
+/** Whether this tab has moved between pages of the app, so "back" stays inside it. */
+export let movedInApp = false;
+
+/** Back to the previous page of the app, or to the canvases if this page was opened directly. */
+export function goBack() {
+  if (movedInApp) history.back();
+  else navigate("/");
+}
+
 export function navigate(path: string) {
   if (location.pathname === path) return;
+  movedInApp = true;
   history.pushState(null, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }

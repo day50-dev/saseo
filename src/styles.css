@@ -576,3 +576,13 @@ kbd {
   .start-dock { bottom: 10px; }
   .empty h2 { font-size: 22px; }
 }
+
+/* Settings: a Done button where the eye ends up, at the bottom right. */
+.settings:has(.done-bar) { padding-bottom: 0; }
+.done-bar {
+  position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: flex-end; gap: 14px;
+  margin: 24px -16px 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg); border-top: 1px solid var(--line);
+}
+.done-bar .muted, .done-bar .fail { margin-right: auto; }
+.done-bar button { padding: 10px 22px; font-size: 15px; }

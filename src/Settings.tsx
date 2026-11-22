@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type ConfigUpdate,
   type KeyUpdate,
@@ -13,7 +13,7 @@ import {
   type TestResult,
 } from "../shared/providers.ts";
 import { api } from "./api.ts";
-import { linkTo } from "./router.ts";
+import { goBack, linkTo } from "./router.ts";
 import { useIsAdmin } from "./session.ts";
 
 export function Settings() {
@@ -47,6 +47,37 @@ function AdminSettings() {
     return next;
   };
 
+  return <SettingsForm config={config} onSave={save} />;
+}
+
+/** Sections with unsaved changes register how to save them, so one Done button can save everything. */
+type Register = (name: string, save: (() => Promise<void>) | null) => void;
+
+function SettingsForm({ config, onSave: save }: { config: PublicConfig; onSave: (u: ConfigUpdate) => Promise<PublicConfig> }) {
+  const pending = useRef(new Map<string, () => Promise<void>>());
+  const [unsaved, setUnsaved] = useState<string[]>([]);
+  const [finishing, setFinishing] = useState(false);
+  const [doneError, setDoneError] = useState<string | null>(null);
+  const register: Register = useCallback((name, fn) => {
+    if (fn) pending.current.set(name, fn);
+    else pending.current.delete(name);
+    setUnsaved((prev) => (prev.includes(name) === Boolean(fn) ? prev : fn ? [...prev, name] : prev.filter((n) => n !== name)));
+  }, []);
+
+  // Done: save whatever is unsaved, then go back to where you came from.
+  const done = async () => {
+    setFinishing(true);
+    setDoneError(null);
+    try {
+      for (const fn of [...pending.current.values()]) await fn();
+      goBack();
+    } catch (e) {
+      setDoneError(`Couldn't save: ${e}`);
+    } finally {
+      setFinishing(false);
+    }
+  };
+
   return (
     <main className="settings">
       <header>
@@ -69,6 +100,7 @@ function AdminSettings() {
         keyOptional
         onSave={save}
         onTest={api.testLlm}
+        register={register}
       />
 
       <EndpointSection
@@ -81,9 +113,21 @@ function AdminSettings() {
         keyOptional
         onSave={save}
         onTest={api.testSystemOne}
+        register={register}
       />
 
-      <SearchersSection searchers={config.searchers} onSave={save} />
+      <SearchersSection searchers={config.searchers} onSave={save} register={register} />
+
+      <div className="done-bar">
+        {doneError ? (
+          <span className="fail small">{doneError}</span>
+        ) : (
+          <span className="muted small">{unsaved.length ? `Unsaved changes: ${unsaved.join(", ")}` : "Changes are saved"}</span>
+        )}
+        <button type="button" disabled={finishing} onClick={done}>
+          {finishing ? "Saving…" : unsaved.length ? "Save and close" : "Done"}
+        </button>
+      </div>
     </main>
   );
 }
@@ -160,6 +204,7 @@ function EndpointSection(props: {
   keyOptional: boolean;
   onSave: (u: ConfigUpdate) => Promise<PublicConfig>;
   onTest: () => Promise<TestResult>;
+  register: Register;
 }) {
   const { which, endpoint } = props;
   const [baseUrl, setBaseUrl] = useState(endpoint.baseUrl);
@@ -194,6 +239,8 @@ function EndpointSection(props: {
     setKeyDraft("");
     setClearKey(false);
   };
+  const { register } = props;
+  useEffect(() => register(props.title, dirty ? save : null));
 
   const run = async (kind: "saving" | "testing") => {
     setBusy(kind);
@@ -300,6 +347,7 @@ const draftOf = (s: PublicSearcher): SearcherDraft => ({
 function SearchersSection(props: {
   searchers: PublicConfig["searchers"];
   onSave: (u: ConfigUpdate) => Promise<PublicConfig>;
+  register: Register;
 }) {
   const { searchers } = props;
   const [drafts, setDrafts] = useState(() =>
@@ -331,6 +379,8 @@ function SearchersSection(props: {
       setSaving(false);
     }
   };
+  const { register } = props;
+  useEffect(() => register("Searchers", dirty ? save : null));
 
   return (
     <section className="card">
