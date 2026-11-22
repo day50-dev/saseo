@@ -20,13 +20,20 @@ const STACK_GAP = 24; // vertical gap between cards in one column
 const PENDING_HEIGHT = 900; // space reserved for a card that hasn't been written yet; diagram cards run 700-1100px
 const MAX_IMAGE_WIDTH = 900;
 
+/** Where a canvas opens: full size on a desk, zoomed so a card fits across on a phone. */
+function defaultView(): View {
+  const w = window.innerWidth;
+  if (w >= 700) return { x: 40, y: 80, scale: 1 };
+  return { x: 10, y: 16, scale: Math.max(0.4, Math.min(1, (w - 20) / CARD_WIDTH)) };
+}
+
 // Where you were looking is remembered per canvas, in this browser only.
 function loadView(canvasId: string): View {
   try {
     const v = JSON.parse(localStorage.getItem(`librarian.view.${canvasId}`) ?? "");
     if (typeof v?.x === "number" && typeof v?.scale === "number") return v;
   } catch {}
-  return { x: 40, y: 80, scale: 1 };
+  return defaultView();
 }
 
 function saveView(canvasId: string, v: View) {
@@ -438,6 +445,70 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     }
   };
+
+  // Touch: two fingers pinch to zoom and pan; one finger on a card's text pans, since on a phone
+  // cards cover most of the screen and empty canvas is hard to find. A long press still selects text.
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const pts = new Map<number, { x: number; y: number }>();
+    let pinch: { d: number; cx: number; cy: number; v: View } | null = null;
+    const two = () => {
+      const [a, b] = [...pts.values()];
+      return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+    };
+    const down = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) {
+        // A second finger turns whatever the first one started into a pinch.
+        pan.current = null;
+        setDrag(null);
+        setDraft(null);
+        setLink(null);
+        pinch = { ...two(), v: viewRef.current };
+        e.stopPropagation();
+        return;
+      }
+      const t = e.target as HTMLElement;
+      const onCardText = t.closest(".card-item") && !t.closest("button, a, input, textarea, select, label, .card-head, .sem-title, .port, .ask");
+      if (onCardText) {
+        pan.current = { x: e.clientX, y: e.clientY, vx: viewRef.current.x, vy: viewRef.current.y };
+        el.setPointerCapture(e.pointerId);
+      }
+    };
+    const move = (e: PointerEvent) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!pinch || pts.size < 2) return;
+      e.stopPropagation();
+      const r = el.getBoundingClientRect();
+      const now = two();
+      const p = pinch;
+      const scale = Math.min(3, Math.max(0.15, (p.v.scale * now.d) / p.d));
+      // The point under the fingers' midpoint stays under it, and moving both fingers pans.
+      const wx = (p.cx - r.left - p.v.x) / p.v.scale;
+      const wy = (p.cy - r.top - p.v.y) / p.v.scale;
+      setView({ scale, x: now.cx - r.left - wx * scale, y: now.cy - r.top - wy * scale });
+    };
+    const up = (e: PointerEvent) => {
+      pts.delete(e.pointerId);
+      if (pts.size < 2) pinch = null;
+      if (pts.size === 0) pan.current = null;
+    };
+    el.addEventListener("pointerdown", down, true);
+    el.addEventListener("pointermove", move, true);
+    el.addEventListener("pointerup", up, true);
+    el.addEventListener("pointercancel", up, true);
+    return () => {
+      el.removeEventListener("pointerdown", down, true);
+      el.removeEventListener("pointermove", move, true);
+      el.removeEventListener("pointerup", up, true);
+      el.removeEventListener("pointercancel", up, true);
+    };
+  }, []);
 
   // Ctrl+wheel must not zoom the whole browser page.
   useEffect(() => {
@@ -969,7 +1040,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             <span aria-hidden>✥</span> Pan <kbd>H</kbd>
           </button>
         </div>
-        <button type="button" className="link" title="Reset zoom" onClick={() => setView({ x: 40, y: 80, scale: 1 })}>
+        <button type="button" className="link" title="Reset zoom" onClick={() => setView(defaultView())}>
           {Math.round(view.scale * 100)}%
         </button>
         {admin && <a {...linkTo("/settings")}>Settings</a>}

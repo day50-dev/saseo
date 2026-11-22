@@ -553,3 +553,26 @@ kbd {
 .flash { animation: flash 1.8s ease-out; border-radius: 4px; }
 .sem-part .from-quote { font-size: 12px; padding: 4px 6px; margin-top: 4px; }
 .sem-part .from-para { overflow-wrap: anywhere; }
+
+/* Phones */
+.example-title { white-space: normal; }
+.example { white-space: normal; }
+.home-head { flex-wrap: wrap; gap: 8px; }
+.home-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+@media (max-width: 700px) {
+  .settings { padding: 20px 16px 48px; }
+  .home-head h1 { font-size: 26px; margin: 0; }
+  .home-links .muted.small { display: none; }
+  .new-canvas { flex-wrap: wrap; }
+  .new-canvas input { flex: 1 1 100%; }
+  .new-canvas button { flex: 1 1 100%; }
+  .canvas-row { flex-wrap: wrap; gap: 2px 12px; }
+  .canvas-row .canvas-main { flex: 1 1 100%; min-width: 0; }
+  .canvas-actions { opacity: 1 !important; margin-left: -6px; }
+  .toolbar { overflow-x: auto; gap: 10px; padding: 6px 10px; scrollbar-width: none; }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .toolbar > * { flex-shrink: 0; }
+  .toolbar .hint, .toolbar .spacer { display: none; }
+  .start-dock { bottom: 10px; }
+  .empty h2 { font-size: 22px; }
+}
