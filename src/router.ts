@@ -1,11 +1,12 @@
 // A tiny path router: canvases live at /c/<id>, which is stable and bookmarkable.
 import { useEffect, useState } from "react";
 
-export type Route = { page: "home" } | { page: "canvas"; id: string } | { page: "settings" } | { page: "missing" };
+export type Route = { page: "home" } | { page: "canvas"; id: string } | { page: "settings" } | { page: "signin" } | { page: "missing" };
 
 export function parse(path: string): Route {
   if (path === "/" || path === "") return { page: "home" };
   if (path === "/settings") return { page: "settings" };
+  if (path === "/signin") return { page: "signin" };
   const m = path.match(/^\/c\/([A-Za-z0-9_-]+)\/?$/);
   if (m) return { page: "canvas", id: m[1] };
   return { page: "missing" };

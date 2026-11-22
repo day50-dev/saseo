@@ -1,8 +1,10 @@
 // Accounts, for running Librarian as a public site. Off unless LIBRARIAN_AUTH=on, so a local copy
 // works exactly as before, single-user with no sign-in.
 //
-// On a server: anyone can sign up with email and password (no email service needed), and GitHub
-// and Google sign-in appear when their OAuth keys are set. Accounts live in data/auth.db (SQLite).
+// On a server: visitors start without signing in, as an anonymous account kept by a cookie, so they
+// can try it straight away. Signing in (email and password, no email service needed, or GitHub and
+// Google when their OAuth keys are set) is for keeping their canvases: what they made anonymously
+// moves to the account. Accounts live in data/auth.db (SQLite).
 // Emails in ADMIN_EMAILS manage the models and searchers everyone uses. SIGNUP_EMAILS, when set,
 // limits who can create an account, so a private server doesn't spend its models on strangers.
 import { randomBytes } from "node:crypto";
@@ -11,6 +13,8 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";
+import { anonymous } from "better-auth/plugins/anonymous";
+import { transferCanvases } from "./canvas.ts";
 import { getMigrations } from "better-auth/db/migration";
 
 export const AUTH_ON = process.env.LIBRARIAN_AUTH === "on";
@@ -33,10 +37,12 @@ export interface User {
   email: string;
   name: string;
   admin: boolean;
+  /** Not signed in: their canvases last as long as this browser's cookie, until they sign in. */
+  anonymous: boolean;
 }
 
 /** Everyone, when accounts are off: the person running it on their own machine. */
-export const LOCAL_USER: User = { id: "local", email: "", name: "You", admin: true };
+export const LOCAL_USER: User = { id: "local", email: "", name: "You", admin: true, anonymous: false };
 
 /** Sessions are signed with this. Set BETTER_AUTH_SECRET in production; otherwise one is made and kept. */
 function secret(): string {
@@ -74,11 +80,20 @@ function options(): BetterAuthOptions {
     trustedOrigins: [baseURL, "http://localhost:5173", "http://localhost:8787"],
     emailAndPassword: { enabled: true, minPasswordLength: 8 },
     socialProviders: social,
+    plugins: [
+      anonymous({
+        // Signing in or up keeps what they made before.
+        onLinkAccount: async ({ anonymousUser, newUser }) => {
+          await transferCanvases(anonymousUser.user.id, newUser.user.id);
+        },
+      }),
+    ],
     databaseHooks: {
       user: {
         create: {
           before: async (user) => {
-            if (SIGNUP.size && !SIGNUP.has(user.email.toLowerCase())) {
+            const anon = (user as { isAnonymous?: boolean }).isAnonymous;
+            if (!anon && SIGNUP.size && !SIGNUP.has(user.email.toLowerCase())) {
               throw new APIError("FORBIDDEN", { message: "Sign-up is closed on this server." });
             }
           },
@@ -104,5 +119,6 @@ export async function currentUser(req: Request): Promise<User | null> {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return null;
   const { id, email, name } = session.user;
-  return { id, email, name, admin: ADMINS.has(email.toLowerCase()) };
+  const anon = Boolean((session.user as { isAnonymous?: boolean | null }).isAnonymous);
+  return { id, email: anon ? "" : email, name, admin: !anon && ADMINS.has(email.toLowerCase()), anonymous: anon };
 }

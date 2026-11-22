@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Canvas } from "./Canvas.tsx";
 import { Home } from "./Home.tsx";
 import { linkTo, useRoute } from "./router.ts";
-import { fetchMe, type Me, MeContext } from "./session.ts";
+import { fetchMe, type Me, MeContext, startAnonymously } from "./session.ts";
 import { Settings } from "./Settings.tsx";
 import { SignIn } from "./SignIn.tsx";
 
@@ -11,12 +11,20 @@ export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    fetchMe().then(setMe, (e) => setError(String(e)));
+    (async () => {
+      let me = await fetchMe();
+      // Nobody signed in: start anonymously, so they can try it at once. Signing in is for keeping things.
+      if (me.accounts && !me.user && location.pathname !== "/signin") {
+        await startAnonymously();
+        me = await fetchMe();
+      }
+      setMe(me);
+    })().catch((e) => setError(String(e)));
   }, []);
 
   if (error) return <p className="error">Couldn't reach the server: {error}</p>;
   if (!me) return <p className="muted" style={{ padding: 32 }}>Loading…</p>;
-  if (me.accounts && !me.user) return <SignIn providers={me.providers} />;
+  if (route.page === "signin" || (me.accounts && !me.user)) return <SignIn providers={me.providers} anonymous={Boolean(me.user?.anonymous)} />;
 
   let page;
   if (route.page === "settings") page = <Settings />;

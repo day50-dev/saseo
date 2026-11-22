@@ -3,9 +3,9 @@ import { authClient } from "./session.ts";
 
 const PROVIDER_LABEL: Record<string, string> = { github: "GitHub", google: "Google" };
 
-/** Shown when accounts are on and nobody is signed in. */
-export function SignIn({ providers }: { providers: string[] }) {
-  const [mode, setMode] = useState<"in" | "up">("in");
+/** Signing in keeps your canvases; anything made before signing in comes along. */
+export function SignIn({ providers, anonymous }: { providers: string[]; anonymous: boolean }) {
+  const [mode, setMode] = useState<"in" | "up">(anonymous ? "up" : "in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -22,7 +22,7 @@ export function SignIn({ providers }: { providers: string[] }) {
         : await authClient.signIn.email({ email, password });
     setBusy(false);
     if (res.error) setError(res.error.message ?? "That didn't work.");
-    else location.href = location.pathname === "/signin" ? "/" : location.pathname;
+    else location.href = "/";
   };
 
   const social = providers.filter((p) => p !== "email");
@@ -33,6 +33,17 @@ export function SignIn({ providers }: { providers: string[] }) {
       <p className="muted">
         A research librarian with unlimited time, for following hard material from outside the field. Free to use.
       </p>
+      <p>
+        {anonymous
+          ? "Sign in to keep your canvases. Everything you've made so far comes with you. "
+          : "Sign in to keep your canvases, or "}
+        {anonymous ? (
+          <a href="/">Not now</a>
+        ) : (
+          <a href="/">try it without an account</a>
+        )}
+        .
+      </p>
       <section className="card">
         <h2>{mode === "in" ? "Sign in" : "Create an account"}</h2>
         {social.length > 0 && (
@@ -42,7 +53,7 @@ export function SignIn({ providers }: { providers: string[] }) {
                 key={p}
                 type="button"
                 className="secondary"
-                onClick={() => authClient.signIn.social({ provider: p as "github" | "google", callbackURL: location.pathname })}
+                onClick={() => authClient.signIn.social({ provider: p as "github" | "google", callbackURL: "/" })}
               >
                 Continue with {PROVIDER_LABEL[p] ?? p}
               </button>
