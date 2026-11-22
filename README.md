@@ -2,6 +2,8 @@
 
 **A research librarian with unlimited time, on an infinite desk that never gets rearranged.**
 
+**Try it: [librarian.9ol.es](https://librarian.9ol.es).** Free, unlimited, no account needed. Sign in only if you want to keep your canvases.
+
 ![A slide from a research talk with two boxed phrases, each explained by a card drawn as a diagram](docs/screenshots/overview.png)
 
 ## The pain
@@ -80,7 +82,7 @@ Shortcuts: **V** for select and **H** for pan. Hold **Space** to pan. Ctrl+scrol
 
 ## Hosting it for other people
 
-Run locally, Librarian has no accounts: it's yours. To put it on a server for others, turn accounts on. Anyone can then sign up; each person sees only their own canvases, and only admins can see or change the models and searchers that everyone shares.
+Run locally, Librarian has no accounts: it's yours. To put it on a server for others, turn accounts on. Visitors can then use everything straight away without signing in; signing in (anyone can sign up) is only for keeping their canvases, and whatever they made before comes with them. Each person sees only their own canvases, and only admins can see or change the models and searchers that everyone shares.
 
 ```bash
 npm install && npm run build
@@ -101,6 +103,7 @@ npm start
   }
   ```
 
+- **Limiting sign-ups**, if you want to: set `SIGNUP_EMAILS` to a comma-separated list, and only those emails can create an account. Visitors who don't sign in can still use it.
 - **Admins** are whoever signs in with an email listed in `ADMIN_EMAILS` (comma-separated). They set up the models and searchers under Settings. Canvases from before accounts were turned on belong to the admins.
 - **Accounts** are kept in `data/auth.db` (SQLite), created on first start. Accounts use [Better Auth](https://better-auth.com).
 - **Searching for everyone:** Keenable's free keyless use is limited per IP address, which every user on a server shares. Give it a free key, or run your own [SearXNG](https://docs.searxng.org).

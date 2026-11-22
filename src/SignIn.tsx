@@ -31,7 +31,7 @@ export function SignIn({ providers, anonymous }: { providers: string[]; anonymou
     <main className="settings signin">
       <h1>Librarian</h1>
       <p className="muted">
-        A research librarian with unlimited time, for following hard material from outside the field. Free to use.
+        A research librarian with unlimited time, for following hard material from outside the field. Free and unlimited, no account needed.
       </p>
       <p>
         {anonymous

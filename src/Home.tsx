@@ -78,7 +78,9 @@ export function Home() {
         </span>
       </header>
       {anonymous && (
-        <p className="muted small">You're not signed in. You can use everything; your canvases are kept in this browser until you sign in.</p>
+        <p className="muted small">
+          Free, unlimited, no account needed. Your canvases are kept in this browser; sign in if you want to keep them for good.
+        </p>
       )}
       {error && (
         <p className="error" onClick={() => setError(null)}>
