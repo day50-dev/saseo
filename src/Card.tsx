@@ -250,13 +250,19 @@ export function Card(props: {
         </p>
       ) : (
       <>
+      {/* What this card is about, said plainly and big enough to see at a glance. */}
+      {(card.selection || card.transcription) && (
+        <div className="asked">
+          <span className="asked-label">{card.selection ? "You selected" : "Your box reads"}</span>
+          <div className="asked-text">{card.selection ? withMath(card.selection) : transcription(card.transcription!)}</div>
+        </div>
+      )}
       {props.relatesNames && (
         <div className="relation-banner">
           You asked how these relate: <strong>{props.relatesNames[0]}</strong> ⟷ <strong>{props.relatesNames[1]}</strong>
         </div>
       )}
       {card.register && <RegisterBanner note={card.register} />}
-      {card.transcription && card.transcription !== card.subject && <div className="transcription">{transcription(card.transcription)}</div>}
       {card.terms && card.terms.length > 0 && <TermsList terms={card.terms} />}
 
       {card.clarify && card.stage === "asking" && <AskView clarify={card.clarify} onAnswer={props.onAnswer} />}
