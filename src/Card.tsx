@@ -402,12 +402,12 @@ function RegisterBanner({ note }: { note: RegisterNote }) {
   const loose = note.register === "casual" || note.register === "notation";
   return (
     <div className={`register-banner reg-${note.register}`}>
-      <span className="register-label">{r.label}</span> “{note.text}” is {r.gloss}
+      <span className="register-label">{r.label}</span> “{withMath(note.text)}” is {r.gloss}
       {note.field ? `, borrowed from ${note.field}` : ""}.
       {note.means && (
         <div className="register-means">
           {loose ? "What's meant: " : ""}
-          {note.means}
+          {withMath(note.means)}
         </div>
       )}
     </div>
@@ -425,9 +425,9 @@ function TermsList({ terms }: { terms: RegisterNote[] }) {
           className={`term-chip reg-${t.register}`}
           title={`${REGISTERS[t.register].label}: ${REGISTERS[t.register].gloss}${t.field ? `, borrowed from ${t.field}` : ""}.${t.means ? ` ${t.means}` : ""}`}
         >
-          <span className="term-text">{t.text}</span>
+          <span className="term-text">{transcription(t.text)}</span>
           <span className="term-reg">{REGISTERS[t.register].label.toLowerCase()}</span>
-          {t.means && (t.register === "casual" || t.register === "notation") && <span className="term-means">= {t.means}</span>}
+          {t.means && (t.register === "casual" || t.register === "notation") && <span className="term-means">= {withMath(t.means)}</span>}
         </span>
       ))}
     </div>
@@ -639,7 +639,8 @@ function AskView({ clarify, onAnswer }: { clarify: Clarify; onAnswer: (answer: s
 
 /** A transcription is LaTeX when it's math; otherwise words that may hold some. */
 function transcription(t: string): ReactNode {
-  return /\\[(\[]/.test(t) || !looksLikeTex(t) ? withMath(t) : <Tex tex={t} display />;
+  // Delimited formulas render in place among the words; bare LaTeX is one formula.
+  return /\\[(\[]|\$/.test(t) || !looksLikeTex(t) ? withMath(t) : <Tex tex={t} display />;
 }
 
 /** A starting point that isn't an image: a page someone linked to, or a statement they typed. */

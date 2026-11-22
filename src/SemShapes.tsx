@@ -210,7 +210,7 @@ export function SemShapes({
                   <div className="sem-parts">
                     {sem.parts.map((p, i) => (
                       <div key={i} className="sem-part" data-a={`part-${i}`}>
-                        {/\\[(\[]/.test(p.symbol) ? withMath(p.symbol) : looksLikeTex(p.symbol) ? <Tex tex={p.symbol} /> : <code>{p.symbol}</code>}
+                        {/\\[(\[]|\$/.test(p.symbol) ? withMath(p.symbol) : looksLikeTex(p.symbol) ? <Tex tex={p.symbol} /> : <code>{p.symbol}</code>}
                         <div className="sem-part-meaning">{render(p.meaning)}</div>
                         {p.note && <div className="sem-part-note">{render(p.note)}</div>}
                         {extra?.(`part-${i}`)}

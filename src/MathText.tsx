@@ -25,15 +25,21 @@ export function Tex({ tex, display = false }: { tex: string; display?: boolean }
   return <span className={display ? "math math-display" : "math"} data-tex={tex} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-const MATH = /\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|\$\$([\s\S]+?)\$\$/g;
+// \( \), \[ \], $$ $$, and single $…$ as models and pages often write it. A single-dollar span
+// must hug its contents and not be followed by a digit, so "$5 and $10" stays money.
+const MATH = /\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|\$\$([\s\S]+?)\$\$|\$(?![\s$])([^$\n]+?)(?<!\s)\$(?!\d)/g;
+
+/** Whether a single-dollar span is math rather than, say, prices. */
+const dollarMath = (t: string) => !/^\d/.test(t) || /\\|[_^]/.test(t);
 
 /** Text with formulas rendered; the plain stretches between them go through `plain`. */
 export function withMath(text: string, plain: (s: string) => ReactNode = (s) => s): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   for (const m of text.matchAll(MATH)) {
+    if (m[4] !== undefined && !dollarMath(m[4])) continue;
     if (m.index > last) out.push(<span key={`t${last}`}>{plain(text.slice(last, m.index))}</span>);
-    out.push(<Tex key={`m${m.index}`} tex={(m[1] ?? m[2] ?? m[3]).trim()} display={m[2] !== undefined || m[3] !== undefined} />);
+    out.push(<Tex key={`m${m.index}`} tex={(m[1] ?? m[2] ?? m[3] ?? m[4]).trim()} display={m[2] !== undefined || m[3] !== undefined} />);
     last = m.index + m[0].length;
   }
   if (last < text.length) out.push(<span key={`t${last}`}>{plain(text.slice(last))}</span>);
