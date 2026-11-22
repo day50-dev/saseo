@@ -1309,7 +1309,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
 
           {expected.map((p) => (
             <Fragment key={p.key}>
-              {p.box && <div className="region sending" style={{ left: p.box.x, top: p.box.y, width: p.box.w, height: p.box.h }} />}
+              {p.box && <div className="region sending" style={{ left: p.box.x, top: p.box.y, width: p.box.w, height: p.box.h, zIndex: 99999 }} />}
               <div className="ghost-card" style={{ left: p.x, top: p.y, width: CARD_WIDTH }}>
                 <span className="spinner" />
                 {p.label ? <>Explaining “{p.label.length > 60 ? `${p.label.slice(0, 60)}…` : p.label}”…</> : "Reading the box you drew…"}
@@ -1317,7 +1317,10 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             </Fragment>
           ))}
 
-          {draftRect && <div className="region drafting" style={{ left: draftRect.x, top: draftRect.y, width: draftRect.w, height: draftRect.h }} />}
+          {draftRect && (
+            // Above everything while drawing, or the image it's drawn on hides it.
+            <div className="region drafting" style={{ left: draftRect.x, top: draftRect.y, width: draftRect.w, height: draftRect.h, zIndex: 99999 }} />
+          )}
 
           {visibleCards.map((c) => (
             <Card

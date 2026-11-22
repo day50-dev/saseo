@@ -177,7 +177,11 @@ a { color: var(--accent); }
   pointer-events: auto; cursor: crosshair;
 }
 .region.lit { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.region.drafting { pointer-events: none; border-style: dashed; }
+.region.drafting {
+  pointer-events: none; border-style: dashed;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7), 0 0 0 9999px rgba(0, 0, 0, 0.12);
+}
 
 .card-item {
   position: absolute; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
