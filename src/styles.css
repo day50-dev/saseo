@@ -303,8 +303,8 @@ kbd {
 
 /* ---- Moving ---- */
 .image-grip {
-  position: absolute; height: 22px; display: flex; align-items: center; gap: 6px;
-  padding: 0 8px; font-size: 12px; color: var(--muted); cursor: move; user-select: none;
+  position: absolute; height: 28px; display: flex; align-items: center; gap: 6px; box-sizing: border-box;
+  padding: 0 8px; font-size: 13px; color: var(--muted); cursor: move; user-select: none;
   border-radius: 6px 6px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .image-grip:hover { background: var(--card); color: var(--text); }

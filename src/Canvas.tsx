@@ -17,6 +17,7 @@ interface View {
 
 const GAP = 64; // horizontal gap between a source and its explanations
 const STACK_GAP = 24; // vertical gap between cards in one column
+const GRIP = 30; // screen pixels above an image taken by its grip
 const PENDING_HEIGHT = 900; // space reserved for a card that hasn't been written yet; diagram cards run 700-1100px
 const MAX_IMAGE_WIDTH = 900;
 
@@ -1223,7 +1224,15 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               key={`grip-${img.id}`}
               className="image-grip"
               data-image-id={img.id}
-              style={{ left: img.x, top: img.y - 26, width: img.w, zIndex: rank.get(img.id) }}
+              // Same size on screen at any zoom: it's the only handle an image has.
+              style={{
+                left: img.x,
+                top: img.y - GRIP / view.scale,
+                width: img.w * view.scale,
+                transform: `scale(${1 / view.scale})`,
+                transformOrigin: "0 0",
+                zIndex: rank.get(img.id),
+              }}
               title="Drag to move this image with its boxes and explanations"
               onPointerDown={(e) => {
                 if ((e.target as HTMLElement).closest("button")) return;
