@@ -231,6 +231,8 @@ Development is driven by the CSS talk as a fixture, and each milestone has a tes
 
 ## Open questions
 
+Ideas still being worked out, such as video lectures, live in [BRAINSTORM.md](BRAINSTORM.md).
+
 - How forks are shown is a presentation question (principle 5) and is undecided. One candidate: open a history graph and traverse it.
 - Undo history currently lives in the open page and resets on reload; the log already holds what's needed to keep it.
 - The first card on a dense formula still tends to climb; better onramp sources and a stronger rewrite are the levers.
