@@ -6,14 +6,28 @@ import type { ReactNode } from "react";
 
 const cache = new Map<string, string | null>();
 
+function render(tex: string, display: boolean): string | null {
+  try {
+    return katex.renderToString(tex, { displayMode: display, throwOnError: true, output: "html", strict: "ignore", trust: false });
+  } catch {
+    return null;
+  }
+}
+
+/** Drops delimiters left over at the ends, like a "\)" with no "\(" (models do this). */
+export function stripDelims(tex: string): string {
+  return tex
+    .trim()
+    .replace(/^(\\[([]|\$\$?)\s*/, "")
+    .replace(/\s*(\\[)\]]|\$\$?)$/, "")
+    .trim();
+}
+
 function toHtml(tex: string, display: boolean): string | null {
   const key = `${display ? "D" : "I"}${tex}`;
   if (!cache.has(key)) {
-    try {
-      cache.set(key, katex.renderToString(tex, { displayMode: display, throwOnError: true, output: "html", strict: "ignore", trust: false }));
-    } catch {
-      cache.set(key, null);
-    }
+    const bare = stripDelims(tex);
+    cache.set(key, render(tex, display) ?? (bare !== tex.trim() ? render(bare, display) : null));
   }
   return cache.get(key)!;
 }
@@ -22,7 +36,7 @@ function toHtml(tex: string, display: boolean): string | null {
 export function Tex({ tex, display = false }: { tex: string; display?: boolean }) {
   const html = toHtml(tex, display);
   if (html === null) return <code className="tex-raw">{tex}</code>;
-  return <span className={display ? "math math-display" : "math"} data-tex={tex} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <span className={display ? "math math-display" : "math"} data-tex={stripDelims(tex)} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 // \( \), \[ \], $$ $$, and single $…$ as models and pages often write it. A single-dollar span
@@ -61,6 +75,8 @@ export function selectedText(sel: Selection): string {
   // out whole above; a selection entirely inside one formula is that formula.
   const inside = (range.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement)?.closest<HTMLElement>("[data-tex]");
   if (inside) return `\\(${inside.dataset.tex}\\)`;
+  // Separate blocks (a part's symbol, name and note) with a space, so words don't run together.
+  for (const el of [...frag.querySelectorAll("div, p, li, h1, h2, h3, h4, br")]) el.append(" ");
   const div = document.createElement("div");
   div.append(frag);
   return div.textContent ?? "";

@@ -215,6 +215,7 @@ a { color: var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .descend {
   position: absolute; left: 16px; z-index: 3; font-size: 13px; padding: 5px 10px;
+  max-width: calc(100% - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 

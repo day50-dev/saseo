@@ -389,7 +389,7 @@ export function Card(props: {
             window.getSelection()?.removeAllRanges();
           }}
         >
-          Explain “{picked.text.length > 40 ? `${picked.text.slice(0, 40)}…` : picked.text}”
+          Explain “{picked.text.length > 60 && !/\\[(\[]|\$/.test(picked.text) ? `${picked.text.slice(0, 60)}…` : withMath(picked.text)}”
         </button>
       )}
     </div>
