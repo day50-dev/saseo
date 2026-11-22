@@ -108,6 +108,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const [hover, setHover] = useState<string | null>(null);
   // The image or card the stacking buttons act on.
   const [selected, setSelected] = useState<string | null>(null);
+  const [dockOpen, setDockOpen] = useState(false);
   // Explanations asked for but not on the canvas yet: a placeholder shows where each will land,
   // so a selection is answered at once rather than after the server replies.
   const [expected, setExpected] = useState<Pending[]>([]);
@@ -134,6 +135,10 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         setSpaceHeld(true);
       } else if (e.key === "v" || e.key === "V") setMode("select");
       else if (e.key === "h" || e.key === "H") setMode("pan");
+      else if (e.key === "/") {
+        e.preventDefault();
+        setDockOpen(true);
+      }
     };
     const up = (e: KeyboardEvent) => e.key === " " && setSpaceHeld(false);
     const blur = () => setSpaceHeld(false);
@@ -1165,12 +1170,24 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             <Examples onPick={tryExample} />
           </div>
         )}
-        {/* On a canvas with things on it, starting points live in a bar that stays at the bottom. */}
-        {loaded && shown.length > 0 && (
-          <div className="start-dock">
-            <StartBox onStart={startFrom} />
-          </div>
-        )}
+        {/* On a canvas with things on it, starting something new is a button at the bottom that
+            opens into the box, and closes again once it's used or left. */}
+        {loaded && shown.length > 0 &&
+          (dockOpen ? (
+            <div className="start-dock">
+              <StartBox onStart={startFrom} onClose={() => setDockOpen(false)} />
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="start-open"
+              title="Start from a link or a question (/)"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => setDockOpen(true)}
+            >
+              + Start something <kbd>/</kbd>
+            </button>
+          ))}
         <div
           className="world"
           // --zoom lets handles keep the same size on screen at any zoom.
@@ -1483,7 +1500,7 @@ function CanvasSwitcher({ currentId }: { currentId: string }) {
 }
 
 /** A link to read or a question to explain: a start that isn't an image. */
-function StartBox({ onStart, big = false }: { onStart: (input: string) => Promise<void>; big?: boolean }) {
+function StartBox({ onStart, big = false, onClose }: { onStart: (input: string) => Promise<void>; big?: boolean; onClose?: () => void }) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   return (
@@ -1497,12 +1514,15 @@ function StartBox({ onStart, big = false }: { onStart: (input: string) => Promis
         await onStart(value.trim());
         setBusy(false);
         setValue("");
+        onClose?.();
       }}
     >
       <input
         value={value}
         disabled={busy}
-        autoFocus={big}
+        autoFocus={big || Boolean(onClose)}
+        onKeyDown={(e) => e.key === "Escape" && onClose?.()}
+        onBlur={() => !value.trim() && !busy && onClose?.()}
         placeholder={big ? "A link to read, or a question to explain…" : "Start from a link or a question… (or drop an image anywhere)"}
         title="Paste a link (e.g. a Wikipedia page) to read it here, or type a question to have it explained"
         onChange={(e) => setValue(e.target.value)}
