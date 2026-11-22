@@ -80,11 +80,11 @@ function registerMarks(text: string, sem: Sem, sources: FoundSource[]): ReactNod
     const m = marks.get(part.toLowerCase());
     if (!m) return <span key={i}>{citations(part, sources)}</span>;
     return m.kind === "term" ? (
-      <span key={i} className="sem-term" title="Term of art: a technical term with a strict definition. Select it to go further down.">
+      <span key={i} className="sem-term" title="Term of art: a technical term with a strict definition. Click it to have it explained.">
         {part}
       </span>
     ) : (
-      <span key={i} className="sem-standin" title={`Plain-language stand-in for: ${m.concept}`}>
+      <span key={i} className="sem-standin" data-explain={m.concept} title={`Plain-language stand-in for: ${m.concept}. Click to have that explained.`}>
         {part}
         <span className="sem-standin-for">{m.concept}</span>
       </span>
@@ -179,14 +179,28 @@ export function Card(props: {
       setPicked(null);
       return;
     }
-    const r = sel.getRangeAt(0).getBoundingClientRect();
+    const node = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement;
+    pick(text, sel.getRangeAt(0).getBoundingClientRect(), node);
+  };
+
+  /** Offers to explain some words, with a button just under where they sit. */
+  const pick = (text: string, r: DOMRect, node: Element | null | undefined) => {
+    const el = ref.current;
+    if (!el) return;
     const box = el.getBoundingClientRect();
     const scale = box.height / el.offsetHeight || 1;
     // The line the words sit in tells the librarian what they refer to.
-    const node = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement;
     const line = node?.closest(".sem-step, .sem-desc, .sem-part, .sem-together, .sem-aside, .facet p, .chat-text, .source-para");
     const context = (line ? textWithTex(line) : "").replace(/\s+/g, " ").trim().slice(0, 500);
     setPicked({ text: text.slice(0, 200), context, top: (r.bottom - box.top) / scale + 6, clientY: r.top });
+  };
+
+  // A click on a marked term (or a stand-in) offers to explain it, without having to select it.
+  const onClick = (e: React.MouseEvent) => {
+    const t = (e.target as HTMLElement).closest<HTMLElement>(".sem-term, .sem-standin");
+    if (!t || !inText(t) || !window.getSelection()?.isCollapsed) return;
+    const text = t.dataset.explain ?? t.textContent ?? "";
+    if (text.trim()) pick(text.trim(), t.getBoundingClientRect(), t);
   };
 
   const sources = card.sources ?? [];
@@ -201,6 +215,7 @@ export function Card(props: {
       onPointerEnter={() => props.onHover(true)}
       onPointerLeave={() => props.onHover(false)}
       onMouseUp={onMouseUp}
+      onClick={onClick}
       // The card's padding is a handle too, so there's always somewhere to grab.
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) props.onGrab(e);

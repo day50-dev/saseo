@@ -339,6 +339,8 @@ kbd {
 .reg-casual { --reg-c: #b06a1d; }
 .reg-notation { --reg-c: #8a5a00; }
 /* A term of art reads as one; a stand-in names the real term it replaces. */
+.sem-term, .sem-standin { cursor: pointer !important; }
+.sem-term:hover { background: color-mix(in srgb, var(--sem-what) 18%, transparent); border-radius: 3px; }
 .sem-term { text-decoration: underline dotted var(--sem-what); text-underline-offset: 3px; text-decoration-thickness: 2px; }
 .sem-standin { background: color-mix(in srgb, #b06a1d 10%, transparent); border-radius: 3px; padding: 0 2px; }
 .sem-standin-for {
