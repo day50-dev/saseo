@@ -74,6 +74,8 @@ export function canvasApi(cid: string) {
     move: (moves: { id: string; x: number; y: number; h?: number }[]) =>
       post(`${base}/move`, { moves }).then((r) => json<{ ok: true }>(r)),
 
+    /** Answers the librarian's question on a card; "" skips it. */
+    answer: (cardId: string, answer: string) => post(`${base}/cards/${cardId}/answer`, { answer }).then((r) => json<{ ok: true }>(r)),
     retry: (cardId: string, images?: { marked: string; crop: string }) =>
       post(`${base}/cards/${cardId}/retry`, images ?? {}).then((r) => json<{ ok: true }>(r)),
 

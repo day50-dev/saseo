@@ -3,7 +3,7 @@
 import { CARD_WIDTH, type CardItem, type FoundSource, type Item, type ObjectKind, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { readFile } from "node:fs/promises";
-import { assetPath, type CanvasStore, newId } from "./canvas.ts";
+import { assetPath, type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { searchArxiv } from "./arxiv.ts";
@@ -176,9 +176,11 @@ async function write(
   context = "",
 ) {
   const config = await loadConfig();
+  const told = await readerNotes(store);
   const lines = [
     `Subject: ${subject}`,
     `What the reader selected: ${quoted}`,
+    told ? `${told}\nPitch the explanation to that: where they are starting from and what they are trying to do.` : "",
     context ? `How they got here:\n${context}` : "",
     topic ? `The page is about: ${topic}` : "",
     path.length
@@ -276,23 +278,34 @@ export function explainRegion(store: CanvasStore, cardId: string, images: { mark
     const subject = id.subject?.trim() || "this";
     const pageText = str(id.pageText).slice(0, 6000) || undefined;
     const terms = cleanTerms(id.terms);
-    await store.update(cardId, { stage: "searching", subject, transcription: id.transcription, topic: id.topic, pageText, terms });
     // Ask for introductions explicitly; left alone, searches on a slide's words find the paper itself.
-    const sources = await search(`${id.searchQuery?.trim() || subject} introduction`);
-    await store.update(cardId, { stage: "writing", sources });
-    const card = (await store.findItem(cardId)) as CardItem;
-    const context = [
-      pageText ? `The whole page reads:\n${pageText}` : "",
-      terms.length
-        ? `Register of the words in the selection (strict terms must be explained as strict terms, informal words for what they point at):\n${terms
-            .map((t) => `- "${t.text}": ${t.register}${t.means ? ` (${t.means})` : ""}`)
-            .join("\n")}`
-        : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    await write(store, card, subject, id.transcription ?? subject, id.topic, [], sources, context);
+    const searchQuery = `${id.searchQuery?.trim() || subject} introduction`;
+    await store.update(cardId, { stage: "searching", subject, transcription: id.transcription, topic: id.topic, pageText, terms, searchQuery });
+    if (await askFirst(store, cardId)) return;
+    await finishRegion(store, cardId);
   });
+}
+
+/** Searches and writes a box's explanation from what was read off the page and stored on the card. */
+async function finishRegion(store: CanvasStore, cardId: string) {
+  let card = (await store.findItem(cardId)) as CardItem;
+  const subject = card.subject ?? "this";
+  const { pageText, terms = [] } = card;
+  await store.update(cardId, { stage: "searching" });
+  const sources = await search(card.searchQuery ?? `${subject} introduction`);
+  await store.update(cardId, { stage: "writing", sources });
+  card = (await store.findItem(cardId)) as CardItem;
+  const context = [
+    pageText ? `The whole page reads:\n${pageText}` : "",
+    terms.length
+      ? `Register of the words in the selection (strict terms must be explained as strict terms, informal words for what they point at):\n${terms
+          .map((t) => `- "${t.text}": ${t.register}${t.means ? ` (${t.means})` : ""}`)
+          .join("\n")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  await write(store, card, subject, card.transcription ?? subject, card.topic, [], sources, context);
 }
 
 const RESOLVE = `A reader selected some words inside an explanation because they want to know more.
@@ -403,12 +416,90 @@ export function explainSelection(store: CanvasStore, cardId: string) {
     const subject = resolved?.concept ?? selection;
     const quoted = card.context ? `“${selection}” in: ${card.context}` : selection;
     const register: RegisterNote | undefined = resolved?.register ? { text: selection, ...resolved.register } : undefined;
-    await store.update(cardId, { stage: "searching", subject, topic, transcription: card.context ? quoted : undefined, register });
+    const searchQuery = resolved ? `${resolved.searchQuery} introduction` : `${selection} explained introduction`;
+    await store.update(cardId, { stage: "searching", subject, topic, transcription: card.context ? quoted : undefined, register, searchQuery });
+    if (await askFirst(store, cardId)) return;
+    await finishSelection(store, cardId);
+  });
+}
 
-    const sources = await search(resolved ? `${resolved.searchQuery} introduction` : `${selection} explained introduction`);
-    await store.update(cardId, { stage: "writing", sources });
-    const guidance = register ? `${REGISTER_GUIDANCE[register.register]}${register.means ? ` (${register.means})` : ""}` : "";
-    await write(store, card, subject, quoted, topic, path, sources, [context, guidance].filter(Boolean).join("\n\n"));
+/** Searches and writes the explanation of selected words, from what is stored on the card. */
+async function finishSelection(store: CanvasStore, cardId: string) {
+  const card = (await store.findItem(cardId)) as CardItem;
+  const selection = card.selection ?? "";
+  const { path, topic } = await ancestry(store, card);
+  const context = await trail(store, card);
+  const quoted = card.context ? `“${selection}” in: ${card.context}` : selection;
+  const register = card.register;
+  await store.update(cardId, { stage: "searching" });
+  const sources = await search(card.searchQuery ?? `${selection} explained introduction`);
+  await store.update(cardId, { stage: "writing", sources });
+  const guidance = register ? `${REGISTER_GUIDANCE[register.register]}${register.means ? ` (${register.means})` : ""}` : "";
+  await write(store, card, card.subject ?? selection, quoted, topic, path, sources, [context, guidance].filter(Boolean).join("\n\n"));
+}
+
+// ---- Clarifying questions: about the reader's goal and context, before explaining ----
+
+const CLARIFY = `You are a research librarian about to explain something to a curious reader who is not a specialist.
+Before explaining, decide whether ONE short question to the reader would change the explanation a lot.
+Good reasons to ask:
+- You don't know WHY they are reading this (following a talk, a course, their own research, curiosity) and it changes where to start or how deep to go.
+- You don't know what they already know (say, calculus but not linear algebra) and the explanation hinges on it.
+- What they asked could mean two quite different things.
+If they haven't told you anything about themselves yet, a question about their goal or background is usually worth asking:
+it decides where the explanation starts. Once you know those, ask again only when what they asked is genuinely ambiguous.
+Do NOT ask when they have already told you (see below), when the page or their words make it clear, or when the explanation
+would come out about the same either way. Never ask about something you could look up.
+Return JSON only, no prose:
+{"ask": true or false,
+ "question": "if asking: one short, friendly question in plain words",
+ "options": ["if asking: 2 to 4 likely answers, a few words each, that the reader can click"]}`;
+
+/** What the reader has said about their goal and background on this canvas, for a prompt. */
+async function readerNotes(store: CanvasStore): Promise<string> {
+  const notes = (await getCanvasInfo(store.id))?.reader ?? [];
+  if (!notes.length) return "";
+  return `What the reader has told you about themselves and their goal:\n${notes
+    .map((n) => `- Asked "${n.q}": ${n.a || "they preferred not to say; just explain"}`)
+    .join("\n")}`;
+}
+
+/** Asks the reader a question first when the model judges it would change the answer; true if it asked. */
+async function askFirst(store: CanvasStore, cardId: string): Promise<boolean> {
+  const card = (await store.findItem(cardId)) as CardItem;
+  if (card.clarify) return false; // asked already: answered, skipped, or being retried
+  const notes = (await getCanvasInfo(store.id))?.reader ?? [];
+  if (notes.length >= 4) return false; // enough is known; stop asking
+  const { path, root } = await ancestry(store, card);
+  const lines = [
+    `Subject: ${card.subject ?? card.selection ?? "?"}`,
+    `What the reader selected or asked: ${card.transcription ?? card.selection ?? ""}`,
+    card.topic ? `The page is about: ${card.topic}` : "",
+    path.length ? `They got here by asking about: ${path.join(" → ")}` : "",
+    (card.pageText ?? root?.pageText) ? `The page begins:\n${(card.pageText ?? root?.pageText ?? "").slice(0, 1500)}` : "",
+    (await readerNotes(store)) || "They haven't told you anything about themselves or their goal yet.",
+  ].filter(Boolean);
+  try {
+    const r = await chatJson<{ ask?: unknown; question?: unknown; options?: unknown }>((await loadConfig()).llm, [
+      { role: "system", content: CLARIFY },
+      { role: "user", content: lines.join("\n\n") },
+    ]);
+    const question = str(r.question).slice(0, 300);
+    if (r.ask !== true || !question) return false;
+    const options = strs(r.options, 4).map((o) => o.slice(0, 80));
+    await store.update(cardId, { stage: "asking", clarify: { question, options } });
+    return true;
+  } catch {
+    return false; // asking is optional; explain without it
+  }
+}
+
+/** Carries on explaining once the reader has answered (or skipped) the question. */
+export function continueAfterAnswer(store: CanvasStore, cardId: string) {
+  return guard(store, cardId, async () => {
+    const card = (await store.findItem(cardId)) as CardItem;
+    const parent = await store.findItem(card.parentId);
+    await (parent?.kind === "region" ? finishRegion(store, cardId) : finishSelection(store, cardId));
   });
 }
 

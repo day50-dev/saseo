@@ -13,6 +13,7 @@ import {
   type LoggedEvent,
   MIN_CHILD_GAP,
   type Move,
+  type ReaderNote,
 } from "../shared/canvas.ts";
 
 const DATA_DIR = process.env.LIBRARIAN_DATA ?? path.resolve("data");
@@ -95,6 +96,19 @@ export const updateCanvas = (id: string, change: { name?: string; trashed?: bool
     if (change.trashed === true && !info.trashedAt) info.trashedAt = new Date().toISOString();
     if (change.trashed === false) delete info.trashedAt;
     return info;
+  });
+
+/** Remembers something the reader said about their goal or background, for every later card. */
+export const addReaderNote = (id: string, note: ReaderNote) =>
+  changeIndex((list) => {
+    const info = list.find((c) => c.id === id);
+    if (info) info.reader = [...(info.reader ?? []), note].slice(-12);
+  });
+
+/** Gives every canvas one person owns to another: an anonymous visitor's, when they sign in. */
+export const transferCanvases = (from: string, to: string) =>
+  changeIndex((list) => {
+    for (const info of list) if (info.owner === from) info.owner = to;
   });
 
 /** A new canvas holding a copy of everything on another, as of now. */

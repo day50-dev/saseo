@@ -5,10 +5,10 @@ import { type Context, Hono, type Next } from "hono";
 import { readFile } from "node:fs/promises";
 import { CARD_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
-import { assetPath, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
+import { addReaderNote, assetPath, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
-import { explainRegion, explainRelation, explainSelection, handleChat, makeObject, readSource } from "./explain.ts";
+import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, makeObject, readSource } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
@@ -275,6 +275,21 @@ app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
   return c.json({ ok: true });
 });
 
+// The reader answers the librarian's question (or skips it), and the explanation carries on.
+// The answer is kept for the canvas, so later cards are pitched to it too.
+app.post("/api/canvases/:cid/cards/:id/answer", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const card = await store.findItem(c.req.param("id"));
+  if (card?.kind !== "card" || card.stage !== "asking" || !card.clarify) return c.json({ error: "that card isn't waiting for an answer" }, 409);
+  const body = (await c.req.json().catch(() => ({}))) as { answer?: unknown };
+  const answer = typeof body.answer === "string" ? body.answer.trim().slice(0, 500) : "";
+  await store.update(card.id, { stage: "searching", clarify: { ...card.clarify, answer } });
+  await addReaderNote(store.id, { q: card.clarify.question, a: answer });
+  void continueAfterAnswer(store, card.id);
+  return c.json({ ok: true });
+});
+
 app.post("/api/canvases/:cid/move", async (c) => {
   const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
@@ -373,7 +388,7 @@ app.post("/api/canvases/:cid/sources", async (c) => {
   }
   // A statement is what you want to understand, so it is explained right away, beside it.
   const note: CardItem = { kind: "card", id: newId(), parentId: "", origin: { kind: "note", title: input }, ...at, w: CARD_WIDTH, stage: "done", subject: input, pageText: input };
-  const answer: CardItem = { kind: "card", id: newId(), parentId: note.id, selection: input, context: input, x: at.x + CARD_WIDTH + 64, y: at.y, w: CARD_WIDTH, stage: "reading", subject: input };
+  const answer: CardItem = { kind: "card", id: newId(), parentId: note.id, selection: input, x: at.x + CARD_WIDTH + 64, y: at.y, w: CARD_WIDTH, stage: "reading", subject: input };
   await store.add(note);
   await store.add(answer);
   void explainSelection(store, answer.id);

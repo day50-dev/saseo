@@ -150,7 +150,22 @@ export type CardObject =
 
 export type ObjectKind = CardObject["type"];
 
-export type CardStage = "reading" | "searching" | "writing" | "checking" | "done" | "failed";
+export type CardStage = "reading" | "asking" | "searching" | "writing" | "checking" | "done" | "failed";
+
+/** A question the librarian asked the reader before explaining, and what they said. */
+export interface Clarify {
+  question: string;
+  /** Likely answers, offered as buttons. */
+  options: string[];
+  /** What they answered; "" when they chose to skip. Absent while waiting. */
+  answer?: string;
+}
+
+/** Something the reader told the librarian about themselves or their goal, kept for the canvas. */
+export interface ReaderNote {
+  q: string;
+  a: string;
+}
 
 export interface CardItem extends ItemState {
   kind: "card";
@@ -191,6 +206,10 @@ export interface CardItem extends ItemState {
   y: number;
   w: number;
   stage: CardStage;
+  /** A question asked before explaining; the card waits at stage "asking" until it's answered. */
+  clarify?: Clarify;
+  /** The beginner search the explanation will use, kept so it can resume after a question. */
+  searchQuery?: string;
   subject?: string;
   transcription?: string;
   topic?: string;
@@ -238,6 +257,8 @@ export interface CanvasInfo {
   owner?: string;
   /** In the trash since then. Nothing in it is deleted; it can be restored. */
   trashedAt?: string;
+  /** What the reader has told the librarian about their goal and background on this canvas. */
+  reader?: ReaderNote[];
 }
 
 /** A canvas as the list shows it: its name, plus what it holds and when it last changed. */

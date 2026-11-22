@@ -1,11 +1,12 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { type CardItem, type CardStage, type FoundSource, type Paper, REGISTERS, type RegisterNote, type Sem } from "../shared/canvas.ts";
+import { type CardItem, type CardStage, type Clarify, type FoundSource, type Paper, REGISTERS, type RegisterNote, type Sem } from "../shared/canvas.ts";
 import { PaperRow } from "./ArxivPanel.tsx";
 import { looksLikeTex, selectedText, Tex, textWithTex, withMath } from "./MathText.tsx";
 import { SemShapes } from "./SemShapes.tsx";
 
 const STAGE_TEXT: Record<CardStage, string> = {
   reading: "Working out what you selected…",
+  asking: "Has a question for you",
   searching: "Looking for good material…",
   writing: "Writing an explanation from what was found…",
   checking: "Checking it doesn't climb…",
@@ -90,6 +91,8 @@ export function Card(props: {
   onDescend: (text: string, context: string, clientY: number) => void;
   onRemove: () => void;
   onRetry: () => void;
+  /** Answers the librarian's question; "" means just explain. */
+  onAnswer: (answer: string) => void;
   /** Sends a message in this card's conversation. */
   onAsk: (text: string) => void;
   /** Brings an object a conversation made into view. */
@@ -221,7 +224,13 @@ export function Card(props: {
       {card.transcription && card.transcription !== card.subject && <div className="transcription">{transcription(card.transcription)}</div>}
       {card.terms && card.terms.length > 0 && <TermsList terms={card.terms} />}
 
-      {busy && (
+      {card.clarify && card.stage === "asking" && <AskView clarify={card.clarify} onAnswer={props.onAnswer} />}
+      {card.clarify?.answer && card.stage !== "asking" && (
+        <p className="small muted told">
+          You told the librarian: {card.clarify.answer}
+        </p>
+      )}
+      {busy && card.stage !== "asking" && (
         <p className="muted card-stage">
           <span className="spinner" /> {card.origin?.kind === "page" ? "Reading the page…" : STAGE_TEXT[card.stage]}
         </p>
@@ -466,6 +475,44 @@ function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: 
         </li>
       ))}
     </ol>
+  );
+}
+
+/** The librarian's question before explaining: likely answers to click, your own words, or skip. */
+function AskView({ clarify, onAnswer }: { clarify: Clarify; onAnswer: (answer: string) => void }) {
+  const [text, setText] = useState("");
+  const [sent, setSent] = useState(false);
+  const send = (a: string) => {
+    if (sent) return;
+    setSent(true);
+    onAnswer(a);
+  };
+  return (
+    <div className="ask" onPointerDown={(e) => e.stopPropagation()}>
+      <p className="ask-question">{withMath(clarify.question)}</p>
+      <div className="ask-options">
+        {clarify.options.map((o) => (
+          <button key={o} type="button" className="secondary" disabled={sent} onClick={() => send(o)}>
+            {o}
+          </button>
+        ))}
+      </div>
+      <form
+        className="row ask-own"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (text.trim()) send(text.trim());
+        }}
+      >
+        <input value={text} disabled={sent} placeholder="Or say it in your own words…" onChange={(e) => setText(e.target.value)} />
+        <button type="submit" disabled={sent || !text.trim()}>
+          Answer
+        </button>
+      </form>
+      <button type="button" className="link small" disabled={sent} onClick={() => send("")}>
+        Skip, just explain
+      </button>
+    </div>
   );
 }
 
