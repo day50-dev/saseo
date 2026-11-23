@@ -30,6 +30,9 @@ Your explanation will be drawn as a diagram, not printed as paragraphs, so you r
 Rules:
 - Descend, never climb. Use ideas MORE general and familiar than the subject. Never define it in terms more specialized than itself. If a technical term is unavoidable, it must be more basic than the subject, and you gloss it in plain words.
 - Start with why: the question or problem the idea answers, so it doesn't feel arbitrary.
+- If the reader has said they are new to the field, never use a technical term bare: say it in plain words and list it as a
+  stand-in, or gloss it in the same sentence ("clathrin, a protein that forms a cage around the membrane"). Lean on
+  the plain picture; the terms are labels for it, not the explanation.
 - Be faithful. Don't invent facts. Where a numbered source supports a claim, cite it as [n]. Standard background needs no citation.
 - Every piece is short: one sentence, at most about 20 words. Plain text. Write math as LaTeX between \\( and \\), e.g. \\(\\mathrm{id}_B \\otimes \\Delta\\), never bare symbols with flattened subscripts.
 Return JSON only, no prose:
@@ -61,9 +64,35 @@ async function ancestry(store: CanvasStore, card: CardItem): Promise<{ path: str
   return { path, topic: topic ?? root?.topic, root };
 }
 
+/**
+ * A long page cut to what fits in a prompt: the part around `near` (the line the reader selected
+ * from) when it can be found, else the start. Short pages pass through whole.
+ */
+function excerpt(text: string, near = "", max = 16_000): string {
+  if (text.length <= max) return text;
+  let at = -1;
+  const probe = near.replace(/\s+/g, " ").trim().toLowerCase().slice(0, 80);
+  if (probe) {
+    // The page with whitespace squashed, and where each of its characters came from.
+    let flat = "";
+    const from: number[] = [];
+    for (let i = 0; i < text.length; i++) {
+      const space = /\s/.test(text[i]);
+      if (space && flat.endsWith(" ")) continue;
+      flat += space ? " " : text[i].toLowerCase();
+      from.push(i);
+    }
+    const i = flat.indexOf(probe);
+    if (i >= 0) at = from[i];
+  }
+  if (at < 0) return `${text.slice(0, max)}\n…`;
+  const start = Math.max(0, Math.min(at - max / 2, text.length - max));
+  return `${start > 0 ? "…\n" : ""}${text.slice(start, start + max)}${start + max < text.length ? "\n…" : ""}`;
+}
+
 /** A card's explanation as plain text: the structure for newer cards, paragraphs for older ones. */
 function cardText(c: CardItem): string {
-  if (c.origin) return c.pageText ?? c.origin.title;
+  if (c.origin) return [c.sem ? semText(c.sem) : "", excerpt(c.pageText ?? c.origin.title)].filter(Boolean).join("\n\n");
   if (c.sem) {
     const standIns = (c.sem.standIns ?? []).map((s) => `"${s.phrase}" stands for ${s.concept}`);
     return [semText(c.sem), standIns.length ? `Plain-language stand-ins used: ${standIns.join("; ")}` : ""].filter(Boolean).join("\n");
@@ -88,11 +117,17 @@ async function trail(store: CanvasStore, card: CardItem): Promise<string> {
   const parent = chain[chain.length - 1];
   const lines = [
     `The reader boxed this on a page${root.topic ? ` about ${root.topic}` : ""}${root.transcription ? `: ${root.transcription}` : ""}`,
-    root.pageText ? `The whole page reads:\n${root.pageText}` : "",
+    root.pageText
+      ? `The page${root.pageText.length > 16_000 ? " (the part around what they selected)" : ""} reads:\n${excerpt(root.pageText, chain.length === 1 ? card.context : "")}`
+      : "",
     `Then, step by step, they asked about:`,
     ...chain.map((c, i) => `${i + 1}. ${c.subject ?? c.selection ?? "?"}${c.sem?.what.gist ? `: ${c.sem.what.gist}` : ""}`),
-    `The full explanation of "${parent.subject ?? "the previous card"}" that they selected words from:`,
-    cardText(parent),
+    // Selecting straight from the page: the page above is already what they selected from.
+    parent === root && root.pageText
+      ? parent.sem
+        ? `The page's shapes, which they may have selected from:\n${semText(parent.sem)}`
+        : ""
+      : `The full explanation of "${parent.subject ?? "the previous card"}" that they selected words from:\n${cardText(parent)}`,
   ];
   return lines.filter(Boolean).join("\n");
 }
@@ -125,7 +160,7 @@ const strs = (v: unknown, max: number) =>
   (Array.isArray(v) ? v : typeof v === "string" ? [v] : []).map(str).filter(Boolean).slice(0, max);
 
 /** Accepts whatever the model returned and keeps only well-formed pieces of a Sem. */
-function cleanSem(raw: Record<string, unknown>): Sem {
+function cleanSem(raw: Record<string, unknown>, maxHere = 3): Sem {
   const what = (raw.what ?? {}) as Record<string, unknown>;
   const parts = (Array.isArray(raw.parts) ? raw.parts : [])
     .map((p) => p as Record<string, unknown>)
@@ -137,7 +172,7 @@ function cleanSem(raw: Record<string, unknown>): Sem {
     what: { gist: typeof raw.what === "string" ? str(raw.what) : str(what.gist), details: strs(what.details, 3) },
     parts: parts.length >= 2 ? parts : [],
     together: parts.length >= 2 ? str(raw.together) : "",
-    here: strs(raw.here ?? raw.how, 3),
+    here: strs(raw.here ?? raw.how, maxHere),
     name: str(raw.name),
     terms: strs(raw.terms, 12),
     standIns: (Array.isArray(raw.standIns) ? raw.standIns : [])
@@ -175,6 +210,7 @@ async function write(
   path: string[],
   sources: FoundSource[],
   context = "",
+  flow = false,
 ) {
   const config = await loadConfig();
   const told = await readerNotes(store);
@@ -191,11 +227,18 @@ async function write(
       ? `Sources found:\n${sources.map((s) => `[${s.n}] ${s.title} (${s.url})\n${s.snippet}`).join("\n\n")}`
       : "No sources were found; rely on standard knowledge.",
   ].filter(Boolean);
+  // A typed question has no page for "how it's used here"; that slot holds how it unfolds instead.
+  const system = flow
+    ? EXPLAIN.replace(
+        ' "here": ["1 to 3 steps: how it is used on this page specifically"],',
+        ' "here": ["3 to 6 steps: how it unfolds, in order: the process, mechanism or sequence of events, one plain step each. For a cycle, end where it begins again."],',
+      )
+    : EXPLAIN;
   const messages: Message[] = [
-    { role: "system", content: EXPLAIN },
+    { role: "system", content: system },
     { role: "user", content: lines.join("\n\n") },
   ];
-  let sem = cleanSem(await chatJson<Record<string, unknown>>(config.llm, messages));
+  let sem = cleanSem(await chatJson<Record<string, unknown>>(config.llm, messages), flow ? 6 : 3);
   if (!sem.why.length && !sem.what.gist) throw new Error("The model's answer had no why and no what");
   let climb: number | undefined;
   let rewritten = false;
@@ -214,7 +257,7 @@ async function write(
               "A check found this climbs: it leans on terms more specialized than the subject. Rewrite it using only more familiar ideas, glossing anything technical in everyday words. Same JSON shape.",
           },
         );
-        const second = cleanSem(await chatJson<Record<string, unknown>>(config.llm, messages));
+        const second = cleanSem(await chatJson<Record<string, unknown>>(config.llm, messages), flow ? 6 : 3);
         const secondClimb = await check(second);
         rewritten = true;
         // Keep whichever version the check judged to climb less.
@@ -227,7 +270,7 @@ async function write(
       // The check is advisory; a failure leaves the draft as written.
     }
   }
-  await store.update(card.id, { stage: "done", sem, sources, climb, rewritten });
+  await store.update(card.id, { stage: "done", sem, sources, climb, rewritten, ...(flow ? { flow: true } : {}) });
   void mapCourses(store, card.id, subject, sources);
 }
 
@@ -573,7 +616,10 @@ async function finishSelection(store: CanvasStore, cardId: string) {
   const sources = await search(card.searchQuery ?? `${selection} explained introduction`);
   await store.update(cardId, { stage: "writing", sources });
   const guidance = register ? `${REGISTER_GUIDANCE[register.register]}${register.means ? ` (${register.means})` : ""}` : "";
-  await write(store, card, card.subject ?? selection, quoted, topic, path, sources, [context, guidance].filter(Boolean).join("\n\n"));
+  // Explaining a question someone typed (a note at the root), not words picked from a page or card.
+  const parent = await store.findItem(card.parentId);
+  const flow = parent?.kind === "card" && parent.origin?.kind === "note" && !parent.parentId;
+  await write(store, card, card.subject ?? selection, quoted, topic, path, sources, [context, guidance].filter(Boolean).join("\n\n"), flow);
   void pointAt(store, cardId);
 }
 
@@ -1029,7 +1075,8 @@ how it fits together, in the shape above. Add nothing the page doesn't support, 
 - "what": what it is, in familiar terms; details are the page's key facts about it.
 - "parts": its ingredients as the page defines them (for a definition with several pieces, one entry per piece).
 - "together": how the parts combine, as the page says.
-- "here": what the page goes on to do, in order: its main sections or results, one step each.
+- "here": what the page goes on to do, in order: its main sections or results, one step each, 2 to 6 steps,
+  reaching all the way to the end of the page.
 The page's paragraphs are numbered [P0], [P1], ... Also return "from": an object mapping each piece to the numbers of
 the paragraphs it comes from. Keys: "why-0", "why-1", ...; "what-0" for the gist, "what-1", ... for details;
 "part-0", ...; "together"; "here-0", .... Leave out pieces that are background, not from the page.
@@ -1055,14 +1102,19 @@ export async function shapePage(store: CanvasStore, cardId: string) {
   await store.update(cardId, { shaping: "working" });
   try {
     const paras = paragraphs(card.pageText);
-    const numbered: string[] = [];
-    let size = 0;
-    for (const [i, p] of paras.entries()) {
+    // The whole page, always: a long page has each paragraph shortened rather than its end cut off,
+    // since its end is often the point (a history's wars, a paper's results). Headings stay whole.
+    const line = (p: string, i: number, cap: number) => {
       // A figure is numbered too, by its caption, so a piece about it can say where it is.
       const fig = /^!\[([^\]]*)\]/.exec(p);
-      const line = fig ? `[P${i}] (figure${fig[1] ? `: ${fig[1].slice(0, 200)}` : ""})` : `[P${i}] ${p.slice(0, 700)}`;
-      if ((size += line.length) > 20_000) break;
-      numbered.push(line);
+      if (fig) return `[P${i}] (figure${fig[1] ? `: ${fig[1].slice(0, 120)}` : ""})`;
+      if (/^## /.test(p)) return `[P${i}] ${p}`;
+      return `[P${i}] ${p.length > cap ? `${p.slice(0, cap)}…` : p}`;
+    };
+    let numbered: string[] = [];
+    for (const cap of [700, 450, 300, 200, 130, 80]) {
+      numbered = paras.map((p, i) => line(p, i, cap));
+      if (numbered.join("\n\n").length <= 60_000) break;
     }
     const told = await readerNotes(store);
     const raw = await chatJson<Record<string, unknown>>((await loadConfig()).llm, [
@@ -1072,7 +1124,7 @@ export async function shapePage(store: CanvasStore, cardId: string) {
         content: [`Page: ${card.origin?.title ?? card.subject ?? ""}`, told, `The page:\n${numbered.join("\n\n")}`].filter(Boolean).join("\n\n"),
       },
     ]);
-    const sem = cleanSem(raw);
+    const sem = cleanSem(raw, 6);
     if (!sem.why.length && !sem.what.gist) throw new Error("no shapes in the answer");
     const found: Record<string, number[]> = {};
     const from = raw.from && typeof raw.from === "object" ? (raw.from as Record<string, unknown>) : {};

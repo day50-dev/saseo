@@ -335,7 +335,7 @@ export function Card(props: {
           sem={card.sem}
           render={(t) => withRegister(t, card.sem!, sources)}
           onTitlePointerDown={props.onGrab}
-          labels={pageCard ? { here: "Where the page goes" } : undefined}
+          labels={pageCard ? { here: "Where the page goes" } : card.flow ? { here: "How it unfolds" } : undefined}
           extra={(key) => (
             <>
               {pageCard && <FromPage card={card} anchorKey={key} onOpenPage={() => setView("page")} />}

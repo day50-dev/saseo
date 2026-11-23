@@ -10,7 +10,9 @@ import { parseHTML } from "linkedom";
 
 const USER_AGENT = "librarian (open-source study tool; https://github.com/kristopolous/librarian)";
 const MAX_BYTES = 3_000_000;
-const MAX_TEXT = 40_000;
+// The whole page: even the longest Wikipedia articles are a few hundred thousand characters.
+// Prompts take excerpts of it (see excerpt and shapePage in explain.ts).
+const MAX_TEXT = 400_000;
 const MAX_REDIRECTS = 4;
 
 function privateV4(ip: string): boolean {

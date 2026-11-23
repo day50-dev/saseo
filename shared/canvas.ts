@@ -281,6 +281,8 @@ export interface CardItem extends ItemState {
    * or "the second equation" is there to see.
    */
   looks?: Record<string, Rect>;
+  /** Explains a typed question: its last section is how it unfolds, not how a page uses it. */
+  flow?: boolean;
   /** Where the card's subject has been seen taught (or assumed), from the course map. */
   taught?: CourseSighting[];
   lookImage?: string;
