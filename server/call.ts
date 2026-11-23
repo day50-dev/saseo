@@ -73,12 +73,13 @@ You can also change the canvas while you talk. Choose at most one action:
 - "descend": open a new card that explains a phrase (they selected it, or it's in the piece they point at). Use it when
   they ask what a term means and it deserves a full explanation.
 - "find": put something new on the canvas: "videos" (lectures, explainers), "links" (reading: articles, notes,
-  tutorials), "papers" (research papers on arXiv) or "diagram" (draw one). "request" says what, in a few words
+  tutorials), "papers" (research papers on arXiv), "diagram" (draw one) or "notebook" (a runnable example in a
+  Jupyter notebook, found online; it opens beside the canvas). "request" says what, in a few words
   ("eigenvectors, visual intuition"). Use it whenever they ask you to find, pull up, show or get videos, reading,
-  papers or a picture. Your words say what you're fetching ("I'll pull up some videos on eigenvectors.").
+  papers, a picture, code or an example in a notebook. Your words say what you're fetching ("I'll pull up some videos on eigenvectors.").
 - "none": just talk.
 Return JSON only: {"say": "...", "action": {"kind": "none" | "grow" | "descend" | "find", "shape": "...", "phrase": "...",
-  "find": "videos" | "links" | "papers" | "diagram", "request": "..."}}`;
+  "find": "videos" | "links" | "papers" | "diagram" | "notebook", "request": "..."}}`;
 
 /** One turn of the call: what to say back, and what was done on the canvas. */
 export async function callTurn(
@@ -134,7 +135,7 @@ export async function callTurn(
       await hooks.grow(card, ext);
       did = `grew ${shape} on ${pointing.key}`;
     } else if (kind === "find") {
-      const what = (["videos", "links", "papers", "diagram"] as const).find((k) => k === r.action?.find) ?? "videos";
+      const what = (["videos", "links", "papers", "diagram", "notebook"] as const).find((k) => k === r.action?.find) ?? "videos";
       const request = (r.action?.request || pointing.selection || text).trim().slice(0, 300);
       // Beside what they're pointing at, else beside the newest card.
       const focus = card ? pointing.selection || (pointing.pieceText && pointing.pieceText.length <= 240 ? pointing.pieceText : undefined) : undefined;

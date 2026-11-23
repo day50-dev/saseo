@@ -11,6 +11,7 @@ import { ago } from "./Home.tsx";
 import { linkTo, navigate } from "./router.ts";
 import { useIsAdmin, useIsAnonymous, useMe } from "./session.ts";
 import { CallBar, canCallWith } from "./Call.tsx";
+import { NotebookPanel } from "./NotebookPanel.tsx";
 
 interface View {
   x: number;
@@ -102,6 +103,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const me = useMe();
   const canCall = canCallWith(me.speech);
   const [calling, setCalling] = useState(false);
+  // The notebook open beside the canvas, and whether to run it (one just asked for).
+  const [notebook, setNotebook] = useState<{ id: string; autoRun: boolean } | null>(null);
+  const seenNotebooks = useRef<Set<string> | null>(null);
   const api = useMemo(() => canvasApi(canvasId), [canvasId]);
   const [name, setName] = useState("");
   const [trashedAt, setTrashedAt] = useState<string | undefined>();
@@ -1080,6 +1084,21 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     }
   });
 
+  // A notebook just asked for (in a card's chat, or on a call) opens beside the canvas at once,
+  // showing its search, and runs when it arrives. Ones already here when the canvas loaded don't.
+  useEffect(() => {
+    if (!loaded) return;
+    const ids = cards.filter((c) => c.objectKind === "notebook").map((c) => c.id);
+    if (!seenNotebooks.current) {
+      seenNotebooks.current = new Set(ids);
+      return;
+    }
+    // The newest, if several arrive at once.
+    const fresh = ids.filter((id) => !seenNotebooks.current!.has(id)).at(-1);
+    for (const id of ids) seenNotebooks.current.add(id);
+    if (fresh) setNotebook({ id: fresh, autoRun: true });
+  });
+
   // What each card's words have already been explained by, and what's still being explained.
   const explainedIn = new Map<string, string[]>();
   const explainingIn = new Map<string, string[]>();
@@ -1546,6 +1565,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               onAnswer={(text) => answer(c, text)}
               onFocus={focusOn}
               onAddPaper={(paper) => addPaperPages(paper, "1-2", { x: c.x + c.w + GAP, y: c.y })}
+              onOpenNotebook={() => setNotebook({ id: c.id, autoRun: false })}
               onAsk={async (text) => {
                 try {
                   await api.chat(c.id, text);
@@ -1577,6 +1597,15 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           ))}
         </div>
       </div>
+      {notebook && byId.get(notebook.id)?.kind === "card" && (
+        <NotebookPanel
+          card={byId.get(notebook.id) as CardItem}
+          autoRun={notebook.autoRun}
+          onSave={(cells) => api.saveNotebook(notebook.id, cells)}
+          onShowCard={() => focusOn(notebook.id)}
+          onClose={() => setNotebook(null)}
+        />
+      )}
       {calling && <CallBar canvasId={canvasId} serverVoice={!!me.speech?.tts} onChanged={refresh} onClose={() => setCalling(false)} />}
       {arxivOpen && <ArxivPanel onAdd={(paper, pages) => addPaperPages(paper, pages)} onClose={() => setArxivOpen(false)} />}
     </div>

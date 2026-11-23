@@ -7,6 +7,7 @@ import { assetPath, type CanvasStore, getCanvasInfo, newId, onResume } from "./c
 import { diagramEndpoint, loadConfig } from "./config.ts";
 import { logCourses } from "./curriculum.ts";
 import { snap } from "./snap.ts";
+import { exampleNotebook } from "./notebooks.ts";
 import { bestRead, editVersion, hashText, pageVersion, readOf, remember } from "./pagecache.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { searchArxiv } from "./arxiv.ts";
@@ -990,16 +991,18 @@ const INTENT_CRITERIA: Record<Intent, string> = {
   links: "A request for reading: articles, notes, papers, textbooks or other pages.",
   diagram: "A request to draw, sketch, picture or diagram something.",
   papers: "A request for research papers, preprints or arXiv articles.",
+  notebook: "A request for code, a worked example to run, or a Jupyter notebook.",
 };
 const isIntent = (v: unknown): v is Intent => typeof v === "string" && v in INTENT_CRITERIA;
 
 const INTENT = `A reader typed a message in the conversation box on a card about a topic they are studying.
 Decide what they want: an answer in words, or an object made for them.
-Return JSON only: {"kind": "answer" | "videos" | "links" | "diagram" | "papers", "request": "what they asked for, restated in a few words"}
+Return JSON only: {"kind": "answer" | "videos" | "links" | "diagram" | "papers" | "notebook", "request": "what they asked for, restated in a few words"}
 - "videos": they ask for videos, lectures or talks to watch.
 - "links": they ask for things to read: articles, notes, papers, textbook chapters.
 - "diagram": they ask you to draw, sketch, picture or diagram something.
 - "papers": they ask for research papers, preprints, or arXiv.
+- "notebook": they ask for code, an example to run or play with, or a Jupyter notebook.
 - "answer": anything else.`;
 
 async function decideIntent(text: string, about: string): Promise<{ kind: Intent; request: string }> {
@@ -1098,7 +1101,14 @@ export function makeObject(store: CanvasStore, cardId: string) {
     const config = await loadConfig();
     const enabled = SEARCHER_IDS.filter((id) => config.searchers[id].enabled);
 
-    if (card.objectKind === "videos") {
+    if (card.objectKind === "notebook") {
+      const nb = await exampleNotebook(request, about.text, (stage) => void store.update(cardId, { stage }));
+      await store.update(cardId, {
+        stage: "done",
+        subject: `Notebook: ${nb.title}`,
+        object: { type: "notebook", title: nb.title, language: nb.language, cells: nb.cells, ...(nb.source ? { source: nb.source } : {}), ...(nb.why ? { why: nb.why } : {}) },
+      });
+    } else if (card.objectKind === "videos") {
       await store.update(cardId, { stage: "searching" });
       const q = await queryFor(request, about.text, `${about.name} explained`);
       const results = enabled.length ? await runSearch(config, `${q} lecture`, enabled, 10, "youtube.com") : {};
@@ -1171,6 +1181,7 @@ const MADE: Record<ObjectKind, string> = {
   links: "Finding reading",
   diagram: "Drawing a diagram",
   papers: "Searching arXiv",
+  notebook: "Finding an example notebook",
 };
 
 const PAPER_QUERY = `Write an arXiv search for research papers on what the reader asked for, given the card it was asked about.

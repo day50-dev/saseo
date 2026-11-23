@@ -120,6 +120,8 @@ export function Card(props: {
   onFocus: (id: string) => void;
   /** Adds the first pages of a paper from a papers card to the canvas. */
   onAddPaper: (paper: Paper) => Promise<void>;
+  /** Opens this card's notebook in the panel beside the canvas. */
+  onOpenNotebook: () => void;
   /** Pointer down on the header: start moving this card and the cards below it. */
   onGrab: (e: React.PointerEvent) => void;
   moving: boolean;
@@ -348,7 +350,11 @@ export function Card(props: {
       {card.origin && card.stage === "done" && !showShapes && (
         <SourceView card={card} onReread={props.onRetry} onShowPiece={(key) => (setView("shapes"), setFlash(key))} />
       )}
-      {card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} />}
+      {card.objectKind === "notebook" ? (
+        <NotebookCard card={card} onOpen={props.onOpenNotebook} />
+      ) : (
+        card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} />
+      )}
       {showShapes && card.sem && (
         <SemShapes
           title={card.subject ?? "Explanation"}
@@ -570,9 +576,39 @@ function ChatBox({
 }
 
 /** An object a conversation made: videos to watch, pages to read, or a diagram. */
+/** A notebook's card on the canvas: what it is, where it's from, its first cells; it opens beside. */
+function NotebookCard({ card, onOpen }: { card: CardItem; onOpen: () => void }) {
+  const nb = card.object?.type === "notebook" ? card.object : null;
+  const code = nb?.cells.filter((c) => c.kind === "code").slice(0, 2) ?? [];
+  return (
+    <div className="object-notebook">
+      {nb?.why && <p className="small">{nb.why}</p>}
+      {nb?.source ? (
+        <p className="small muted">
+          Found online:{" "}
+          <a href={nb.source.url} target="_blank" rel="noreferrer">
+            {nb.source.title}
+          </a>
+        </p>
+      ) : nb ? (
+        <p className="small nb-written">Written by the librarian: no example online fit.</p>
+      ) : null}
+      {code.map((c) => (
+        <pre key={c.id} className="nb-preview">
+          {c.source.split("\n").slice(0, 8).join("\n")}
+        </pre>
+      ))}
+      <button type="button" onClick={onOpen} onPointerDown={(e) => e.stopPropagation()}>
+        {nb ? `Open the notebook (${nb.cells.length} cells)` : "Open the notebook"}
+      </button>
+    </div>
+  );
+}
+
 function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: Paper) => Promise<void> }) {
   const [playing, setPlaying] = useState<string | null>(null);
   const o = card.object!;
+  if (o.type === "notebook") return null;
   if (o.type === "diagram")
     return (
       <figure className="object-diagram">

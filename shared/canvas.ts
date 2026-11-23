@@ -249,7 +249,27 @@ export interface Video {
  * Things a conversation can make. Each lives on its own card, connected to the card it was asked
  * from, so a card gathers a collection of objects rather than a long transcript.
  */
+/** A notebook cell, as in Jupyter: code to run, or markdown to read. */
+export interface NotebookCell {
+  id: string;
+  kind: "code" | "markdown";
+  source: string;
+  /** What it showed when its author ran it (text, or a PNG as base64), kept from the original. */
+  saved?: { text?: string; image?: string }[];
+}
+
+/** Where a notebook came from, when it was found rather than written. */
+export interface NotebookSource {
+  /** The notebook's page (GitHub, say). */
+  url: string;
+  /** "owner/repo: path", for crediting it. */
+  title: string;
+  /** Runs the original live on Binder (GitHub notebooks). */
+  binder?: string;
+}
+
 export type CardObject =
+  | { type: "notebook"; title: string; cells: NotebookCell[]; source?: NotebookSource; why?: string; language?: string }
   | { type: "videos"; videos: Video[] }
   | { type: "links"; links: FoundSource[] }
   | { type: "diagram"; svg: string; caption: string }

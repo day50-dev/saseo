@@ -1,5 +1,5 @@
 import { unreachable } from "./api.ts";
-import type { CanvasInfo, CanvasState, CanvasSummary, CardItem, Extension, ImageItem, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
+import type { CanvasInfo, CanvasState, CanvasSummary, CardItem, Extension, ImageItem, NotebookCell, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
 
 async function json<T>(res: Response): Promise<T> {
   if (res.status === 401) location.reload();
@@ -91,6 +91,8 @@ export function canvasApi(cid: string) {
       post(`${base}/cards/${cardId}/extend`, body).then((r) => json<{ ext: Extension }>(r)),
     unextend: (cardId: string, extId: string) => post(`${base}/cards/${cardId}/extend/${extId}/remove`, {}).then((r) => json<{ removed: string[] }>(r)),
     courses: (cardId: string) => post(`${base}/cards/${cardId}/courses`, {}).then((r) => json<{ ok: true }>(r)),
+    /** Saves a notebook's cells as you've edited them. */
+    saveNotebook: (cardId: string, cells: NotebookCell[]) => send("PUT", `${base}/cards/${cardId}/notebook`, { cells }).then((r) => json<{ ok: true }>(r)),
     look: (cardId: string) => post(`${base}/cards/${cardId}/look`, {}).then((r) => json<{ ok: true }>(r)),
     answer: (cardId: string, answer: string) => post(`${base}/cards/${cardId}/answer`, { answer }).then((r) => json<{ ok: true }>(r)),
     retry: (cardId: string, images?: { marked: string; crop: string }) =>

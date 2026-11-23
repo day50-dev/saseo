@@ -6,7 +6,7 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
-import { CARD_WIDTH, EXTENSION_SHAPES, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { remember } from "./pagecache.ts";
 import { addReaderNote, assetPath, autoName, DATA_DIR, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
@@ -409,6 +409,22 @@ app.post("/api/canvases/:cid/cards/:id/look", async (c) => {
   if (card?.kind !== "card" || card.stage !== "done" || !card.sem) return c.json({ error: "not a finished card" }, 409);
   if (card.looking !== "working") void pointAt(store, card.id);
   return c.json({ ok: true });
+});
+
+// Your edits to a notebook: its cells, as they are now.
+app.put("/api/canvases/:cid/cards/:id/notebook", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const { cells } = (await c.req.json()) as { cells?: NotebookCell[] };
+  if (!Array.isArray(cells)) return c.json({ error: "cells is required" }, 400);
+  const clean = cells
+    .filter((x) => x && typeof x.source === "string" && typeof x.id === "string")
+    .slice(0, 500)
+    .map((x) => ({ id: x.id.slice(0, 40), kind: x.kind === "markdown" ? ("markdown" as const) : ("code" as const), source: x.source.slice(0, 100_000) }));
+  const done = await store.edit(c.req.param("id"), (now) =>
+    now?.kind === "card" && now.object?.type === "notebook" ? { object: { ...now.object, cells: clean } } : null,
+  );
+  return c.json({ ok: true, done });
 });
 
 app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
