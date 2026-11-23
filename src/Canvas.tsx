@@ -1275,6 +1275,16 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             ↷ Redo
           </button>
         </div>
+        {shown.length > 0 && (
+          <button
+            type="button"
+            className={dockOpen ? "add-btn on" : "secondary add-btn"}
+            title="Add a link, a PDF, a video or a question to the canvas (/)"
+            onClick={() => setDockOpen(!dockOpen)}
+          >
+            + Add <kbd>/</kbd>
+          </button>
+        )}
         <div className="modes" role="radiogroup" aria-label="Canvas tool">
           <button
             type="button"
@@ -1361,24 +1371,13 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             <Examples onPick={tryExample} />
           </div>
         )}
-        {/* On a canvas with things on it, starting something new is a button at the bottom that
-            opens into the box, and closes again once it's used or left. */}
-        {loaded && shown.length > 0 && !calling &&
-          (dockOpen ? (
-            <div className="start-dock">
-              <StartBox onStart={startFrom} onClose={() => setDockOpen(false)} />
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="start-open"
-              title="Start from a link or a question (/)"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => setDockOpen(true)}
-            >
-              + Start something <kbd>/</kbd>
-            </button>
-          ))}
+        {/* Adding something new (a link, a PDF, a question) opens from the toolbar's Add, under it,
+            and closes again once it's used or left. */}
+        {loaded && shown.length > 0 && dockOpen && (
+          <div className="start-dock">
+            <StartBox onStart={startFrom} onClose={() => setDockOpen(false)} />
+          </div>
+        )}
         <div
           className="world"
           // --zoom lets handles keep the same size on screen at any zoom.
@@ -1824,7 +1823,7 @@ function StartBox({ onStart, big = false, onClose }: { onStart: (input: string) 
         autoFocus={big || Boolean(onClose)}
         onKeyDown={(e) => e.key === "Escape" && onClose?.()}
         onBlur={() => !value.trim() && !busy && onClose?.()}
-        placeholder={big ? "A link to read, or a question to explain…" : "Start from a link or a question… (or drop an image anywhere)"}
+        placeholder={big ? "A link to read, or a question to explain…" : "Paste a link (a page, a PDF, a video) or type a question… or drop an image anywhere"}
         title="Paste a link (e.g. a Wikipedia page) to read it here, or type a question to have it explained"
         onChange={(e) => setValue(e.target.value)}
       />
