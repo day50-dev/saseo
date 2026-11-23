@@ -35,6 +35,12 @@ Topics:
   3Blue1Brown's "Vectors": boxing the vector sum at 6:40 gave an explanation that used the
   lecture's own tip-to-tail, steps-right-and-up framing and worked the example on screen.
 - A moment's label has **▶ 6:40**: it brings the video into view and plays from there.
+- Videos whose uploader doesn't allow embedding play from **our own copy**. yt-dlp reports it up
+  front (`playable_in_embed`), and the YouTube player reports it too (errors 101/150); either way
+  the server fetches the video at 720p at most (enough to read a board; a 10-minute lecture is
+  about 15 MB) into `data/videos/`, serves it with byte ranges, and the canvas plays it in a plain
+  `<video>` with the same Stop and ▶. Frames still come from YouTube's 1080p stream when it gives
+  one, else from the copy. Studying a lecture a frame at a time is a textbook case of fair use.
 - yt-dlp needs `--js-runtimes node` for YouTube now, and a recent yt-dlp to solve its URL
   challenge (an eight-month-old one got 403s).
 
