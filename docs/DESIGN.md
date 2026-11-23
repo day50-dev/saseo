@@ -267,6 +267,8 @@ Built beyond the milestones, mostly from trying it on topics outside maths (hist
 - Video lectures: stop at a moment for its frame and transcript; our own copy when embedding isn't allowed ([BRAINSTORM.md](BRAINSTORM.md)).
 - The course map, step 1: where subjects are taught, gathered from searches ([BRAINSTORM.md](BRAINSTORM.md)).
 - Anonymous use with no limits; signing in only keeps canvases.
+- A call with the librarian (`server/call.ts`, `src/Call.tsx`): hold to talk while pointing; speech-to-text primed with the canvas's own vocabulary; a spoken answer (Kokoro) plus at most one action on the canvas (grow the pointed piece in a shape, or open a deeper card on a phrase). Principle 4 holds: the call acts on placed things, by pointing, rather than in a separate chat. Next: streaming the reply so it starts speaking sooner (a turn takes ~15 s now), and hands-free talk with voice activity detection.
+- Crops of what a piece points at are snapped to the ink on the page (`server/snap.ts`): measured against OCR ground truth, the model's boxes find the right line but drift along it.
 
 ## Open questions
 

@@ -52,6 +52,12 @@ When an explanation says "the second equation" or "the diagram", the part of the
 
 Paste a YouTube link and the video plays on the canvas. When something goes by that you don't follow, press **Stop here and ask**: the exact frame lands beside the video, sharp enough to read the board, with what the lecturer was saying around that moment. Box anything in the frame or select words from the transcript to go down, and the explanation knows what was being said. Each moment's **▶** takes the video back there. Videos whose owners don't allow embedding play from the librarian's own copy instead (720p at most), with the download shown as it goes.
 
+### Call the librarian
+
+Press **Call** and talk while you work. Hold the button (or hold **T**), point at any piece of a diagram, a card, or words you've selected, and ask out loud: "break this down", "why is that?", "what does this word mean?". The librarian answers in a sentence or three, out loud, and changes the canvas as it talks: it grows the piece you're pointing at in the shape your question calls for, or opens a deeper card on a phrase. The piece you're pointing at is outlined while you're on a call, so "this" is never ambiguous.
+
+Calls need two speech servers, set with `LIBRARIAN_TTS_URL` (an OpenAI-compatible `/v1/audio/speech`, such as [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M)) and `LIBRARIAN_STT_URL` (a `/transcribe` endpoint that takes raw audio and returns `{"text"}`, such as [faster-whisper](https://github.com/SYSTRAN/faster-whisper) behind a few lines of Python). `LIBRARIAN_VOICE` picks the voice (`af_heart` by default). Without them, the Call button doesn't appear.
+
 ### Where an idea is taught
 
 Each explanation notes the courses that teach its subject, and those that assume it, found among the pages it searched: say *MIT 18.06* and *Purdue MA262* for eigenvectors, at an intro undergraduate level. The sightings build up across every canvas into a map of where ideas sit in the curriculum, the start of flagging explanations that reach ahead of you.
