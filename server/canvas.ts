@@ -139,7 +139,8 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   else if (e.type === "update") {
     const item = s.items.find((i) => i.id === e.id);
     if (item?.kind === "card") Object.assign(item, e.patch);
-    else if (item?.kind === "image") Object.assign(item, { pageText: e.patch.pageText ?? item.pageText, topic: e.patch.topic ?? item.topic });
+    else if (item?.kind === "image")
+      Object.assign(item, { pageText: e.patch.pageText ?? item.pageText, topic: e.patch.topic ?? item.topic, video: e.patch.video ?? item.video });
   } else if (e.type === "z") {
     for (const o of e.order) {
       const item = s.items.find((i) => i.id === o.id);
