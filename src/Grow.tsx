@@ -162,6 +162,39 @@ export function Grown({
   );
 }
 
+/** One block of a restructured page, drawn in its shape; its pieces grow like any other. */
+export function ShapeBlock({
+  block,
+  ext,
+  render,
+  onGrow,
+  onRemove,
+  extra,
+}: {
+  block: Extension;
+  ext: Extension[];
+  render: Render;
+  onGrow: (r: GrowRequest) => void;
+  onRemove: (id: string) => void;
+  /** Shown beside the block's label: where on the page it came from. */
+  extra?: ReactNode;
+}) {
+  const piece = (key: string, text: string, className = "", grownHere = true) => (
+    <div className={`grown-piece ${className}`} data-x={key}>
+      {render(text)}
+      <GrowButton at={key} onGrow={onGrow} />
+      {grownHere && <Grown ext={ext} at={key} render={render} onGrow={onGrow} onRemove={onRemove} />}
+    </div>
+  );
+  const below = (key: string, name: string) => <Grown ext={ext} at={key} from={name} render={render} onGrow={onGrow} onRemove={onRemove} />;
+  return (
+    <div className={`grown grown-${block.shape} page-block`}>
+      {extra}
+      <Shape e={block} piece={piece} below={below} render={render} />
+    </div>
+  );
+}
+
 function Shape({
   e,
   piece,
@@ -187,6 +220,21 @@ function Shape({
               {piece(k(String(i)), t)}
             </div>
           ))}
+        </div>
+      );
+    case "facts":
+      // Descriptions: a bus down the side, an arrow to each line.
+      return (
+        <div className="grown-facts">
+          {e.label && <div className="grown-label">{e.label}</div>}
+          <div className="grown-facts-col">
+            {(e.items ?? []).map((t, i) => (
+              <div key={i} className="grown-fact">
+                <span className="grown-fact-arrow" aria-hidden />
+                {piece(k(String(i)), t)}
+              </div>
+            ))}
+          </div>
         </div>
       );
     case "why":

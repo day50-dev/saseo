@@ -13,7 +13,7 @@ import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./au
 import { allSightings } from "./curriculum.ts";
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
-import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, makeObject, mapCourses, pointAt, readSource } from "./explain.ts";
+import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, makeObject, mapCourses, pointAt, readSource, shapeSections } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
@@ -260,6 +260,16 @@ app.post("/api/canvases/:cid/descend", async (c) => {
 // only the box's position is stored, not the pixels sent to the model.
 // The course map gathered so far: every sighting of a concept in a course.
 app.get("/api/curriculum", async (c) => c.json({ sightings: await allSightings() }));
+
+// Restructures the whole of a linked page section by section, for page cards read before that existed.
+app.post("/api/canvases/:cid/cards/:id/sections", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const card = await store.findItem(c.req.param("id"));
+  if (card?.kind !== "card" || card.origin?.kind !== "page" || !card.pageText) return c.json({ error: "not a read page" }, 409);
+  if (!card.sections?.some((s) => s.status === "working")) void shapeSections(store, card.id);
+  return c.json({ ok: true });
+});
 
 // Grows a shape from one piece of a card's diagram: one the reader picked, or the one their words call for.
 app.post("/api/canvases/:cid/cards/:id/extend", async (c) => {

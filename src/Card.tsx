@@ -14,7 +14,7 @@ import {
   type Sem,
 } from "../shared/canvas.ts";
 import { PaperRow } from "./ArxivPanel.tsx";
-import { type GrowRequest, GrowButton, Grown } from "./Grow.tsx";
+import { type GrowRequest, GrowButton, Grown, ShapeBlock } from "./Grow.tsx";
 import { assetUrl } from "./canvasApi.ts";
 import { clearMarks, findPhrases, setMarks } from "./marks.ts";
 import { looksLikeTex, selectedText, Tex, textWithTex, withMath } from "./MathText.tsx";
@@ -361,6 +361,9 @@ export function Card(props: {
           )}
         />
       )}
+      {showShapes && pageCard && card.sections && card.sections.length > 0 && (
+        <PageSections card={card} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} onOpenPage={() => setView("page")} />
+      )}
 
       {!card.sem &&
         card.facets &&
@@ -658,6 +661,111 @@ function Taught({ sightings }: { sightings: CourseSighting[] }) {
         </p>
       )}
     </section>
+  );
+}
+
+/**
+ * The whole linked page, section by section, restructured into shapes without loss: every
+ * paragraph is carried by some block, and each block says which paragraphs it carries.
+ */
+function PageSections({
+  card,
+  render,
+  onGrow,
+  onRemove,
+  onOpenPage,
+}: {
+  card: CardItem;
+  render: (t: string) => ReactNode;
+  onGrow: (r: GrowRequest) => void;
+  onRemove: (id: string) => void;
+  onOpenPage: () => void;
+}) {
+  const sections = card.sections ?? [];
+  const paras = paragraphs(card.pageText ?? "");
+  const all = [...(card.ext ?? []), ...sections.flatMap((s) => s.blocks ?? [])];
+  const done = sections.filter((s) => s.status !== "working").length;
+  return (
+    <section className="page-sections">
+      <h4 className="page-sections-head">
+        The whole page, section by section
+        {done < sections.length && (
+          <span className="muted small">
+            {" "}
+            <span className="spinner" /> {done} of {sections.length} sections
+          </span>
+        )}
+      </h4>
+      {sections.map((sec, i) => {
+        // The section's figures go with the block that carries the text around them; any left over
+        // close the section. The page's pictures are part of what's preserved.
+        const figs = new Map<number, RegExpExecArray>();
+        for (let n = sec.start; n <= sec.end; n++) {
+          const m = /^!\[([^\]]*)\]\(([^)\s]+)\)/.exec(paras[n] ?? "");
+          if (m) figs.set(n, m);
+        }
+        const take = (from: number[] = []) => {
+          if (!from.length) return [];
+          const lo = Math.min(...from);
+          const hi = Math.max(...from) + 1;
+          const out = [...figs.entries()].filter(([n]) => n >= lo && n <= hi).map(([n, m]) => (figs.delete(n), m));
+          return out;
+        };
+        const figure = (m: RegExpExecArray) => (
+          <figure key={m[2]} className="look-figure page-figure">
+            <img src={m[2]} alt={m[1]} loading="lazy" />
+            {m[1] && <figcaption>{m[1]}</figcaption>}
+          </figure>
+        );
+        return (
+          <details key={i} className="page-section" open={i < 3}>
+            <summary>
+              <span className="page-section-title">{withMath(sec.title)}</span>
+              {sec.status === "working" && <span className="spinner" />}
+              {sec.status === "failed" && <span className="muted small"> (kept as written)</span>}
+            </summary>
+            {(sec.blocks ?? []).map((b) => (
+              <div key={b.id}>
+                <ShapeBlock
+                  block={b}
+                  ext={all}
+                  render={render}
+                  onGrow={onGrow}
+                  onRemove={onRemove}
+                  extra={b.from?.length ? <BlockSource paras={paras} from={b.from} onOpenPage={onOpenPage} /> : null}
+                />
+                {take(b.from).map(figure)}
+              </div>
+            ))}
+            {sec.status !== "working" && [...figs.values()].map(figure)}
+          </details>
+        );
+      })}
+    </section>
+  );
+}
+
+/** A ¶ that shows the page's own paragraphs a block carries. */
+function BlockSource({ paras, from, onOpenPage }: { paras: string[]; from: number[]; onOpenPage: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="from-page block-source">
+      <button type="button" className="from-toggle" title={open ? "Hide the page's words" : "Show the page's own words for this"} onPointerDown={(e) => e.stopPropagation()} onClick={() => setOpen(!open)}>
+        ¶
+      </button>
+      {open && (
+        <span className="from-quote">
+          {from.map((n) => (
+            <span key={n} className="source-para from-para">
+              {withMath((paras[n] ?? "").replace(/^## /, ""))}
+            </span>
+          ))}
+          <button type="button" className="link small" onPointerDown={(e) => e.stopPropagation()} onClick={onOpenPage}>
+            Read it in the page
+          </button>
+        </span>
+      )}
+    </span>
   );
 }
 

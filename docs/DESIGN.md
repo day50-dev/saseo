@@ -260,6 +260,7 @@ Development is driven by the CSS talk as a fixture, and each milestone has a tes
 Built beyond the milestones, mostly from trying it on topics outside maths (history, biochemistry, lectures):
 
 - Starting points besides screenshots: links read whole and drawn as shapes (principle 7), arXiv papers, typed questions, YouTube lectures, and one-click examples.
+- A linked page restructured without loss (principle 7 and M1's fidelity test): after the overview, every section is regrouped into shapes (events path, steps, parts, a fork, descriptions) carrying every claim, number, name, example and connective, each block citing its paragraphs. Paragraphs no block carries are kept verbatim, so coverage is guaranteed even when the model drops something; figures sit with the blocks around them (`shapeSections` in `server/explain.ts`, `PageSections` in `src/Card.tsx`). Whether every *claim* inside a carried paragraph survives is still checked only by the prompt; a fidelity check per block is the next step.
 - A clarifying question about the reader's goal and background before the first explanation.
 - Growing any piece of a diagram in a chosen shape ([Growing the diagram](#growing-the-diagram)).
 - Pieces point at the part of the page they mean.

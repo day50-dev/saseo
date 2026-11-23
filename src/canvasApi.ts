@@ -82,6 +82,8 @@ export function canvasApi(cid: string) {
       post(`${base}/move`, { moves }).then((r) => json<{ ok: true }>(r)),
 
     /** Answers the librarian's question on a card; "" skips it. */
+    /** Restructures the whole of a linked page, section by section. */
+    sections: (cardId: string) => post(`${base}/cards/${cardId}/sections`, {}).then((r) => json<{ ok: true }>(r)),
     /** Grows a shape from a piece of a card's diagram. */
     extend: (cardId: string, body: { at: string; shape?: string; ask?: string; focus?: string }) =>
       post(`${base}/cards/${cardId}/extend`, body).then((r) => json<{ ext: Extension }>(r)),

@@ -775,3 +775,19 @@ kbd {
 .explainer { margin: 4px 0 16px; }
 .explainer summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .explainer video { display: block; width: 100%; max-width: 860px; margin-top: 10px; border-radius: 8px; background: #000; }
+
+/* ---- A linked page, whole, section by section ---- */
+.page-sections { margin-top: 18px; border-top: 2px solid var(--sem-line); padding-top: 10px; }
+.page-sections-head { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--sem-line); display: flex; align-items: center; gap: 6px; }
+.page-section { margin: 6px 0; }
+.page-section > summary { cursor: pointer; font-weight: 700; font-size: 15px; color: var(--text); display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.page-section > summary::marker { color: var(--sem-line); }
+.page-block { margin: 8px 0 12px 6px; position: relative; }
+.page-block > .block-source { position: absolute; right: 0; top: -2px; }
+.grown-facts { margin-left: 4px; }
+.grown-facts-col { border-left: 2px solid var(--sem-line); margin-left: 6px; padding-left: 0; display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+.grown-fact { display: flex; align-items: flex-start; gap: 6px; }
+.grown-fact-arrow { flex: none; width: 14px; height: 2px; background: var(--sem-line); margin-top: 0.75em; position: relative; }
+.grown-fact-arrow::after { content: ""; position: absolute; right: -5px; top: -4px; border: 5px solid transparent; border-left-color: var(--sem-line); border-right: 0; }
+.grown-fact .grown-piece { padding-left: 4px; }
+.page-figure { margin: 4px 0 12px 22px; }

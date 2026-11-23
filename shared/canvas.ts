@@ -118,7 +118,7 @@ export interface Sem {
  * ways, a break-down into parts. Its own pieces can be extended in turn, so it grows as deep as
  * the reader takes it.
  */
-export const EXTENSION_SHAPES = ["aside", "why", "then", "steps", "parts", "split", "example"] as const;
+export const EXTENSION_SHAPES = ["aside", "why", "then", "steps", "parts", "split", "example", "facts"] as const;
 export type ExtensionShape = (typeof EXTENSION_SHAPES)[number];
 
 export interface Extension {
@@ -141,6 +141,22 @@ export interface Extension {
   together?: string;
   /** A short label drawn on the connector ("Two ways", "4 steps"), per the deck's Label shape. */
   label?: string;
+  /** For a block of a restructured page: the paragraphs (in pageText) it carries. */
+  from?: number[];
+}
+
+/**
+ * One section of a linked page, restructured without loss: its content regrouped into shapes
+ * (blocks), every paragraph carried by some block, anything the model left out kept verbatim.
+ */
+export interface PageSection {
+  title: string;
+  /** Its paragraphs in pageText, first to last. */
+  start: number;
+  end: number;
+  status: "working" | "done" | "failed";
+  blocks?: Extension[];
+  error?: string;
 }
 
 /**
@@ -314,6 +330,8 @@ export interface CardItem extends ItemState {
   looks?: Record<string, Rect>;
   /** Shapes the reader grew from pieces of the explanation, oldest first. */
   ext?: Extension[];
+  /** For a linked page: the whole page, section by section, restructured into shapes without loss. */
+  sections?: PageSection[];
   /** Explains a typed question: its last section is how it unfolds, not how a page uses it. */
   flow?: boolean;
   /** Where the card's subject has been seen taught (or assumed), from the course map. */

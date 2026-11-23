@@ -195,6 +195,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         i.shaping === "working" ||
         i.looking === "working" ||
         Boolean(i.ext?.some((e) => e.status === "working")) ||
+        Boolean(i.sections?.some((sec) => sec.status === "working")) ||
         // Still waiting to hear where its subject is taught.
         (i.stage === "done" && Boolean(i.sem) && !i.taught && !i.relates && !i.objectKind))),
   );
@@ -1006,6 +1007,12 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const looked = useRef(new Set<string>());
   const mapped = useRef(new Set<string>());
   useEffect(() => {
+    // Linked pages read before they were restructured whole: do that, once.
+    for (const c of cards) {
+      if (c.origin?.kind !== "page" || c.stage !== "done" || !c.pageText || c.sections || mapped.current.has(`s${c.id}`)) continue;
+      mapped.current.add(`s${c.id}`);
+      api.sections(c.id).then(refresh, () => {});
+    }
     // Cards written before the course map: look up where their subject is taught, once.
     for (const c of cards) {
       if (c.stage !== "done" || !c.sem || c.taught || c.relates || c.objectKind || mapped.current.has(c.id)) continue;

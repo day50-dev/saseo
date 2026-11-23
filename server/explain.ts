@@ -1,6 +1,6 @@
 // The librarian's loop for one card: read the region, go fish, write a descending
 // explanation from what was found, then check that it doesn't climb.
-import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, type ExtensionShape, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
+import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { readFile } from "node:fs/promises";
 import { assetPath, type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
@@ -408,6 +408,7 @@ const EXTEND_SHAPES: Record<ExtensionShape, string> = {
   parts: `"parts": the 2 to 5 parts it breaks into, each with a short name and a one-line note, and what they add up to. JSON: {"label": "Has N parts", "parts": [{"name": "...", "note": "..."}], "together": "..."}`,
   split: `"split": exactly 2 branches: two ways, two cases, or two sides of it, each with a 1 to 4 word heading and 1 to 3 lines. JSON: {"label": "Two ways" or "Two cases" or similar, "branches": [{"label": "...", "items": [...]}, {"label": "...", "items": [...]}]}`,
   example: `"example": one concrete example of the piece, worked through plainly in 1 to 3 lines, with real numbers, names or cases. JSON: {"items": [...]}`,
+  facts: `"facts": 2 to 5 separate facts about the piece, one line each. JSON: {"items": [...]}`,
 };
 
 /** The shape that gives "more of the same" for each part of a diagram. */
@@ -484,7 +485,9 @@ export async function extendPiece(store: CanvasStore, cardId: string, extId: str
   const save = (patch: Partial<Extension>) =>
     store.edit(cardId, (now) => (now?.kind === "card" && now.ext ? { ext: now.ext.map((e) => (e.id === extId ? { ...e, ...patch } : e)) } : null));
   try {
-    const chain = lineage(card.sem, card.ext ?? [], ext.at);
+    // Pieces of the restructured page can be grown from like any other.
+    const all = [...(card.ext ?? []), ...(card.sections ?? []).flatMap((sec) => sec.blocks ?? [])];
+    const chain = lineage(card.sem, all, ext.at);
     const sources = card.sources ?? [];
     const told = await readerNotes(store);
     // "Yo I need more", "expand", "keep going": more of the same kind as what they pointed at,
@@ -1200,6 +1203,7 @@ export function readSource(store: CanvasStore, cardId: string) {
       origin: { kind: "page", url: page.url, site: page.site, title: page.title },
     });
     void shapePage(store, cardId);
+    void shapeSections(store, cardId);
   });
 }
 
@@ -1222,6 +1226,148 @@ the paragraphs it comes from. Keys: "why-0", "why-1", ...; "what-0" for the gist
 Never write paragraph numbers in the pieces' text; they go only in "from".
 A figure is listed as "[P12] (figure: its caption)". When a piece is about what a figure shows, or refers to "the
 diagram" or "the figure", include that figure's number in its "from", so the reader sees the figure beside it.`;
+
+// ---- The whole page, section by section, without loss ----
+
+const PRESERVE = `You are restructuring one section of a page into a diagram, for a reader who will study it closely.
+Preserve, don't summarize. Every claim, number, date, name, example, quotation and connective (because, so, however,
+then, despite) in the section must appear in some piece. You may reorder and regroup, and split long sentences into
+several pieces, but leave nothing out, and add nothing the section doesn't say, except a short plain gloss in
+parentheses for a term an outsider wouldn't know. Keep the author's own terms.
+Group the section's content into blocks, each drawn in the shape that fits it:
+- "then": a sequence of events, or a chain of causes and effects, in order: one piece per event or step.
+- "steps": a procedure or method, in order.
+- "parts": something made of components: each part's name and a note, and "together": what they add up to.
+- "split": a contrast between exactly two sides, cases, periods or views: a heading and lines for each.
+- "facts": facts about one thing, one per line.
+Give each block a short label (2 to 6 words) and "from": the numbers of the paragraphs it carries.
+Pieces may be up to about 40 words when that is what it takes to keep the content; never drop a detail to make a piece shorter.
+Write math as LaTeX between \\( and \\).
+Return JSON only:
+{"blocks": [{"shape": "then|steps|parts|split|facts", "label": "...", "from": [3, 4],
+  "items": ["..."], "parts": [{"name": "...", "note": "..."}], "together": "...",
+  "branches": [{"label": "...", "items": ["..."]}, {"label": "...", "items": ["..."]}]}]}`;
+
+const SECTION_SHAPES = ["then", "steps", "parts", "split", "facts"] as const;
+
+/** A page's sections: the paragraphs from each "## " heading to the next, long ones cut into parts. */
+function sectionsOf(paras: string[], title: string): { title: string; start: number; end: number }[] {
+  const out: { title: string; start: number; end: number }[] = [];
+  let cur = { title, start: 0, end: -1 };
+  const close = () => {
+    if (cur.end < cur.start) return;
+    // Keep each piece of work a size the model can carry whole.
+    let size = 0;
+    let from = cur.start;
+    let part = 1;
+    for (let i = cur.start; i <= cur.end; i++) {
+      size += paras[i].length;
+      if (size > 9000 && i > from) {
+        out.push({ title: `${cur.title} (${part++})`, start: from, end: i - 1 });
+        from = i;
+        size = paras[i].length;
+      }
+    }
+    out.push({ title: part > 1 ? `${cur.title} (${part})` : cur.title, start: from, end: cur.end });
+  };
+  paras.forEach((p, i) => {
+    if (/^## /.test(p)) {
+      close();
+      cur = { title: p.replace(/^## /, "").trim(), start: i + 1, end: i };
+    } else cur.end = i;
+  });
+  close();
+  return out;
+}
+
+/** Splits a paragraph into sentences, for keeping it verbatim when nothing else carried it. */
+function sentences(p: string): string[] {
+  return (p.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g) ?? [p]).map((s) => s.trim()).filter(Boolean);
+}
+
+/** Restructures one section of a page into blocks of shapes, keeping verbatim whatever they don't carry. */
+async function shapeSection(paras: string[], sec: { title: string; start: number; end: number }, told: string): Promise<Extension[]> {
+  const nums: number[] = [];
+  const lines: string[] = [];
+  for (let i = sec.start; i <= sec.end; i++) {
+    if (/^!\[/.test(paras[i])) continue;
+    nums.push(i);
+    lines.push(`[P${i}] ${paras[i]}`);
+  }
+  if (!nums.length) return [];
+  const raw = await chatJson<{ blocks?: unknown }>((await loadConfig()).llm, [
+    { role: "system", content: PRESERVE },
+    { role: "user", content: [`Section: ${sec.title}`, told, lines.join("\n\n")].filter(Boolean).join("\n\n") },
+  ]);
+  const blocks: Extension[] = [];
+  for (const item of Array.isArray(raw.blocks) ? raw.blocks : []) {
+    const b = item as Record<string, unknown>;
+    const shape = SECTION_SHAPES.find((s) => s === str(b.shape)) ?? "facts";
+    const from = (Array.isArray(b.from) ? b.from : [b.from]).flatMap((x) => paraNumbers(String(x ?? ""))).filter((n) => nums.includes(n));
+    const block: Extension = { id: newId(), at: "", shape, status: "done", label: str(b.label).slice(0, 80) || undefined, from: [...new Set(from)] };
+    if (shape === "parts") {
+      block.parts = (Array.isArray(b.parts) ? b.parts : [])
+        .map((p) => p as Record<string, unknown>)
+        .map((p) => ({ name: str(p.name).slice(0, 200), note: str(p.note).slice(0, 600) }))
+        .filter((p) => p.name);
+      block.together = str(b.together).slice(0, 600) || undefined;
+      if (!block.parts.length) continue;
+    } else if (shape === "split") {
+      block.branches = (Array.isArray(b.branches) ? b.branches : [])
+        .map((x) => x as Record<string, unknown>)
+        .map((x) => ({ label: str(x.label).slice(0, 80), items: strs(x.items, 12).map((t) => t.slice(0, 600)) }))
+        .slice(0, 2);
+      if (block.branches.length < 2) continue;
+    } else {
+      block.items = strs(b.items, 30).map((t) => t.slice(0, 600));
+      if (!block.items.length) continue;
+    }
+    blocks.push(block);
+  }
+  // Whatever no block says it carries is kept as it was written: nothing on the page is dropped.
+  const carried = new Set(blocks.flatMap((b) => b.from ?? []));
+  const left = nums.filter((n) => !carried.has(n));
+  if (left.length) {
+    blocks.push({
+      id: newId(),
+      at: "",
+      shape: "facts",
+      status: "done",
+      label: blocks.length ? "Also in this section, as written" : "As written",
+      from: left,
+      items: left.flatMap((n) => sentences(paras[n])).slice(0, 60),
+    });
+  }
+  return blocks;
+}
+
+/** Restructures every section of a linked page, in parallel, each saved as it finishes. */
+export async function shapeSections(store: CanvasStore, cardId: string) {
+  const card = (await store.findItem(cardId)) as CardItem | undefined;
+  if (!card?.pageText) return;
+  const paras = paragraphs(card.pageText);
+  const secs = sectionsOf(paras, card.origin?.title ?? card.subject ?? "The page");
+  const told = await readerNotes(store);
+  await store.update(cardId, { sections: secs.map((s) => ({ ...s, status: "working" as const })) });
+  const save = (i: number, patch: Partial<PageSection>) =>
+    store.edit(cardId, (now) => (now?.kind === "card" && now.sections ? { sections: now.sections.map((s, j) => (j === i ? { ...s, ...patch } : s)) } : null));
+  await Promise.all(
+    secs.map(async (sec, i) => {
+      try {
+        const blocks = (await shapeSection(paras, sec, told)).map((b) => ({ ...b, at: `sec-${i}` }));
+        await save(i, { status: "done", blocks });
+      } catch (err) {
+        // Even a failed section keeps its content, as written.
+        const nums = [...Array(sec.end - sec.start + 1).keys()].map((k) => sec.start + k).filter((n) => !/^!\[/.test(paras[n]));
+        await save(i, {
+          status: "failed",
+          error: (err instanceof Error ? err.message : String(err)).slice(0, 200),
+          blocks: nums.length ? [{ id: newId(), at: `sec-${i}`, shape: "facts", status: "done", label: "As written", from: nums, items: nums.flatMap((n) => sentences(paras[n])).slice(0, 60) }] : [],
+        });
+      }
+    }),
+  );
+}
 
 /** Paragraph numbers in a reference like "P3", "P3-P5", "3, 7" or "P23–45"; a range gives at most 4. */
 function paraNumbers(ref: string): number[] {

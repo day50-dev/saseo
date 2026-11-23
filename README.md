@@ -27,7 +27,7 @@ Self-directed deep study does work somewhere: a library, with a good reference l
 Bring whatever stopped you:
 
 - **A screenshot** of a slide, a page or a figure: drop or paste it, then drag a box over the part you don't get.
-- **A link** to a Wikipedia page or an article: it's read whole and drawn as shapes, and you can flip between the shapes and the page's own text, each piece pointing at the paragraphs it came from.
+- **A link** to a Wikipedia page or an article: it's read whole and drawn as shapes. First an overview of the whole page, then **the whole page, section by section**, restructured into shapes without losing anything: every claim, number, name and example is carried by some piece, each piece points at the paragraphs it came from (¶), the page's figures sit with the text they illustrate, and anything the restructuring missed is kept as written. You can flip to the page's own text at any time.
 - **An arXiv paper:** search arXiv from the toolbar and lay its pages out on the canvas.
 - **A question** typed in your own words.
 - **A YouTube lecture**, which plays right on the canvas (see below).
@@ -137,6 +137,10 @@ npm start
 - **Admins** are whoever signs in with an email listed in `ADMIN_EMAILS` (comma-separated). They set up the models and searchers under Settings. Canvases from before accounts were turned on belong to the admins.
 - **Accounts** are kept in `data/auth.db` (SQLite), created on first start. Accounts use [Better Auth](https://better-auth.com).
 - **Searching for everyone:** Keenable's free keyless use is limited per IP address, which every user on a server shares. Give it a free key, or run your own [SearXNG](https://docs.searxng.org).
+
+## The explainer video
+
+A two-and-a-half-minute video of what Librarian is for and how it works, made from the real app with Kokoro narration, is on the home page. How it was made, and the tools to remake it, are in [docs/explainer/](docs/explainer/README.md).
 
 ## Design
 
