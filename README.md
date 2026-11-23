@@ -52,6 +52,10 @@ When an explanation says "the second equation" or "the diagram", the part of the
 
 Paste a YouTube link and the video plays on the canvas. When something goes by that you don't follow, press **Stop here and ask**: the exact frame lands beside the video, sharp enough to read the board, with what the lecturer was saying around that moment. Box anything in the frame or select words from the transcript to go down, and the explanation knows what was being said. Each moment's **▶** takes the video back there. Videos whose owners don't allow embedding play from the librarian's own copy instead (720p at most), with the download shown as it goes.
 
+### PDFs
+
+Paste a link to a PDF (an arXiv paper, or any `.pdf`) and its pages land on the canvas, ten to a row, up to the first 80. Each is that page alone, as a single-page PDF sliced from the original with poppler: drawn sharp at any zoom, with its real text. Drag across words to select a paragraph and explain it, worded exactly as the PDF has it; drag around a figure or an equation to box it, as on any image. Each page links back to the PDF at that page.
+
 ### Notebooks
 
 Ask for an example in a notebook ("can you give me an example of this in a Jupyter notebook?", in a card's chat or out loud on a call) and a notebook opens beside the canvas. The librarian looks for a real one first: notebooks people wrote and ran, found on GitHub, course sites and nbviewer, of which it keeps the cells that make a focused example, word for word, credited and linked. Only if none fits does it write one, and the notebook says so.

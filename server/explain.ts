@@ -346,9 +346,12 @@ function clockOf(t: number): string {
 export function explainRegion(store: CanvasStore, cardId: string, images: { marked: string; crop: string }) {
   return guard(store, cardId, async () => {
     const config = await loadConfig();
-    const moment = await momentNote(store, (await store.findItem(cardId)) as CardItem);
+    const card = (await store.findItem(cardId)) as CardItem;
+    const moment = await momentNote(store, card);
+    // Words selected on a PDF page come with their exact text: read them, don't guess them from pixels.
+    const exact = card.selection ? `\n\nThe part I selected is this text, exactly as the PDF has it (use it as the transcription): "${card.selection}"` : "";
     const content = [
-      { type: "text" as const, text: `Here is the page and the part I selected.${moment ? `\n\n${moment}` : ""}` },
+      { type: "text" as const, text: `Here is the page and the part I selected.${moment ? `\n\n${moment}` : ""}${exact}` },
       { type: "image_url" as const, image_url: { url: images.marked } },
       { type: "image_url" as const, image_url: { url: images.crop } },
     ];
@@ -366,6 +369,7 @@ export function explainRegion(store: CanvasStore, cardId: string, images: { mark
         { role: "user", content },
       ],
     );
+    if (card.selection) id.transcription = card.selection;
     const subject = id.subject?.trim() || "this";
     const pageText = str(id.pageText).slice(0, 6000) || undefined;
     const terms = cleanTerms(id.terms);

@@ -450,7 +450,7 @@ export async function canvasStore(id: string): Promise<CanvasStore | undefined> 
 
 // ---- Assets, shared by every canvas ----
 
-const MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" };
+const MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", pdf: "application/pdf" };
 
 /** Saves an uploaded image under its content hash; the same image twice is stored once. */
 export async function saveAsset(bytes: Buffer, mime: string): Promise<string> {
@@ -463,6 +463,6 @@ export async function saveAsset(bytes: Buffer, mime: string): Promise<string> {
 }
 
 export function assetPath(name: string): { file: string; mime: string } | null {
-  if (!/^[0-9a-f]{16}\.(png|jpe?g|webp|gif)$/.test(name)) return null;
+  if (!/^[0-9a-f]{16}\.(png|jpe?g|webp|gif|pdf)$/.test(name)) return null;
   return { file: path.join(ASSET_DIR, name), mime: MIME[name.split(".")[1]] };
 }

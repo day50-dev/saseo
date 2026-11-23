@@ -31,6 +31,11 @@ export interface ImageItem extends ItemState {
   naturalH: number;
   /** Provenance, for a page added from arXiv. */
   source?: ImageSource;
+  /**
+   * A page of a PDF: `asset` is that page alone as a PDF (drawn crisp, its text selectable), and the
+   * image's own asset is its rendering (for boxes and the vision model).
+   */
+  pdf?: { asset: string; page: number; pages: number; url: string; title: string };
   /** The whole page read once, when something first needs it (relating two slides). */
   pageText?: string;
   topic?: string;

@@ -12,6 +12,7 @@ import { linkTo, navigate } from "./router.ts";
 import { useIsAdmin, useIsAnonymous, useMe } from "./session.ts";
 import { CallBar, canCallWith } from "./Call.tsx";
 import { NotebookPanel } from "./NotebookPanel.tsx";
+import { PdfPage } from "./PdfPage.tsx";
 
 interface View {
   x: number;
@@ -106,6 +107,16 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   // The notebook open beside the canvas, and whether to run it (one just asked for).
   const [notebook, setNotebook] = useState<{ id: string; autoRun: boolean } | null>(null);
   const seenNotebooks = useRef<Set<string> | null>(null);
+  // Words selected on a PDF page, waiting for "Explain".
+  const [pdfSel, setPdfSel] = useState<{ imageId: string; text: string; rect: DOMRect } | null>(null);
+  useEffect(() => {
+    // Gone when the selection is.
+    const change = () => {
+      if (window.getSelection()?.isCollapsed ?? true) setPdfSel(null);
+    };
+    document.addEventListener("selectionchange", change);
+    return () => document.removeEventListener("selectionchange", change);
+  }, []);
   const api = useMemo(() => canvasApi(canvasId), [canvasId]);
   const [name, setName] = useState("");
   const [trashedAt, setTrashedAt] = useState<string | undefined>();
@@ -409,15 +420,21 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     const right = Math.max(0, ...shown.filter((i) => i.kind !== "region").map((i) => i.x + i.w));
     const x = shown.length ? right + 120 : 40;
     const y = Math.round(toWorld(r.left, r.top + 60).y);
+    // A PDF takes a while: it's fetched and sliced into its pages.
+    const pdf = /\.pdf($|[?#])|arxiv\.org\/(abs|pdf)\//i.test(input);
+    const done = pdf ? expect({ x, y, label: "", text: "Fetching the PDF and slicing it into pages…" }) : () => {};
     try {
       const res = await api.addSource(input, x, y);
       const id = (res.card ?? res.image)!.id;
-      added("start from", [id]);
+      added(res.images ? `add ${res.images.length} pages of a PDF` : "start from", res.images ? res.images.map((i) => i.id) : [id]);
       await refresh();
       setView((v) => ({ ...v, x: r.width * 0.06 - x * v.scale, y: 60 - y * v.scale }));
       setSelected(id);
+      if (res.total && res.images && res.total > res.images.length) setError(`That PDF has ${res.total} pages; the first ${res.images.length} are on the canvas.`);
     } catch (e) {
       setError(`Couldn't start from that: ${e}`);
+    } finally {
+      done();
     }
   };
 
@@ -861,11 +878,19 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     setDraft(null);
     const img = byId.get(d.imageId);
     if (img?.kind !== "image") return;
+    await explainArea(img, { x0: Math.min(d.start.x, d.end.x), y0: Math.min(d.start.y, d.end.y), x1: Math.max(d.start.x, d.end.x), y1: Math.max(d.start.y, d.end.y) });
+  };
+
+  /**
+   * Explains an area of an image (in canvas coordinates): a box drawn on it, or the lines of words
+   * selected on a PDF page, with `text` their exact words.
+   */
+  const explainArea = async (img: ImageItem, area: { x0: number; y0: number; x1: number; y1: number }, text?: string) => {
     // Clamp to the image, then convert to the image's natural pixels.
-    const x0 = Math.max(img.x, Math.min(d.start.x, d.end.x));
-    const y0 = Math.max(img.y, Math.min(d.start.y, d.end.y));
-    const x1 = Math.min(img.x + img.w, Math.max(d.start.x, d.end.x));
-    const y1 = Math.min(img.y + img.h, Math.max(d.start.y, d.end.y));
+    const x0 = Math.max(img.x, area.x0);
+    const y0 = Math.max(img.y, area.y0);
+    const x1 = Math.min(img.x + img.w, area.x1);
+    const y1 = Math.min(img.y + img.h, area.y1);
     if (x1 - x0 < 8 || y1 - y0 < 8) return;
     const k = img.naturalW / img.w;
     const rect = { x: Math.round((x0 - img.x) * k), y: Math.round((y0 - img.y) * k), w: Math.round((x1 - x0) * k), h: Math.round((y1 - y0) * k) };
@@ -873,10 +898,10 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     if (!el) return;
     const cardX = img.x + img.w + GAP;
     const cardY = slotY(cardX, Math.round(y0));
-    const done = expect({ x: cardX, y: cardY, label: "", box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } });
+    const done = expect({ x: cardX, y: cardY, label: text ?? "", box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } });
     try {
       const { marked, crop } = renderRegion(el, rect);
-      const res = await api.addRegion({ imageId: img.id, rect, card: { x: cardX, y: cardY }, marked, crop });
+      const res = await api.addRegion({ imageId: img.id, rect, card: { x: cardX, y: cardY }, marked, crop, ...(text ? { text } : {}) });
       added("box", [res.region.id]);
       await refresh();
     } catch (e) {
@@ -1396,6 +1421,15 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               }}
             />
           ))}
+          {images.filter((img) => img.pdf).map((img) => (
+            <PdfPage
+              key={`pdf-${img.id}`}
+              img={img}
+              zoom={view.scale}
+              z={rank.get(img.id)}
+              onSelectText={(text, rect) => setPdfSel(text && rect ? { imageId: img.id, text, rect } : null)}
+            />
+          ))}
           {images.map((img) => (
             <div
               key={`grip-${img.id}`}
@@ -1426,7 +1460,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 {img.collapsed ? "▸" : "▾"}
               </button>
               <span aria-hidden>⠿</span>{" "}
-              {img.source ? (
+              {img.pdf ? (
+                <a href={`${img.pdf.url}#page=${img.pdf.page}`} target="_blank" rel="noreferrer" title={img.pdf.title} onPointerDown={(e) => e.stopPropagation()}>
+                  p.{img.pdf.page} of {img.pdf.pages} · {img.pdf.title}
+                </a>
+              ) : img.source ? (
                 <a href={img.source.url} target="_blank" rel="noreferrer" title={img.source.title} onPointerDown={(e) => e.stopPropagation()}>
                   arXiv {img.source.id} · p.{img.source.page} · {img.source.title}
                 </a>
@@ -1597,6 +1635,26 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           ))}
         </div>
       </div>
+      {pdfSel && (
+        <button
+          type="button"
+          className="descend pdf-explain"
+          style={{ left: pdfSel.rect.left, top: pdfSel.rect.bottom + 8 }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            const img = byId.get(pdfSel.imageId);
+            const s = pdfSel;
+            setPdfSel(null);
+            window.getSelection()?.removeAllRanges();
+            if (img?.kind !== "image") return;
+            const a = toWorld(s.rect.left, s.rect.top);
+            const b = toWorld(s.rect.right, s.rect.bottom);
+            void explainArea(img, { x0: a.x - 4, y0: a.y - 4, x1: b.x + 4, y1: b.y + 4 }, s.text);
+          }}
+        >
+          Explain “{pdfSel.text.length > 60 ? `${pdfSel.text.slice(0, 60)}…` : pdfSel.text}”
+        </button>
+      )}
       {notebook && byId.get(notebook.id)?.kind === "card" && (
         <NotebookPanel
           card={byId.get(notebook.id) as CardItem}

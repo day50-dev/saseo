@@ -53,12 +53,12 @@ export function canvasApi(cid: string) {
       return fetch(`${base}/images`, { method: "POST", body: form }).then((r) => json<ImageItem>(r));
     },
 
-    addRegion: (body: { imageId: string; rect: Rect; card: { x: number; y: number }; marked: string; crop: string }) =>
+    addRegion: (body: { imageId: string; rect: Rect; card: { x: number; y: number }; marked: string; crop: string; text?: string }) =>
       post(`${base}/regions`, body).then((r) => json<{ region: RegionItem; card: CardItem }>(r)),
 
     /** Starts from a link (the page is read) or a statement (explained beside it). */
     addSource: (input: string, x: number, y: number) =>
-      post(`${base}/sources`, { input, x, y }).then((r) => json<{ card?: CardItem; answer?: CardItem; image?: ImageItem }>(r)),
+      post(`${base}/sources`, { input, x, y }).then((r) => json<{ card?: CardItem; answer?: CardItem; image?: ImageItem; images?: ImageItem[]; total?: number }>(r)),
 
     /** Asks the server to fetch its own copy of a video that can't be embedded. */
     hostVideo: (videoId: string) => post(`${base}/videos/${videoId}/host`, {}).then((r) => json<{ ok: true }>(r)),

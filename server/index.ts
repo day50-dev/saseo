@@ -9,6 +9,7 @@ import path from "node:path";
 import { CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { remember } from "./pagecache.ts";
+import { pdfLink, servesPdf, slicePdf } from "./pdf.ts";
 import { addReaderNote, assetPath, autoName, DATA_DIR, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
@@ -237,6 +238,8 @@ app.post("/api/canvases/:cid/regions", async (c) => {
     card: { x: number; y: number };
     marked: string;
     crop: string;
+    /** Words selected on a PDF page, exactly as the PDF has them. */
+    text?: string;
   };
   const image = await store.findItem(body.imageId);
   if (image?.kind !== "image") return c.json({ error: "unknown image" }, 404);
@@ -244,7 +247,8 @@ app.post("/api/canvases/:cid/regions", async (c) => {
     return c.json({ error: "marked and crop must be image data URLs" }, 400);
   }
   const region: RegionItem = { kind: "region", id: newId(), imageId: image.id, rect: body.rect };
-  const card: CardItem = { kind: "card", id: newId(), parentId: region.id, x: body.card.x, y: body.card.y, w: CARD_WIDTH, stage: "reading" };
+  const text = typeof body.text === "string" ? body.text.replace(/\s+/g, " ").trim().slice(0, 2000) : "";
+  const card: CardItem = { kind: "card", id: newId(), parentId: region.id, x: body.card.x, y: body.card.y, w: CARD_WIDTH, stage: "reading", ...(text ? { selection: text } : {}) };
   await store.add(region);
   await store.add(card);
   void explainRegion(store, card.id, { marked: body.marked, crop: body.crop });
@@ -593,6 +597,49 @@ app.post("/api/canvases/:cid/sources", async (c) => {
     if (!info.embeddable) void hostVideo(store, video.id, "not-embeddable");
     void captions(yt).catch(() => []); // fetched ahead, so the first moment is quick
     return c.json({ image: video });
+  }
+  // A PDF (an arXiv paper, or any .pdf) becomes its pages, each a single-page PDF, ten to a row.
+  const pdf = pdfLink(input) ?? (looksLikeLink(input) && (await servesPdf(input)) ? { url: input } : null);
+  if (pdf) {
+    try {
+      const sliced = await slicePdf(pdf);
+      const PER_ROW = 10;
+      const GAP_X = 40;
+      const GAP_Y = 80;
+      const width = 480;
+      const images: ImageItem[] = [];
+      let rowTop = at.y;
+      for (let i = 0; i < sliced.pages.length; i += PER_ROW) {
+        const row = sliced.pages.slice(i, i + PER_ROW);
+        let x = at.x;
+        let tallest = 0;
+        for (const p of row) {
+          const h = Math.round((p.h * width) / p.w);
+          const img: ImageItem = {
+            kind: "image",
+            id: newId(),
+            asset: p.png,
+            name: `${sliced.title} p.${p.n}`,
+            x,
+            y: rowTop,
+            w: width,
+            h,
+            naturalW: p.w,
+            naturalH: p.h,
+            pageText: p.text || undefined,
+            pdf: { asset: p.pdf, page: p.n, pages: sliced.total, url: pdf.arxiv ? `https://arxiv.org/pdf/${pdf.arxiv}` : pdf.url, title: sliced.title },
+          };
+          await store.add(img);
+          images.push(img);
+          x += width + GAP_X;
+          tallest = Math.max(tallest, h);
+        }
+        rowTop += tallest + GAP_Y;
+      }
+      return c.json({ image: images[0], images, total: sliced.total });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 502);
+    }
   }
   if (looksLikeLink(input)) {
     const card: CardItem = { kind: "card", id: newId(), parentId: "", origin: { kind: "page", url: input, title: input }, ...at, w: SOURCE_WIDTH, stage: "reading", subject: input };
