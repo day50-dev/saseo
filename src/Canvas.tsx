@@ -1641,6 +1641,20 @@ function CanvasSwitcher({ currentId }: { currentId: string }) {
           <a role="menuitem" {...linkTo("/")} className="switcher-item">
             All canvases
           </a>
+          <hr />
+          <button
+            type="button"
+            role="menuitem"
+            className="link switcher-item danger"
+            onClick={async () => {
+              const name = (list ?? []).find((c) => c.id === currentId)?.name ?? "this canvas";
+              if (!window.confirm(`Delete “${name}” for good? Everything on it is erased, and this can't be undone.`)) return;
+              await canvasesApi.remove(currentId);
+              navigate("/");
+            }}
+          >
+            Delete this canvas
+          </button>
         </div>
       )}
     </div>

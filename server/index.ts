@@ -8,7 +8,7 @@ import { Readable } from "node:stream";
 import path from "node:path";
 import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
-import { addReaderNote, assetPath, autoName, DATA_DIR, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
+import { addReaderNote, assetPath, autoName, DATA_DIR, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
 import { besideOf, callTurn, listen, type Pointing, say, speechOn, type Turn } from "./call.ts";
@@ -145,12 +145,18 @@ app.post("/api/canvases", async (c) => {
   return c.json(await createCanvas(name ?? "", AUTH_ON ? c.get("user").id : undefined));
 });
 
-// Rename, or move into or out of the trash. Nothing is ever deleted.
+// Rename, or move into or out of the trash (deleting for good is DELETE, below).
 app.patch("/api/canvases/:cid", async (c) => {
   const { name, trashed } = (await c.req.json()) as { name?: string; trashed?: boolean };
   if (!(await canvasFor(c))) return c.json({ error: "unknown canvas" }, 404);
   const info = await updateCanvas(c.req.param("cid"), { name, trashed: typeof trashed === "boolean" ? trashed : undefined });
   return info ? c.json(info) : c.json({ error: "unknown canvas" }, 404);
+});
+
+// Deletes a canvas for good. The client asks first; this can't be undone.
+app.delete("/api/canvases/:cid", async (c) => {
+  if (!(await canvasFor(c))) return c.json({ error: "unknown canvas" }, 404);
+  return (await deleteCanvas(c.req.param("cid"))) ? c.json({ ok: true }) : c.json({ error: "unknown canvas" }, 404);
 });
 
 app.post("/api/canvases/:cid/duplicate", async (c) => {

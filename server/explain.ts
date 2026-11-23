@@ -3,7 +3,7 @@
 import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { readFile } from "node:fs/promises";
-import { assetPath, type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
+import { assetPath, type CanvasStore, getCanvasInfo, newId, onResume } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { logCourses } from "./curriculum.ts";
 import { snap } from "./snap.ts";
@@ -398,6 +398,20 @@ async function finishRegion(store: CanvasStore, cardId: string) {
   await write(store, card, subject, card.transcription ?? subject, card.topic, [], sources, context);
   void pointAt(store, cardId);
 }
+
+// ---- Picking up after a restart ----
+// Work in the background (shaping a page, restructuring its sections, pointing at the page,
+// growing a piece) is marked "working" while it runs. A restart in the middle used to leave it
+// "working" for good, so it never finished or saved. Now each is started again.
+onResume((store, items) => {
+  for (const c of items) {
+    if (c.kind !== "card" || c.hidden || c.stage !== "done") continue;
+    if (c.shaping === "working") void shapePage(store, c.id);
+    if (c.sections?.some((sec) => sec.status === "working")) void shapeSections(store, c.id);
+    if (c.looking === "working") void pointAt(store, c.id);
+    for (const e of c.ext ?? []) if (e.status === "working") void extendPiece(store, c.id, e.id);
+  }
+});
 
 // ---- Growing the diagram: more, in a chosen shape, from one piece ----
 

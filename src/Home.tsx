@@ -53,6 +53,15 @@ export function Home() {
     }
   };
 
+  // Deleting can't be undone, so it always asks first.
+  const confirmDelete = (which: CanvasSummary[]) => {
+    if (!which.length) return;
+    const what = which.length === 1 ? `“${which[0].name}”` : `these ${which.length} canvases`;
+    if (!window.confirm(`Delete ${what} for good? Everything on ${which.length === 1 ? "it" : "them"} is erased, and this can't be undone.`)) return;
+    void act(async () => {
+      for (const c of which) await canvasesApi.remove(c.id);
+    });
+  };
   const live = list?.filter((c) => !c.trashedAt) ?? [];
   const trashed = list?.filter((c) => c.trashedAt) ?? [];
 
@@ -115,6 +124,7 @@ export function Home() {
               onRename={(n) => act(() => canvasesApi.rename(c.id, n))}
               onDuplicate={() => act(() => canvasesApi.duplicate(c.id))}
               onTrash={() => act(() => canvasesApi.trash(c.id, true))}
+              onDelete={() => confirmDelete([c])}
             />
           ))}
         </ul>
@@ -122,8 +132,11 @@ export function Home() {
       {trashed.length > 0 && (
         <details className="trash">
           <summary>
-            Trash ({trashed.length}) <span className="muted small">· nothing here is deleted; restore any time</span>
+            Trash ({trashed.length}) <span className="muted small">· restore any time, or delete for good</span>
           </summary>
+          <button type="button" className="link danger empty-trash" onClick={() => confirmDelete(trashed)}>
+            Empty trash
+          </button>
           <ul className="canvas-list">
             {trashed.map((c) => (
               <li key={c.id} className="canvas-row">
@@ -138,6 +151,9 @@ export function Home() {
                 <div className="canvas-actions">
                   <button type="button" className="secondary" onClick={() => act(() => canvasesApi.trash(c.id, false))}>
                     Restore
+                  </button>
+                  <button type="button" className="link danger" onClick={() => confirmDelete([c])}>
+                    Delete forever
                   </button>
                 </div>
               </li>
@@ -157,6 +173,7 @@ function CanvasRow(props: {
   onRename: (name: string) => void;
   onDuplicate: () => void;
   onTrash: () => void;
+  onDelete: () => void;
 }) {
   const { canvas: c } = props;
   const [editing, setEditing] = useState(false);
@@ -196,6 +213,9 @@ function CanvasRow(props: {
         </button>
         <button type="button" className="link" title="Move to the trash; you can restore it" onClick={props.onTrash}>
           Trash
+        </button>
+        <button type="button" className="link danger" title="Delete for good; this can't be undone" onClick={props.onDelete}>
+          Delete
         </button>
       </div>
     </li>

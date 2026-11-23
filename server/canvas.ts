@@ -1,7 +1,7 @@
 // Canvases: each is an append-only log (data/canvases/<id>.jsonl) named in data/canvases/index.json.
 // Image assets (data/assets/) are shared, stored by content hash.
 import { createHash, randomUUID } from "node:crypto";
-import { appendFile, copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   type CanvasEvent,
@@ -258,6 +258,12 @@ export class CanvasStore {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
+    // Background work on cards that a restart interrupted (shapes, sections, crops, growth) is
+    // picked up again by whoever registered to resume it (explain.ts), once this state is set.
+    if (resumeWork) {
+      const resume = resumeWork;
+      setTimeout(() => resume(this, s.items), 0);
+    }
     // A card left mid-flight by a restart can't finish; record that rather than spin forever.
     const stuck = s.items.filter((i): i is CardItem => i.kind === "card" && i.stage !== "done" && i.stage !== "failed");
     this.state = s;
@@ -402,6 +408,31 @@ export class CanvasStore {
 }
 
 const stores = new Map<string, CanvasStore>();
+
+let resumeWork: ((store: CanvasStore, items: Item[]) => void) | null = null;
+
+/** Registers what to do with interrupted background work when a canvas is first loaded. */
+export function onResume(fn: (store: CanvasStore, items: Item[]) => void) {
+  resumeWork = fn;
+}
+
+/**
+ * Deletes a canvas for good: out of the index, and its log erased. The one thing in Librarian
+ * that can't be undone, so the client asks first. Images stay in data/assets/ (they're shared
+ * by content hash and may be on other canvases).
+ */
+export async function deleteCanvas(id: string): Promise<boolean> {
+  const gone = await changeIndex((list) => {
+    const i = list.findIndex((c) => c.id === id);
+    if (i < 0) return false;
+    list.splice(i, 1);
+    return true;
+  });
+  if (!gone) return false;
+  stores.delete(id);
+  await rm(path.join(CANVAS_DIR, `${id}.jsonl`), { force: true });
+  return true;
+}
 
 /** The store for a canvas that exists, or undefined. One store per canvas, shared by all requests. */
 export async function canvasStore(id: string): Promise<CanvasStore | undefined> {

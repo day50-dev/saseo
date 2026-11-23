@@ -819,3 +819,5 @@ kbd {
 /* What "this" means while on a call. */
 .call-pointed { outline: 2px solid #1f8a4c; outline-offset: 2px; border-radius: 4px; }
 @media (hover: none) { .call-talk kbd { display: none; } }
+.danger, .link.danger { color: var(--fail); }
+.empty-trash { margin: 4px 0 6px; }

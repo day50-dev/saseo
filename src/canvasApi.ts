@@ -25,6 +25,8 @@ export const canvasesApi = {
   /** Moves a canvas into or out of the trash; nothing in it is deleted. */
   trash: (id: string, trashed: boolean) => send("PATCH", `/api/canvases/${id}`, { trashed }).then((r) => json<CanvasInfo>(r)),
   duplicate: (id: string) => post(`/api/canvases/${id}/duplicate`, {}).then((r) => json<CanvasInfo>(r)),
+  /** For good: the canvas and its history are erased. */
+  remove: (id: string) => send("DELETE", `/api/canvases/${id}`, {}).then((r) => json<{ ok: true }>(r)),
 };
 
 export class CanvasNotFound extends Error {}
