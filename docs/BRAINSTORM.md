@@ -10,6 +10,7 @@ limits, abuse protection or terms-of-service caution unless something is actuall
 Topics:
 
 - [Video lectures: the side quest and the way back](#video-lectures-the-side-quest-and-the-way-back)
+- [Course level: noticing when an explanation reaches ahead](#course-level-noticing-when-an-explanation-reaches-ahead)
 
 ---
 
@@ -98,3 +99,89 @@ come back. Today that is a pain, and it's squarely what the librarian is for.
 - Where does the video sit on the canvas while you're off on a side quest, so the way back is one
   click and nothing moves (principle 2)?
 - Frames from a talk with slides versus a blackboard lecture: the same pipeline, or different?
+
+---
+
+## Course level: noticing when an explanation reaches ahead
+
+*Status: open. Started 2026-11-22.*
+
+### The problem
+
+Spanish I words shouldn't be defined in Spanish II language. In maths: if a topic is taught in
+Berkeley's Math 44A, and its explanation leans on ideas that first appear in Math 44D, the
+explanation has reached ahead of where the reader probably is. That isn't always wrong (the order
+of teaching isn't sacred, and sometimes the later idea is the clearest way in), but it should be
+**noticed**, so the librarian can choose to pivot rather than do it by accident.
+
+This is principle 1 (descend, never climb) with evidence behind it. Today the System One check asks
+a model "does this climb?" and gets a hunch. Course data would let it say *why*: "this uses
+*eigenvector*, which is usually taught a term after *linear map*".
+
+### Where the evidence comes from
+
+- **What we already fetch.** Every search returns pages, and many of them are course pages: lecture
+  notes, syllabi, problem sets, slides (`math.berkeley.edu/~…/44A/`, MIT OCW 18.06, a Stanford
+  201C handout). Each is a free sighting: *concept X appears in course Y*.
+- **What people feed in.** Slides and papers dropped on canvases often say which course they're
+  from (a title slide, a footer, the URL of the PDF).
+- **Asking on purpose (later).** A "where is this taught?" search on the subject ("X syllabus
+  lecture notes") when nothing is known yet.
+- It fills in opportunistically: every explanation adds sightings, and the map gets better the
+  more Librarian is used.
+
+### What gets stored
+
+A store shared across canvases (not per canvas), something like:
+
+- **Course**: institution, code as written ("MATH 44A", "18.06", "201C"), title, URL, level hints
+  (lower or upper division, graduate), listed prerequisites. Kept as found; no attempt to force one
+  naming scheme.
+- **Sighting**: concept, course, where it was seen (URL, a short quote), when. Whether the course
+  *introduces* the concept or *uses* it already is the key distinction, and the quote is what
+  tells them apart.
+- **Order**: within one institution, which course comes before which (from prerequisites, or from
+  the sequence itself: 44A, 44B, 44C, 44D).
+
+### Lining institutions up
+
+There's no shared schema for course names, so courses are lined up by content, not name:
+
+- Within an institution, order comes from prerequisites and numbering.
+- Across institutions, two courses are the same *stage* when they teach the same concepts with the
+  same prerequisites, whatever they're called. Berkeley 44A ≈ Stanford 201C is a judgement made
+  from their topic lists (a model can make it; embeddings can help).
+- Out of that comes a rough global band for each concept (intro undergraduate, upper undergraduate,
+  graduate, research), plus the specific courses as evidence. It's one-to-many: a concept has many
+  sightings, and they may disagree.
+
+### What the reader sees
+
+- On a card, quietly: **Usually taught in** Berkeley Math 44A · MIT 18.06 (about 2nd-year
+  undergraduate), each linking to where it was seen.
+- When the explanation's own terms come from a later stage than its subject, a flag: **Reaches
+  ahead**, with a list like "*eigenvector* (usually Math 44D, after this)". The librarian can then
+  rewrite it from the earlier stage, or keep it and say why ("this is easiest to see with
+  eigenvectors; here is the one idea you need").
+- Never a block: a flag is information.
+
+### How it fits what exists
+
+- The explanation already lists its own terms of art (`sem.terms`) and stand-ins; those are what
+  get looked up.
+- The climb check can take the flags as input, and the rewrite prompt can name the later terms to
+  avoid.
+- Sightings can be gathered in the search step that already runs for every card, classified
+  cheaply ("is this a course page? which institution, course and level?").
+
+### Open questions
+
+- Introduces versus uses: how reliably can a model tell from a syllabus line or a page of notes?
+- How many sightings before a concept's level is trusted, and what to show before that?
+- Sightings that disagree (taught early at one school, late at another): show the spread, or the
+  earliest?
+- Does the map belong to one Librarian server, or should it be shareable (an open dataset that
+  grows across instances)?
+- Beyond maths: the same idea works for any sequenced subject (languages, physics, chemistry), but
+  course codes are maths-heavy evidence. What plays that role elsewhere?
+
