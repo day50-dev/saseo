@@ -58,6 +58,9 @@ export function canvasApi(cid: string) {
     addSource: (input: string, x: number, y: number) =>
       post(`${base}/sources`, { input, x, y }).then((r) => json<{ card?: CardItem; answer?: CardItem; image?: ImageItem }>(r)),
 
+    /** Asks the server to fetch its own copy of a video that can't be embedded. */
+    hostVideo: (videoId: string) => post(`${base}/videos/${videoId}/host`, {}).then((r) => json<{ ok: true }>(r)),
+
     /** Stops a video at `t` seconds: the frame and what was said around it land at x, y. */
     moment: (videoId: string, t: number, x: number, y: number) =>
       post(`${base}/videos/${videoId}/moments`, { t, x, y }).then((r) => json<{ image: ImageItem; card?: CardItem }>(r)),

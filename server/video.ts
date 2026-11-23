@@ -2,7 +2,7 @@
 // moments where it lost you. A moment is the frame at that instant, cut from the stream itself
 // (sharp enough to read a board), plus what was said around it, from the captions.
 import { execFile } from "node:child_process";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { DATA_DIR } from "./canvas.ts";
@@ -26,6 +26,8 @@ export interface VideoInfo {
   description: string;
   /** The thumbnail, for where a still picture stands in for the video. */
   thumbnail: string;
+  /** Whether the uploader allows playing it on other sites. */
+  embeddable: boolean;
 }
 
 export interface Caption {
@@ -56,6 +58,7 @@ export async function videoInfo(id: string): Promise<VideoInfo> {
     duration: Number(j.duration ?? 0),
     description: String(j.description ?? "").slice(0, 3000),
     thumbnail: String(j.thumbnail ?? `https://i.ytimg.com/vi/${id}/hqdefault.jpg`),
+    embeddable: j.playable_in_embed !== false,
   };
   await writeFile(file, JSON.stringify(info));
   return info;
@@ -135,7 +138,72 @@ async function stream(id: string): Promise<Stream> {
   return s;
 }
 
-/** The frame at `t` seconds, as a JPEG, with its size. */
+// ---- Our own copy, for videos that can't be embedded ----
+// Watching a lecture and stopping to study a frame of it is the textbook case of fair use:
+// non-commercial, for study and commentary, a frame at a time.
+
+export const copyPath = (id: string) => path.join(DIR, `${id}.mp4`);
+
+const fetching = new Map<string, Promise<void>>();
+
+/**
+ * Fetches the video to play here, one download per video however many ask. 720p at most: enough
+ * to read a board, and a lecture stays a few hundred megabytes.
+ */
+export function fetchCopy(id: string): Promise<void> {
+  let p = fetching.get(id);
+  if (!p) {
+    p = (async () => {
+      await mkdir(DIR, { recursive: true });
+      try {
+        await stat(copyPath(id));
+        return; // already here
+      } catch {}
+      const tmp = path.join(DIR, `${id}.part.%(ext)s`);
+      await ytdlp(
+        [
+          "-f",
+          "bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/b",
+          "--merge-output-format",
+          "mp4",
+          "-o",
+          tmp,
+          ytUrl(id),
+        ],
+        60 * 60 * 1000,
+      );
+      await rename(path.join(DIR, `${id}.part.mp4`), copyPath(id));
+    })().finally(() => fetching.delete(id));
+    fetching.set(id, p);
+  }
+  return p;
+}
+
+async function haveCopy(id: string): Promise<boolean> {
+  try {
+    return (await stat(copyPath(id))).size > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** The frame at `t` seconds from our own copy. */
+async function frameFromCopy(id: string, t: number): Promise<{ jpeg: Buffer; w: number; h: number }> {
+  const { stdout } = await run(
+    "ffmpeg",
+    ["-loglevel", "error", "-ss", String(Math.max(0, t)), "-i", copyPath(id), "-frames:v", "1", "-q:v", "2", "-f", "image2", "-c:v", "mjpeg", "pipe:1"],
+    { timeout: 60_000, encoding: "buffer", maxBuffer: 32 * 1024 * 1024 },
+  );
+  if (!stdout.length) throw new Error("no frame");
+  const size = await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", copyPath(id)]);
+  const [w, h] = size.stdout.trim().split(",").map(Number);
+  return { jpeg: stdout, w: w || 1280, h: h || 720 };
+}
+
+/**
+ * The frame at `t` seconds, as a JPEG, with its size. Cut from YouTube's 1080p stream when it
+ * gives one (one frame, sharper than our copy); otherwise from our own copy.
+ */
 export async function frameAt(id: string, t: number): Promise<{ jpeg: Buffer; w: number; h: number }> {
   const grab = async () => {
     const s = await stream(id);
@@ -152,8 +220,13 @@ export async function frameAt(id: string, t: number): Promise<{ jpeg: Buffer; w:
   };
   try {
     return await grab();
-  } catch {
+  } catch (err) {
+    if (await haveCopy(id)) return frameFromCopy(id, t);
     streams.delete(id); // the stream may have expired; get a fresh one and try once more
-    return grab();
+    try {
+      return await grab();
+    } catch {
+      throw err;
+    }
   }
 }

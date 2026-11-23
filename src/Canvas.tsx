@@ -188,13 +188,14 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   // Poll only while some card is still being written.
   const pending = items.some(
     (i) =>
-      i.kind === "card" &&
+      (i.kind === "image" && i.video?.hosted === "downloading") ||
+      (i.kind === "card" &&
       (isPending(i) ||
         i.chatPending ||
         i.shaping === "working" ||
         i.looking === "working" ||
         // Still waiting to hear where its subject is taught.
-        (i.stage === "done" && Boolean(i.sem) && !i.taught && !i.relates && !i.objectKind)),
+        (i.stage === "done" && Boolean(i.sem) && !i.taught && !i.relates && !i.objectKind))),
   );
   // While a diagram is being drawn, poll fast enough to watch it appear.
   const drawing = items.some((i) => i.kind === "card" && i.objectKind === "diagram" && isPending(i));
@@ -1277,7 +1278,14 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           {images
             .filter((img) => img.video)
             .map((img) => (
-              <VideoPlayer key={img.id} item={img} z={rank.get(img.id)} selected={selected === img.id} onStop={(t) => stopAt(img, t)} />
+              <VideoPlayer
+                key={img.id}
+                item={img}
+                z={rank.get(img.id)}
+                selected={selected === img.id}
+                onStop={(t) => stopAt(img, t)}
+                onNeedCopy={() => api.hostVideo(img.id).then(refresh, (e) => setError(`Couldn't fetch a copy of the video: ${e}`))}
+              />
             ))}
           {images.filter((img) => !img.video).map((img) => (
             <img

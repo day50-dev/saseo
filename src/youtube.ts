@@ -13,7 +13,13 @@ export interface YTPlayer {
 interface YTNamespace {
   Player: new (
     el: HTMLElement,
-    opts: { videoId: string; width?: string | number; height?: string | number; playerVars?: Record<string, unknown>; events?: Record<string, (e: { target: YTPlayer }) => void> },
+    opts: {
+      videoId: string;
+      width?: string | number;
+      height?: string | number;
+      playerVars?: Record<string, unknown>;
+      events?: Record<string, (e: { target: YTPlayer; data?: number }) => void>;
+    },
   ) => YTPlayer;
 }
 

@@ -224,6 +224,10 @@ export class CanvasStore {
     const stuck = s.items.filter((i): i is CardItem => i.kind === "card" && i.stage !== "done" && i.stage !== "failed");
     this.state = s;
     for (const card of stuck) await this.update(card.id, { stage: "failed", error: "Interrupted by a server restart" });
+    // Same for a copy of a video being fetched; it can be asked for again.
+    for (const img of s.items) {
+      if (img.kind === "image" && img.video?.hosted === "downloading") await this.update(img.id, { video: { ...img.video, hosted: "failed" } });
+    }
     for (const card of s.items) {
       if (card.kind !== "card" || !card.chatPending) continue;
       await this.record({ type: "chat", id: card.id, message: { role: "assistant", text: "(Interrupted by a server restart; ask again.)", at: new Date().toISOString() } });

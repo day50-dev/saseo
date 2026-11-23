@@ -51,10 +51,14 @@ export interface VideoMeta {
   channel: string;
   /** Seconds. */
   duration: number;
+  /** False when the uploader doesn't allow playing it on other sites; then we play our own copy. */
+  embeddable?: boolean;
+  /** Our own copy of the video, for when it can't be embedded. */
+  hosted?: "downloading" | "ready" | "failed";
 }
 
 /** What an update event may change: a card's fields, or what was read off an image. */
-export type ItemPatch = Partial<Omit<CardItem, "kind" | "id">> & Partial<Pick<ImageItem, "pageText" | "topic">>;
+export type ItemPatch = Partial<Omit<CardItem, "kind" | "id">> & Partial<Pick<ImageItem, "pageText" | "topic" | "video">>;
 
 /** A rectangle the learner drew on an image; `rect` is in the image's natural pixels. */
 export interface RegionItem extends ItemState {

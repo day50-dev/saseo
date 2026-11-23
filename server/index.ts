@@ -2,13 +2,15 @@
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono, type Next } from "hono";
-import { readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
+import { Readable } from "node:stream";
 import { CARD_WIDTH, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { addReaderNote, assetPath, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
-import { around, captions, clock, frameAt, videoInfo, youtubeId } from "./video.ts";
+import { around, captions, clock, copyPath, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, makeObject, mapCourses, pointAt, readSource } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
@@ -28,7 +30,7 @@ app.get("/api/me", async (c) => c.json({ accounts: AUTH_ON, providers: PROVIDERS
 // Everything else under /api needs someone signed in, except images, which are named by their
 // content hash and carry nothing private.
 app.use("/api/*", async (c, next) => {
-  if (c.req.path.startsWith("/api/auth/") || c.req.path === "/api/me" || c.req.path.startsWith("/api/assets/")) return next();
+  if (c.req.path.startsWith("/api/auth/") || c.req.path === "/api/me" || c.req.path.startsWith("/api/assets/") || c.req.path.startsWith("/api/videos/")) return next();
   const user = await currentUser(c.req.raw);
   if (!user) return c.json({ error: "sign in first" }, 401);
   c.set("user", user);
@@ -429,9 +431,11 @@ app.post("/api/canvases/:cid/sources", async (c) => {
       naturalH: 720,
       topic: info.title,
       pageText: [info.title, info.channel && `by ${info.channel}`, info.description].filter(Boolean).join("\n"),
-      video: { videoId: yt, title: info.title, channel: info.channel, duration: info.duration },
+      video: { videoId: yt, title: info.title, channel: info.channel, duration: info.duration, embeddable: info.embeddable },
     };
     await store.add(video);
+    // Its uploader doesn't allow playing it elsewhere: fetch our own copy to play here.
+    if (!info.embeddable) void hostVideo(store, video.id);
     void captions(yt).catch(() => []); // fetched ahead, so the first moment is quick
     return c.json({ image: video });
   }
@@ -448,6 +452,56 @@ app.post("/api/canvases/:cid/sources", async (c) => {
   await store.add(answer);
   void explainSelection(store, answer.id);
   return c.json({ card: note, answer });
+});
+
+/** Fetches a copy of a video to play here, recording progress on its item so the canvas can show it. */
+async function hostVideo(store: CanvasStore, itemId: string) {
+  const item = await store.findItem(itemId);
+  if (item?.kind !== "image" || !item.video) return;
+  await store.update(itemId, { video: { ...item.video, hosted: "downloading" } });
+  let hosted: "ready" | "failed" = "ready";
+  try {
+    await fetchCopy(item.video.videoId);
+  } catch {
+    hosted = "failed";
+  }
+  const now = await store.findItem(itemId);
+  if (now?.kind === "image" && now.video) await store.update(itemId, { video: { ...now.video, hosted } });
+}
+
+// The player found it can't be embedded after all, or a fetch failed and is asked for again.
+app.post("/api/canvases/:cid/videos/:id/host", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const item = await store.findItem(c.req.param("id"));
+  if (item?.kind !== "image" || !item.video) return c.json({ error: "unknown video" }, 404);
+  if (item.video.hosted !== "downloading" && item.video.hosted !== "ready") void hostVideo(store, item.id);
+  return c.json({ ok: true });
+});
+
+// Our copy of a video, with ranges so the player can seek.
+app.get("/api/videos/:file", async (c) => {
+  const m = /^([A-Za-z0-9_-]{11})\.mp4$/.exec(c.req.param("file"));
+  if (!m) return c.notFound();
+  const file = copyPath(m[1]);
+  let size: number;
+  try {
+    size = (await stat(file)).size;
+  } catch {
+    return c.notFound();
+  }
+  const range = /bytes=(\d*)-(\d*)/.exec(c.req.header("range") ?? "");
+  const headers: Record<string, string> = { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400" };
+  if (!range) {
+    return new Response(Readable.toWeb(createReadStream(file)) as ReadableStream, { status: 200, headers: { ...headers, "Content-Length": String(size) } });
+  }
+  const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+  const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+  if (start >= size || start > end) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
+  return new Response(Readable.toWeb(createReadStream(file, { start, end })) as ReadableStream, {
+    status: 206,
+    headers: { ...headers, "Content-Length": String(end - start + 1), "Content-Range": `bytes ${start}-${end}/${size}` },
+  });
 });
 
 // Stopping a video: the frame at that moment lands on the canvas like a slide, and below it a
