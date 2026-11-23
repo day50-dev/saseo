@@ -39,6 +39,20 @@ export const EXAMPLES: Example[] = [
     title: "What is a Hamiltonian, and why is it the energy?",
     input: "What is a Hamiltonian, and why is it the energy?",
   },
+  // Not maths: a long, contested history, and a biological cycle of lipids, proteins and mechanics.
+  {
+    key: "history",
+    kind: "History · a Wikipedia page",
+    title: "The breakup of Yugoslavia",
+    input: "https://en.wikipedia.org/wiki/Breakup_of_Yugoslavia",
+  },
+  {
+    key: "biology",
+    kind: "Biochemistry · a question",
+    title: "How does a nerve ending release its signal and recycle the vesicle?",
+    input:
+      "How does the synaptic vesicle cycle work: how does a vesicle fuse with the membrane to release neurotransmitter, and how is it pulled back and refilled?",
+  },
 ];
 
 export const exampleByKey = (key: string | null) => EXAMPLES.find((e) => e.key === key);
