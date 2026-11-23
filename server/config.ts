@@ -29,7 +29,21 @@ export interface Searcher {
 export interface Config {
   llm: Endpoint;
   systemOne: Endpoint;
+  /** Draws SVG diagrams; blank fields fall back to `llm`'s (see diagramEndpoint). */
+  diagram: Endpoint;
   searchers: Record<SearcherId, Searcher>;
+}
+
+/** The endpoint that draws diagrams: its own where set, else the language model's server, key and model. */
+export function diagramEndpoint(config: Config): Endpoint {
+  const d = config.diagram;
+  const own = Boolean(d.baseUrl);
+  return {
+    baseUrl: own ? d.baseUrl : config.llm.baseUrl,
+    apiKey: own ? d.apiKey : config.llm.apiKey,
+    model: d.model || config.llm.model,
+    timeoutSeconds: d.timeoutSeconds || config.llm.timeoutSeconds,
+  };
 }
 
 export const CONFIG_PATH =
@@ -48,6 +62,7 @@ function defaults(): Config {
   return {
     llm: { ...MODEL_DEFAULTS.llm, apiKey: "" },
     systemOne: { ...MODEL_DEFAULTS.systemOne, apiKey: "" },
+    diagram: { ...MODEL_DEFAULTS.diagram, apiKey: "" },
     searchers,
   };
 }
@@ -63,6 +78,7 @@ export async function loadConfig(): Promise<Config> {
   return {
     llm: { ...base.llm, ...stored.llm },
     systemOne: { ...base.systemOne, ...stored.systemOne },
+    diagram: { ...base.diagram, ...stored.diagram },
     searchers: Object.fromEntries(
       SEARCHER_IDS.map((id) => [id, { ...base.searchers[id], ...stored.searchers?.[id] }]),
     ) as Record<SearcherId, Searcher>,
@@ -87,7 +103,7 @@ const clean = (url: string) => url.trim().replace(/\/+$/, "");
 
 export async function updateConfig(update: ConfigUpdate): Promise<Config> {
   const config = await loadConfig();
-  for (const which of ["llm", "systemOne"] as const) {
+  for (const which of ["llm", "systemOne", "diagram"] as const) {
     const u = update[which];
     if (!u) continue;
     const ep = config[which];
@@ -123,6 +139,7 @@ export function toPublic(config: Config): PublicConfig {
   return {
     llm: ep(config.llm),
     systemOne: ep(config.systemOne),
+    diagram: ep(config.diagram),
     searchers: Object.fromEntries(
       SEARCHER_IDS.map((id) => {
         const s = config.searchers[id];

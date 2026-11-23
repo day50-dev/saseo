@@ -97,7 +97,12 @@ export const MODEL_DEFAULTS = {
   // A local model writing a diagram from a whole page of context can take minutes.
   llm: { baseUrl: "https://api.openai.com/v1", model: "", timeoutSeconds: 300 },
   systemOne: { baseUrl: "https://api.typesafe.ai/v1", model: "jev-latest", timeoutSeconds: 30 },
+  // Blank means the language model's: a diagram model can be just another model on the same server.
+  diagram: { baseUrl: "", model: "", timeoutSeconds: 300 },
 };
+
+/** The endpoints the settings page edits. */
+export type EndpointId = "llm" | "systemOne" | "diagram";
 
 export const TIMEOUT_LIMITS = { min: 5, max: 3600 };
 
@@ -120,6 +125,7 @@ export interface PublicSearcher {
 export interface PublicConfig {
   llm: PublicEndpoint;
   systemOne: PublicEndpoint;
+  diagram: PublicEndpoint;
   searchers: Record<SearcherId, PublicSearcher>;
 }
 
@@ -129,6 +135,7 @@ export type KeyUpdate = string | null | undefined;
 export interface ConfigUpdate {
   llm?: { baseUrl?: string; model?: string; timeoutSeconds?: number; apiKey?: KeyUpdate };
   systemOne?: { baseUrl?: string; model?: string; timeoutSeconds?: number; apiKey?: KeyUpdate };
+  diagram?: { baseUrl?: string; model?: string; timeoutSeconds?: number; apiKey?: KeyUpdate };
   searchers?: Partial<
     Record<SearcherId, { enabled?: boolean; baseUrl?: string; apiKey?: KeyUpdate }>
   >;

@@ -4,7 +4,7 @@ import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, type ExtensionShape, type
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { readFile } from "node:fs/promises";
 import { assetPath, type CanvasStore, getCanvasInfo, newId, onResume } from "./canvas.ts";
-import { loadConfig } from "./config.ts";
+import { diagramEndpoint, loadConfig } from "./config.ts";
 import { logCourses } from "./curriculum.ts";
 import { snap } from "./snap.ts";
 import { bestRead, editVersion, hashText, pageVersion, readOf, remember } from "./pagecache.ts";
@@ -1091,7 +1091,9 @@ export function makeObject(store: CanvasStore, cardId: string) {
   return guard(store, cardId, async () => {
     const card = (await store.findItem(cardId)) as CardItem;
     const from = await store.findItem(card.parentId);
-    const about = from?.kind === "card" ? await describe(store, from.id) : { name: "this", text: "" };
+    const whole = from?.kind === "card" ? await describe(store, from.id) : { name: "this", text: "" };
+    // Asked for about particular words of that card: those words are the subject.
+    const about = card.selection ? { ...whole, text: `${whole.text}\n\nSpecifically this part of it: "${card.selection}"` } : whole;
     const request = card.request ?? "";
     const config = await loadConfig();
     const enabled = SEARCHER_IDS.filter((id) => config.searchers[id].enabled);
@@ -1140,7 +1142,7 @@ export function makeObject(store: CanvasStore, cardId: string) {
       let drawn = "";
       try {
         drawn = await chatStream(
-          config.llm,
+          diagramEndpoint(config),
           [
             { role: "system", content: DIAGRAM },
             { role: "user", content: `They asked for: ${request}\n\nThe card it is about:\n${about.text}` },
@@ -1194,7 +1196,7 @@ export async function handleChat(store: CanvasStore, cardId: string) {
 }
 
 /** Puts a card that will hold videos, reading, papers or a diagram beside `from`; returns it at once. */
-async function addObject(store: CanvasStore, from: CardItem | undefined, kind: ObjectKind, request: string): Promise<CardItem> {
+async function addObject(store: CanvasStore, from: CardItem | undefined, kind: ObjectKind, request: string, focus?: string): Promise<CardItem> {
   const at = from ? await placeBeside(store, from) : { x: 0, y: 0 };
   const object: CardItem = {
     kind: "card",
@@ -1202,6 +1204,8 @@ async function addObject(store: CanvasStore, from: CardItem | undefined, kind: O
     parentId: from?.id ?? "",
     objectKind: kind,
     request,
+    // The words it's about hang it from those words, like any explanation of a phrase.
+    ...(from && focus ? { selection: focus } : {}),
     x: at.x,
     y: at.y,
     w: CARD_WIDTH,
@@ -1213,8 +1217,8 @@ async function addObject(store: CanvasStore, from: CardItem | undefined, kind: O
 }
 
 /** Finds videos, reading or papers (or draws a diagram) for a request, beside a card; the search runs on. */
-export async function findFor(store: CanvasStore, from: CardItem | undefined, kind: ObjectKind, request: string): Promise<CardItem> {
-  const object = await addObject(store, from, kind, request);
+export async function findFor(store: CanvasStore, from: CardItem | undefined, kind: ObjectKind, request: string, focus?: string): Promise<CardItem> {
+  const object = await addObject(store, from, kind, request, focus);
   void makeObject(store, object.id);
   return object;
 }

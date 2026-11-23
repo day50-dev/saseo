@@ -99,6 +99,7 @@ Every card has an "Ask about this" box. The conversation stays on that card, and
 
 - **Language model:** any OpenAI-compatible endpoint, such as OpenAI, Anthropic, OpenRouter, LiteLLM, Ollama or vLLM. It needs to read images.
 - **Decision model (optional):** a System One endpoint such as TypeSafe's Jev, for the fast typed checks: does this climb, is this word strict or casual.
+- **Diagram model (optional):** another model to draw the SVG diagrams you ask for, since some models draw far better than they write. Leave its base URL blank to use the language model's server and key with just a different model name.
 - **Searchers:** Keenable works with no key. SearXNG, Brave, Exa, Perplexity Sonar, Parallel, You.com and Tavily take your keys.
 
 Keys stay on your machine in `data/config.json` (mode 600, gitignored). The browser never sees them.

@@ -28,7 +28,8 @@ export const api = {
     call<PublicConfig>("/api/config", { method: "PUT", body: JSON.stringify(update) }),
   testLlm: () => call<TestResult>("/api/test/llm", { method: "POST" }),
   testSystemOne: () => call<TestResult>("/api/test/systemone", { method: "POST" }),
-  listModels: (which: "llm" | "systemOne") =>
+  testDiagram: () => call<TestResult>("/api/test/diagram", { method: "POST" }),
+  listModels: (which: "llm" | "systemOne" | "diagram") =>
     call<{ models: string[]; error?: string }>(`/api/models/${which}`),
   search: (query: string, searchers: SearcherId[], count = 5) =>
     call<Partial<Record<SearcherId, SearcherResult>>>("/api/search", {

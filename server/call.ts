@@ -89,7 +89,8 @@ export async function callTurn(
   hooks: {
     grow: (card: CardItem, ext: Extension) => Promise<void>;
     descend: (card: CardItem, phrase: string) => Promise<CardItem>;
-    find: (near: CardItem | undefined, kind: ObjectKind, request: string) => Promise<CardItem>;
+    /** `focus`: the words on `near` it's about (selected, or the piece pointed at). */
+    find: (near: CardItem | undefined, kind: ObjectKind, request: string, focus?: string) => Promise<CardItem>;
   },
 ): Promise<{ say: string; did?: string }> {
   const { items } = await store.getState();
@@ -136,7 +137,8 @@ export async function callTurn(
       const what = (["videos", "links", "papers", "diagram"] as const).find((k) => k === r.action?.find) ?? "videos";
       const request = (r.action?.request || pointing.selection || text).trim().slice(0, 300);
       // Beside what they're pointing at, else beside the newest card.
-      const made = await hooks.find(card ?? cards.at(-1), what, request);
+      const focus = card ? pointing.selection || (pointing.pieceText && pointing.pieceText.length <= 240 ? pointing.pieceText : undefined) : undefined;
+      const made = await hooks.find(card ?? cards.at(-1), what, request, focus);
       did = `finding ${what}: ${request} (${made.id})`;
     } else if (kind === "descend" && card) {
       const phrase = (pointing.selection || r.action?.phrase || "").trim().slice(0, 300);

@@ -116,6 +116,19 @@ function SettingsForm({ config, onSave: save }: { config: PublicConfig; onSave: 
         register={register}
       />
 
+      <EndpointSection
+        which="diagram"
+        title="Diagram model"
+        blurb="Draws the SVG diagrams you ask for (in a card's chat, or on a call). Some models draw much better than they write. Leave the base URL blank to use the language model's server and key with another model; leave both blank to use the language model."
+        endpoint={config.diagram}
+        baseUrlHint="Same as the language model"
+        modelHint="Same as the language model"
+        keyOptional
+        onSave={save}
+        onTest={api.testDiagram}
+        register={register}
+      />
+
       <SearchersSection searchers={config.searchers} onSave={save} register={register} />
 
       <div className="done-bar">
@@ -195,7 +208,7 @@ function Status({ result }: { result: TestResult | null }) {
 }
 
 function EndpointSection(props: {
-  which: "llm" | "systemOne";
+  which: "llm" | "systemOne" | "diagram";
   title: string;
   blurb: string;
   endpoint: PublicEndpoint;

@@ -14,7 +14,7 @@ import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./au
 import { allSightings } from "./curriculum.ts";
 import { besideOf, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
-import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
+import { CONFIG_PATH, diagramEndpoint, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, findFor, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
@@ -66,6 +66,7 @@ app.put("/api/config", async (c) => {
 });
 
 app.post("/api/test/llm", async (c) => c.json(await testLlm((await loadConfig()).llm)));
+app.post("/api/test/diagram", async (c) => c.json(await testLlm(diagramEndpoint(await loadConfig()))));
 
 app.post("/api/test/systemone", async (c) =>
   c.json(await testSystemOne((await loadConfig()).systemOne)),
@@ -73,9 +74,10 @@ app.post("/api/test/systemone", async (c) =>
 
 app.get("/api/models/:which", async (c) => {
   const which = c.req.param("which");
-  if (which !== "llm" && which !== "systemOne") return c.json({ error: "unknown endpoint" }, 404);
+  if (which !== "llm" && which !== "systemOne" && which !== "diagram") return c.json({ error: "unknown endpoint" }, 404);
   try {
-    return c.json({ models: await listModels((await loadConfig())[which]) });
+    const config = await loadConfig();
+    return c.json({ models: await listModels(which === "diagram" ? diagramEndpoint(config) : config[which]) });
   } catch (err) {
     return c.json({ models: [], error: (err as Error).message });
   }
@@ -313,7 +315,7 @@ app.post("/api/canvases/:cid/call", async (c) => {
       await store.edit(card.id, (now) => (now?.kind === "card" ? { ext: [...(now.ext ?? []), ext] } : null));
       void extendPiece(store, card.id, ext.id);
     },
-    find: (near, kind, request) => findFor(store, near, kind, request),
+    find: (near, kind, request, focus) => findFor(store, near, kind, request, focus),
     descend: async (card, phrase) => {
       const cards = (await store.getState()).items.filter((i): i is CardItem => i.kind === "card" && !i.hidden);
       const at = besideOf(cards, card, (x) => x.h ?? (x.sem ? 900 : 300));
