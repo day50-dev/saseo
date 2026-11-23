@@ -7,7 +7,7 @@ import { assetPath, type CanvasStore, getCanvasInfo, newId, onResume } from "./c
 import { loadConfig } from "./config.ts";
 import { logCourses } from "./curriculum.ts";
 import { snap } from "./snap.ts";
-import { editPage, hashText, pageDoc, remember } from "./pagecache.ts";
+import { bestRead, editVersion, hashText, pageVersion, readOf, remember } from "./pagecache.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { searchArxiv } from "./arxiv.ts";
 import { readPage as readWebPage } from "./pages.ts";
@@ -1218,15 +1218,12 @@ export function readSource(store: CanvasStore, cardId: string, fresh = false) {
     if (card.origin?.kind !== "page") return;
     await store.update(cardId, { stage: "reading" });
     const linked = card.origin.url;
-    const known = fresh ? undefined : (await pageDoc(linked))?.read;
+    const known = fresh ? undefined : await bestRead(linked);
     const page = known ? { url: known.finalUrl, title: known.title, site: known.site ?? "", text: known.text } : await readWebPage(linked);
     if (!known) {
+      // A new reading; if the text differs from earlier ones, its shapes are drawn for it.
       const read = { at: new Date().toISOString(), title: page.title, site: page.site, finalUrl: page.url, text: page.text };
-      const textHash = hashText(page.text);
-      // A page that changed since its shapes were drawn has them drawn again.
-      for (const url of new Set([linked, page.url])) {
-        await editPage(url, (doc) => (doc.textHash === textHash ? { ...doc, read } : { url, read, textHash }));
-      }
+      for (const url of new Set([linked, page.url])) await editVersion(url, read);
     }
     await store.update(cardId, {
       stage: "done",
@@ -1378,8 +1375,8 @@ async function shapeSection(paras: string[], sec: { title: string; start: number
 export async function refillSections(store: CanvasStore, cardId: string) {
   const card = (await store.findItem(cardId)) as CardItem | undefined;
   if (card?.kind !== "card" || card.origin?.kind !== "page" || !card.pageText || !card.sections) return;
-  const doc = await pageDoc(card.origin.url);
-  if (!doc?.sections || doc.textHash !== hashText(card.pageText)) return;
+  const doc = await pageVersion(card.origin.url, card.pageText);
+  if (!doc?.sections) return;
   const better = (s: PageSection, i: number) => {
     const k = doc.sections![String(i)];
     return s.status === "failed" && k?.status === "done" && k.start === s.start && k.end === s.end && k.title === s.title ? k : undefined;
@@ -1401,9 +1398,10 @@ export async function shapeSections(store: CanvasStore, cardId: string) {
   // Sections already restructured for this text (on any canvas) are used as they are.
   const url = card.origin?.kind === "page" ? card.origin.url : "";
   const textHash = hashText(card.pageText);
-  const doc = url ? await pageDoc(url) : undefined;
+  const doc = url ? await pageVersion(url, card.pageText) : undefined;
+  const read = readOf(card);
   const kept = (sec: (typeof secs)[number], i: number) => {
-    const k = doc?.textHash === textHash ? doc.sections?.[String(i)] : undefined;
+    const k = doc?.sections?.[String(i)];
     return k && k.status === "done" && k.start === sec.start && k.end === sec.end && k.title === sec.title ? k : undefined;
   };
   await store.update(cardId, { sections: secs.map((sec, i) => kept(sec, i) ?? { ...sec, status: "working" as const }) });
@@ -1423,11 +1421,7 @@ export async function shapeSections(store: CanvasStore, cardId: string) {
         }
         const blocks = (await run).map((b) => ({ ...b, at: `sec-${i}` }));
         await save(i, { status: "done", blocks });
-        if (url) {
-          await editPage(url, (d) =>
-            d.textHash && d.textHash !== textHash ? null : { ...d, textHash, sections: { ...d.sections, [String(i)]: { ...sec, status: "done", blocks } } },
-          ).catch(() => {});
-        }
+        if (url && read) await editVersion(url, read, (v) => ({ ...v, sections: { ...v.sections, [String(i)]: { ...sec, status: "done", blocks } } })).catch(() => {});
       } catch (err) {
         // Even a failed section keeps its content, as written.
         const nums = [...Array(sec.end - sec.start + 1).keys()].map((k) => sec.start + k).filter((n) => !/^!\[/.test(paras[n]));
@@ -1457,9 +1451,8 @@ export async function shapePage(store: CanvasStore, cardId: string) {
   const card = (await store.findItem(cardId)) as CardItem | undefined;
   if (!card?.pageText) return;
   const url = card.origin?.kind === "page" ? card.origin.url : "";
-  const textHash = hashText(card.pageText);
-  const doc = url ? await pageDoc(url) : undefined;
-  if (doc?.shape && doc.textHash === textHash) {
+  const doc = url ? await pageVersion(url, card.pageText) : undefined;
+  if (doc?.shape) {
     // Drawn before, from this same text: no need to draw it again.
     await store.update(cardId, { sem: doc.shape.sem, anchors: doc.shape.anchors, shaping: "done" });
     return;
@@ -1514,9 +1507,8 @@ export async function shapePage(store: CanvasStore, cardId: string) {
       if (/^(why|what|part|here)-\d+$|^together$/.test(key) && ok.length) anchors[key] = ok.slice(0, 4);
     }
     await store.update(cardId, { sem, anchors, shaping: "done" });
-    if (url) {
-      await editPage(url, (d) => (d.textHash && d.textHash !== textHash ? null : { ...d, textHash, shape: { sem, anchors } })).catch(() => {});
-    }
+    const read = readOf(card);
+    if (url && read) await editVersion(url, read, (v) => ({ ...v, shape: { sem, anchors } })).catch(() => {});
     // The page itself may be course material (lecture notes, a syllabus).
     const title = card.origin?.title ?? card.subject ?? "";
     if (url) void mapCourses(store, cardId, card.subject ?? title, [{ n: 1, url, title, snippet: card.pageText.slice(0, 600), searcher: "page" }]);
