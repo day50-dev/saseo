@@ -24,7 +24,9 @@ export async function listen(audio: ArrayBuffer, hint: string): Promise<string> 
     signal: AbortSignal.timeout(60_000),
   });
   if (!r.ok) throw new Error(`speech recognition: HTTP ${r.status}`);
-  return String(((await r.json()) as { text?: string }).text ?? "").trim();
+  const text = String(((await r.json()) as { text?: string }).text ?? "").trim();
+  // An open microphone hears rooms, not just people; on noise the recogniser invents these.
+  return /^(thank you|thanks|thanks for watching|you|bye|\.+|\[.*\]|\(.*\))[.!?]*$/i.test(text) ? "" : text;
 }
 
 /** Words in, speech out (wav). */

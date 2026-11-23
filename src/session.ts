@@ -9,7 +9,8 @@ export interface Me {
   /** anonymous: not signed in; their canvases last as long as this browser's cookie. */
   user: { id: string; email: string; name: string; admin: boolean; anonymous: boolean } | null;
   /** The server can listen and speak, so calls with the librarian are possible. */
-  speech?: boolean;
+  /** Speech servers this server has; a browser's own speech covers what's missing. */
+  speech?: { tts: boolean; stt: boolean };
 }
 
 export const authClient = createAuthClient({ baseURL: location.origin, plugins: [anonymousClient()] });

@@ -829,17 +829,21 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .call-who { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 4px; }
 .call-turn.librarian .call-who { color: #1f8a4c; }
 .call-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.call-talk {
-  font-size: 15px; font-weight: 700; padding: 9px 16px; border-radius: 999px; user-select: none; touch-action: none;
-  background: #1f8a4c; border-color: #1f8a4c; color: #fff;
+.call-mic {
+  width: 30px; height: 30px; border-radius: 50%; flex: none; display: flex; align-items: flex-end; justify-content: center;
+  background: #1f8a4c; overflow: hidden; padding: 6px 0; box-sizing: border-box;
 }
-.call-talk.listening { background: #c0392b; border-color: #c0392b; animation: ghost-pulse 1s ease-in-out infinite; }
-.call-talk kbd { opacity: 0.75; margin-left: 4px; }
+.call-mic.talking { background: #c0392b; }
+.call-mic.muted { background: var(--muted); }
+.call-level { width: 8px; height: 100%; background: #fff; border-radius: 3px; transform-origin: bottom; transition: transform 80ms linear; }
+.call-interim { color: var(--text); font-style: italic; overflow: hidden; text-overflow: ellipsis; }
+.call-voice { font-size: 13px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+.call-mute kbd { opacity: 0.75; margin-left: 4px; }
 .call-status { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .call-error { color: var(--fail); font-size: 13px; }
 .call-end { background: transparent; color: var(--fail); border-color: var(--fail); }
 /* What "this" means while on a call. */
 .call-pointed { outline: 2px solid #1f8a4c; outline-offset: 2px; border-radius: 4px; }
-@media (hover: none) { .call-talk kbd { display: none; } }
+@media (hover: none) { .call-mute kbd { display: none; } }
 .danger, .link.danger { color: var(--fail); }
 .empty-trash { margin: 4px 0 6px; }

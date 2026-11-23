@@ -12,7 +12,7 @@ import { remember } from "./pagecache.ts";
 import { addReaderNote, assetPath, autoName, DATA_DIR, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
-import { besideOf, callTurn, listen, type Pointing, say, speechOn, type Turn } from "./call.ts";
+import { besideOf, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
@@ -28,7 +28,7 @@ const app = new Hono<{ Variables: { user: User } }>();
 const authHandler = auth;
 if (authHandler) app.on(["GET", "POST"], "/api/auth/*", (c) => authHandler.handler(c.req.raw));
 
-app.get("/api/me", async (c) => c.json({ accounts: AUTH_ON, providers: PROVIDERS, user: await currentUser(c.req.raw), speech: speechOn() }));
+app.get("/api/me", async (c) => c.json({ accounts: AUTH_ON, providers: PROVIDERS, user: await currentUser(c.req.raw), speech: { tts: Boolean(SPEECH.tts), stt: Boolean(SPEECH.stt) } }));
 
 // Everything else under /api needs someone signed in, except images, which are named by their
 // content hash and carry nothing private.
@@ -273,7 +273,7 @@ app.get("/api/curriculum", async (c) => c.json({ sightings: await allSightings()
 
 // Audio in, words out. The canvas's subjects prime the recogniser with its vocabulary.
 app.post("/api/speech/listen", async (c) => {
-  if (!speechOn()) return c.json({ error: "speech isn't set up on this server" }, 404);
+  if (!SPEECH.stt) return c.json({ error: "speech isn't set up on this server" }, 404);
   const cid = c.req.query("cid");
   const store = cid ? await canvasStore(cid) : undefined;
   const hint = store
@@ -291,7 +291,7 @@ app.post("/api/speech/listen", async (c) => {
 
 // Words in, speech out.
 app.post("/api/speech/say", async (c) => {
-  if (!speechOn()) return c.json({ error: "speech isn't set up on this server" }, 404);
+  if (!SPEECH.tts) return c.json({ error: "speech isn't set up on this server" }, 404);
   const { text } = (await c.req.json()) as { text?: string };
   if (!text?.trim()) return c.json({ error: "text is required" }, 400);
   try {

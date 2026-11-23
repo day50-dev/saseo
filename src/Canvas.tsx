@@ -10,7 +10,7 @@ import { EXAMPLES, type Example, exampleByKey, runExample } from "./examples.ts"
 import { ago } from "./Home.tsx";
 import { linkTo, navigate } from "./router.ts";
 import { useIsAdmin, useIsAnonymous, useMe } from "./session.ts";
-import { CallBar } from "./Call.tsx";
+import { CallBar, canCallWith } from "./Call.tsx";
 
 interface View {
   x: number;
@@ -99,7 +99,8 @@ const isTyping = (t: EventTarget | null) =>
 export function Canvas({ canvasId }: { canvasId: string }) {
   const admin = useIsAdmin();
   const anonymous = useIsAnonymous();
-  const canCall = useMe().speech ?? false;
+  const me = useMe();
+  const canCall = canCallWith(me.speech);
   const [calling, setCalling] = useState(false);
   const api = useMemo(() => canvasApi(canvasId), [canvasId]);
   const [name, setName] = useState("");
@@ -1576,7 +1577,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           ))}
         </div>
       </div>
-      {calling && <CallBar canvasId={canvasId} onChanged={refresh} onClose={() => setCalling(false)} />}
+      {calling && <CallBar canvasId={canvasId} serverVoice={!!me.speech?.tts} onChanged={refresh} onClose={() => setCalling(false)} />}
       {arxivOpen && <ArxivPanel onAdd={(paper, pages) => addPaperPages(paper, pages)} onClose={() => setArxivOpen(false)} />}
     </div>
   );
