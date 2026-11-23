@@ -161,6 +161,16 @@ export function Home() {
           </ul>
         </details>
       )}
+      <footer className="home-foot muted small">
+        Librarian is open source under the{" "}
+        <a href="https://github.com/kristopolous/librarian/blob/main/LICENSE" target="_blank" rel="noreferrer">
+          MIT license
+        </a>
+        . Copyright © 2026 Chris McKenzie ·{" "}
+        <a href="https://github.com/kristopolous/librarian" target="_blank" rel="noreferrer">
+          github.com/kristopolous/librarian
+        </a>
+      </footer>
     </main>
   );
 }

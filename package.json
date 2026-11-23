@@ -8,7 +8,7 @@
     "typecheck": "tsc"
   },
   "author": "Chris McKenzie <kristopolous@yahoo.com> (http://9ol.es/)",
-  "license": "ISC",
+  "license": "MIT",
   "type": "module",
   "private": true,
   "dependencies": {

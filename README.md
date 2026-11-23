@@ -170,3 +170,7 @@ The principles, the worked examples from the talk that started this (Jason Zhao'
 - Videos' details, captions and any copies the librarian had to fetch are in `data/videos/`.
 - The course map is `data/curriculum.jsonl`, shared by every canvas; `GET /api/curriculum` returns it.
 - All of `data/` is gitignored.
+
+## License
+
+[MIT](LICENSE). Copyright (c) 2026 Chris McKenzie.
