@@ -532,6 +532,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         const scale = Math.min(3, Math.max(0.15, v.scale * Math.exp(-e.deltaY * 0.0025)));
         return { scale, x: px - ((px - v.x) * scale) / v.scale, y: py - ((py - v.y) * scale) / v.scale };
       });
+    } else if (e.shiftKey && !e.deltaX) {
+      // Shift+scroll goes sideways (some browsers already turn it into deltaX; the rest send it as deltaY).
+      setView((v) => ({ ...v, x: v.x - e.deltaY }));
     } else {
       setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     }
