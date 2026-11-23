@@ -12,19 +12,32 @@ export interface Example {
   arxiv?: { id: string; pages: string };
 }
 
+// Topics with a very large body of teaching material behind them (textbooks, course notes,
+// lectures), so the librarian has plenty to find and descend into.
 export const EXAMPLES: Example[] = [
+  {
+    key: "video",
+    kind: "A video lecture",
+    title: "Eigenvectors and eigenvalues (3Blue1Brown)",
+    input: "https://www.youtube.com/watch?v=PFDu9oVAE-g",
+  },
+  {
+    key: "wiki",
+    kind: "A Wikipedia page",
+    title: "Eigenvalues and eigenvectors",
+    input: "https://en.wikipedia.org/wiki/Eigenvalues_and_eigenvectors",
+  },
   {
     key: "paper",
     kind: "A research paper",
-    title: "The Cauchy problem for Manton's Chern–Simons–Schrödinger equation",
-    arxiv: { id: "2609.13096", pages: "1" },
+    title: "A Tutorial on Spectral Clustering (the graph Laplacian)",
+    arxiv: { id: "0711.0189", pages: "1" },
   },
-  { key: "wiki", kind: "A Wikipedia page", title: "Bialgebra", input: "https://en.wikipedia.org/wiki/Bialgebra" },
   {
     key: "question",
     kind: "A question",
-    title: "Why does quantum mechanics need complex numbers?",
-    input: "Why does quantum mechanics need complex numbers?",
+    title: "What is a Hamiltonian, and why is it the energy?",
+    input: "What is a Hamiltonian, and why is it the energy?",
   },
 ];
 
