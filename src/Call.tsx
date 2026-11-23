@@ -4,6 +4,7 @@
 // or opens cards as it goes.
 import { useEffect, useRef, useState } from "react";
 import { substantive } from "../shared/canvas.ts";
+import { withoutEcho } from "./echo.ts";
 import { selectedText, textWithTex } from "./MathText.tsx";
 
 type Turn = { role: "you" | "librarian"; text: string };
@@ -78,14 +79,6 @@ const browserSTT = () => {
   const w = window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 };
-
-/** Mostly the librarian's own words, heard back through the speakers? */
-function echoOf(heard: string, spoken: string): boolean {
-  const words = heard.toLowerCase().match(/[a-z0-9']+/g) ?? [];
-  if (!words.length) return true;
-  const said = new Set(spoken.toLowerCase().match(/[a-z0-9']+/g) ?? []);
-  return words.filter((w) => said.has(w)).length / words.length > 0.6;
-}
 
 const FRAME = 2048;
 const PRE_ROLL_MS = 350;
@@ -264,7 +257,7 @@ export function CallBar({
         const l = await fetch(`/api/speech/listen?cid=${encodeURIComponent(canvasId)}`, { method: "POST", body: said });
         const r = (await l.json()) as { text?: string; error?: string };
         if (r.error) throw new Error(r.error);
-        text = r.text ?? "";
+        text = yours(r.text ?? "");
       }
       if (!substantive(text)) return;
       const history = turnsRef.current;
@@ -278,9 +271,13 @@ export function CallBar({
       const { say, did, removed } = (await r.json()) as { say: string; did?: string; removed?: string[] };
       if (!say) return;
       setTurns((t) => [...t, { role: "librarian", text: say }]);
-      speaking.current = say;
+      // Its words count as echo while it speaks, and for a few seconds after (the recognizer is late).
+      const spoken = { text: say, until: Infinity };
+      speaking.current = [...speaking.current.filter((x) => x.until > Date.now()), spoken].slice(-3);
+      echoClear.current = () => (spoken.until = Date.now() + 4000);
       if (did) onChanged(removed);
       await speak(say);
+      echoClear.current();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -288,8 +285,15 @@ export function CallBar({
     }
   };
 
-  // What the librarian is saying, so the recognizer can tell its voice from yours.
-  const speaking = useRef("");
+  // What the librarian has just said, so the recognizer can tell its voice from yours.
+  const speaking = useRef<{ text: string; until: number }[]>([]);
+  const echoClear = useRef<() => void>(() => {});
+  const echoes = () => speaking.current.filter((x) => x.until > Date.now()).map((x) => x.text);
+  /** What was heard, without the librarian's own voice in it. */
+  const yours = (heard: string) => {
+    const said = echoes();
+    return said.length ? withoutEcho(heard, said) : heard.trim();
+  };
   const [BrowserSTT] = useState(browserSTT);
   const [interim, setInterim] = useState("");
 
@@ -316,8 +320,8 @@ export function CallBar({
         else part += r[0].transcript;
       }
       const talking = stateRef.current === "speaking";
-      const live = (fin || part).trim();
-      if (live && !(talking && echoOf(live, speaking.current))) {
+      const live = yours(fin || part);
+      if (live) {
         if (!during.current) {
           startedAt.current = Date.now();
           during.current = pointingAt(hovered.current);
@@ -327,8 +331,8 @@ export function CallBar({
         setInterim(part.trim());
         if (stateRef.current === "listening") setState("talking");
       }
-      const text = fin.trim();
-      if (!text) return;
+      if (!fin.trim()) return;
+      const text = yours(fin);
       // Noise, a stray syllable, or nothing: not a question. Back to listening, quietly.
       if (!substantive(text)) {
         setInterim("");
@@ -339,7 +343,6 @@ export function CallBar({
       setInterim("");
       const pointing = about(during.current);
       during.current = null;
-      if (talking && echoOf(text, speaking.current)) return;
       queue.current = queue.current.then(() => heard(text, pointing));
     };
     rec.onerror = (e) => {
