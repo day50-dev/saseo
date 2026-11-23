@@ -338,6 +338,8 @@ export interface CardItem extends ItemState {
   taught?: CourseSighting[];
   lookImage?: string;
   looking?: "working" | "failed" | "done";
+  /** The looks were snapped to the page's ink (older ones drifted along their line). */
+  snapped?: boolean;
   /** The beginner search the explanation will use, kept so it can resume after a question. */
   searchQuery?: string;
   subject?: string;

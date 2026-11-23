@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { assetPath, type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { logCourses } from "./curriculum.ts";
+import { snap } from "./snap.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { searchArxiv } from "./arxiv.ts";
 import { readPage as readWebPage } from "./pages.ts";
@@ -622,10 +623,11 @@ export async function pointAt(store: CanvasStore, cardId: string) {
     const keys = new Set(list.map(([k]) => k));
     const looks: Record<string, Rect> = {};
     for (const [k, v] of Object.entries(r.boxes ?? {})) {
-      const rect = keys.has(k) ? toRect(v, img) : null;
-      if (rect) looks[k] = rect;
+      const rough = keys.has(k) ? toRect(v, img) : null;
+      // The model finds the right line but drifts along it: snap to the ink actually there.
+      if (rough) looks[k] = await snap(found.file, img.naturalW, img.naturalH, rough).catch(() => rough);
     }
-    await store.update(cardId, { looks, looking: "done" });
+    await store.update(cardId, { looks, looking: "done", snapped: true });
   } catch {
     await store.update(cardId, { looking: "failed" });
   }

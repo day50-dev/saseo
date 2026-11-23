@@ -1020,7 +1020,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       api.courses(c.id).then(refresh, () => {});
     }
     for (const c of cards) {
-      if (c.stage !== "done" || !c.sem || c.looking || c.origin || looked.current.has(c.id)) continue;
+      // Also cards whose crops were made before snapping, which drifted along their lines.
+      if (c.stage !== "done" || !c.sem || c.looking === "working" || (c.looking && c.snapped) || c.origin || looked.current.has(c.id)) continue;
       let p = byId.get(c.parentId);
       for (let i = 0; p?.kind === "card" && i < 50; i++) p = byId.get(p.parentId);
       if (p?.kind !== "region" && p?.kind !== "image") continue;
