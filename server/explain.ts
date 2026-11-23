@@ -266,7 +266,7 @@ async function guard(store: CanvasStore, cardId: string, run: () => Promise<void
     await store.update(cardId, {
       stage: "failed",
       error: timedOut
-        ? `The language model didn't answer within ${limit} seconds. It may be busy with another card; retry, or raise the timeout in Settings.`
+        ? `The language model didn't answer within ${limit} seconds. Retry, or raise the timeout in Settings.`
         : message,
     });
   }
