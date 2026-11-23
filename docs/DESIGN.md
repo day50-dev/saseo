@@ -238,6 +238,12 @@ The split between a fast decision layer and a slow LLM layer follows the researc
 | Read, fish, write, check | `server/explain.ts`, `server/llm.ts` |
 | Canvas UI: select and pan, undo and redo, move, remove, retry | `src/Canvas.tsx`, `src/Card.tsx` |
 | Semshape renderer | `src/SemShapes.tsx`, `src/styles.css` |
+| Growing a diagram from a piece | `src/Grow.tsx`, `extendPiece` in `server/explain.ts` |
+| Linked pages: reading, shapes anchored to paragraphs | `server/pages.ts`, `shapePage` in `server/explain.ts` |
+| Pointing at the page: crops beside the pieces | `pointAt` in `server/explain.ts`, `Look` in `src/Card.tsx` |
+| Video lectures: player, moments, our own copy | `server/video.ts`, `src/VideoPlayer.tsx`, `src/youtube.ts` |
+| Course map | `server/curriculum.ts`, `mapCourses` in `server/explain.ts` |
+| Accounts: anonymous first, sign in to keep | `server/auth.ts`, `src/session.ts` |
 
 ## Status and milestones
 
@@ -251,14 +257,25 @@ Development is driven by the CSS talk as a fixture, and each milestone has a tes
 4. **M3, canvas.** Slides pinned in place, box selection, descents growing outward, history, a first stylesheet. *Built: semshapes v1, select/pan modes, undo/redo, move with the right-of-parent rule, remove, retry.*
 5. **M4, loop.** Placed tools and masked self-tests at slide 23, and the real test: does a person starting from one screenshot keep going voluntarily for an hour or more, and come back the next day? *Not started.*
 
+Built beyond the milestones, mostly from trying it on topics outside maths (history, biochemistry, lectures):
+
+- Starting points besides screenshots: links read whole and drawn as shapes (principle 7), arXiv papers, typed questions, YouTube lectures, and one-click examples.
+- A clarifying question about the reader's goal and background before the first explanation.
+- Growing any piece of a diagram in a chosen shape ([Growing the diagram](#growing-the-diagram)).
+- Pieces point at the part of the page they mean.
+- Video lectures: stop at a moment for its frame and transcript; our own copy when embedding isn't allowed ([BRAINSTORM.md](BRAINSTORM.md)).
+- The course map, step 1: where subjects are taught, gathered from searches ([BRAINSTORM.md](BRAINSTORM.md)).
+- Anonymous use with no limits; signing in only keeps canvases.
+
 ## Open questions
 
-Ideas still being worked out, such as video lectures, live in [BRAINSTORM.md](BRAINSTORM.md).
+Ideas still being worked out, such as video lectures and the course map, live in [BRAINSTORM.md](BRAINSTORM.md).
 
 - How forks are shown is a presentation question (principle 5) and is undecided. One candidate: open a history graph and traverse it.
 - Undo history currently lives in the open page and resets on reload; the log already holds what's needed to keep it.
 - The first card on a dense formula still tends to climb; better onramp sources and a stronger rewrite are the levers.
-- Selections are shown as raw LaTeX; they should be rendered.
+- The course map's next step: flag an explanation whose own terms are usually taught later than its subject ("reaches ahead").
+- Cards are narrow, so horizontal shapes (asides, forks) are fitted inside them; letting a card widen into free space would give them more room without moving anything.
 
 ### Later: meet people in the tools they already use
 

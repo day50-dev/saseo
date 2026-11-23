@@ -24,11 +24,37 @@ Self-directed deep study does work somewhere: a library, with a good reference l
 
 ## What it does
 
-Drop or paste a screenshot of whatever stopped you: a slide, a page, a figure. Drag a box over the part you don't get. The librarian reads it, **looks for introductory material first** (lecture notes, textbook chapters, Khan Academy, Britannica), then draws an explanation beside it that starts with *why the thing exists*, citing what it found.
+Bring whatever stopped you:
 
-Explanations are drawn as diagrams, not paragraphs: why it exists as a chain of steps, what it is, a formula split into its parts and joined back together, how it's used on this page, and what its name means.
+- **A screenshot** of a slide, a page or a figure: drop or paste it, then drag a box over the part you don't get.
+- **A link** to a Wikipedia page or an article: it's read whole and drawn as shapes, and you can flip between the shapes and the page's own text, each piece pointing at the paragraphs it came from.
+- **An arXiv paper:** search arXiv from the toolbar and lay its pages out on the canvas.
+- **A question** typed in your own words.
+- **A YouTube lecture**, which plays right on the canvas (see below).
 
-**Explanations descend toward what you know, never climb.** Select any words in an explanation to go one level further down. A fast decision model checks each draft for climbing into harder jargon than the thing it explains, and asks for a rewrite if it does.
+The home page has one-click examples: a 3Blue1Brown lecture on eigenvectors, Wikipedia's eigenvectors page, a tutorial on spectral clustering, the Hamiltonian, the breakup of Yugoslavia, and the synaptic vesicle cycle.
+
+The librarian may first ask one short question about where you're coming from and what you're after, and pitches everything after to your answer. Then it **looks for introductory material first** (lecture notes, textbook chapters, Khan Academy, Britannica) and draws an explanation beside what you pointed at, starting with *why the thing exists* and citing what it found.
+
+Explanations are drawn as diagrams, not paragraphs: why it exists as a chain of steps, what it is, a formula split into its parts and joined back together, how it's used on this page (or, for a question, how it unfolds), and what its name means. Math is rendered properly, and selecting a formula sends its LaTeX.
+
+**Explanations descend toward what you know, never climb.** Select any words in an explanation, or click a dotted-underlined term, to go one level further down. A fast decision model checks each draft for climbing into harder jargon than the thing it explains, and asks for a rewrite if it does.
+
+### Grow the diagram from any piece
+
+Every piece of a diagram, and every section heading, has a **+**. Pick the shape you want more in, drawn from the VizShapes vocabulary: **Say more** (an aside), **Why?** (a path of reasons), **Then what?**, **Steps** (a numbered procedure), **Break it down** (parts and what they add up to), **Two ways** (a fork), or **For example**. Or just say what you want, and the librarian picks the shape that answers it. Select words in the piece first to grow from those words. Whatever grows has its own +, so you can keep going as deep as you like.
+
+### It points at the page
+
+When an explanation says "the second equation" or "the diagram", the part of the slide it means is cut out and shown right under that piece. Hover it and the spot lights up on the slide itself.
+
+### Stop a lecture where it loses you
+
+Paste a YouTube link and the video plays on the canvas. When something goes by that you don't follow, press **Stop here and ask**: the exact frame lands beside the video, sharp enough to read the board, with what the lecturer was saying around that moment. Box anything in the frame or select words from the transcript to go down, and the explanation knows what was being said. Each moment's **▶** takes the video back there. Videos whose owners don't allow embedding play from the librarian's own copy instead (720p at most), with the download shown as it goes.
+
+### Where an idea is taught
+
+Each explanation notes the courses that teach its subject, and those that assume it, found among the pages it searched: say *MIT 18.06* and *Purdue MA262* for eigenvectors, at an intro undergraduate level. The sightings build up across every canvas into a map of where ideas sit in the curriculum, the start of flagging explanations that reach ahead of you.
 
 ### It tells you which words are strict and which are loose
 
@@ -57,7 +83,9 @@ Every card has an "Ask about this" box. The conversation stays on that card, and
 - **Nothing moves unless you move it.** The canvas never reshuffles. Drag cards and images anywhere, and everything hanging off them comes along. An explanation can sit on any side of what it explains, just not on top of it.
 - **Nothing is lost.** Every change is an event in an append-only log. Undo and Redo cover adding, moving, removing, collapsing and restacking. Removing hides; it never deletes.
 - **Walk the tree.** Collapse any card or image to fold away everything below it. Untangle pushes overlapping cards apart. Bring to front and send to back work as you'd expect.
-- **Named canvases with stable URLs** at `/c/<id>`, so you can bookmark a line of inquiry and come back to it.
+- **Named canvases with stable URLs** at `/c/<id>`, so you can bookmark a line of inquiry and come back to it. A canvas you don't name is named after what you started it with.
+- **You can see it working.** A selection being explained is highlighted where you made it, a placeholder shows where its card will land, and work happening out of view gets a pointer at the edge of the screen.
+- **It works on a phone,** with pinch to zoom and one-finger panning.
 
 ### Your models, your sources
 
@@ -76,9 +104,11 @@ npm install
 npm run dev
 ```
 
+Videos need [yt-dlp](https://github.com/yt-dlp/yt-dlp) (a recent one: YouTube's protections change often) and [ffmpeg](https://ffmpeg.org) on the server, and Node for yt-dlp's JavaScript runtime.
+
 Then open http://localhost:5173, set up a model under **Settings**, and press **Test**. For a production build, run `npm run build && npm start`, which serves everything from port 8787.
 
-Shortcuts: **V** for select and **H** for pan. Hold **Space** to pan. Ctrl+scroll zooms. **Ctrl+Z** and **Ctrl+Shift+Z** undo and redo. **Ctrl+]** and **Ctrl+[** restack, and adding Shift goes all the way to the front or back.
+Shortcuts: **/** to start something new, **V** for select and **H** for pan. Hold **Space** to pan. Ctrl+scroll zooms. **Ctrl+Z** and **Ctrl+Shift+Z** undo and redo. **Ctrl+]** and **Ctrl+[** restack, and adding Shift goes all the way to the front or back.
 
 ## Hosting it for other people
 
@@ -116,4 +146,6 @@ The principles, the worked examples from the talk that started this (Jason Zhao'
 
 - Canvases live in `data/canvases/<id>.jsonl`, one append-only log each, named in `data/canvases/index.json`.
 - Images are stored by content hash in `data/assets/`.
+- Videos' details, captions and any copies the librarian had to fetch are in `data/videos/`.
+- The course map is `data/curriculum.jsonl`, shared by every canvas; `GET /api/curriculum` returns it.
 - All of `data/` is gitignored.
