@@ -104,7 +104,26 @@ come back. Today that is a pain, and it's squarely what the librarian is for.
 
 ## Course level: noticing when an explanation reaches ahead
 
-*Status: open. Started 2026-11-22.*
+*Status: step 1 built (2026-11-22): sightings are gathered and shown. The "reaches ahead" flag is next.*
+
+### What's built (step 1)
+
+- After each explanation is written (and each linked page is shaped), `mapCourses` in
+  `server/explain.ts` runs one more search aimed at course material ("X syllabus lecture notes"),
+  adds those hits to the sources already found, and has the model classify which are course pages:
+  institution, code as written, title, level band, and whether the course introduces or assumes the
+  concept (`server/curriculum.ts`).
+- Sightings go to `data/curriculum.jsonl`, shared by every canvas on the server, keyed by a
+  normalized concept name. `GET /api/curriculum` returns the whole map so far.
+- Cards show **Taught in** and **Assumed known in** as course chips (one per course, each linking to
+  where it was seen) with the usual level. Cards written before this get looked up when their canvas
+  opens.
+- Early results: the Biot-Savart law was found at Muhlenberg (Physics 122), Oxford, Houston (ECE 3318)
+  and Purdue (ECE 604, graduate); the Hardy-Littlewood-Sobolev inequality at MIT 18.S997, UCSD 240C and
+  Rutgers 640:521 (graduate), and assumed known in UCLA 247a.
+
+Next: look up the explanation's own terms (`sem.terms`) in the map and flag the ones whose usual
+level is later than the subject's ("reaches ahead"), and feed that to the climb check.
 
 ### The problem
 
