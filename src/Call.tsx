@@ -493,20 +493,30 @@ export function CallBar({
           </div>
         )}
       </div>
-      <div className="call-controls">
-        <span className={`call-mic ${state}`} title={state === "muted" ? "Muted" : "The microphone is open"}>
-          <span className="call-level" style={{ transform: `scaleY(${state === "muted" ? 0.08 : Math.max(0.08, level)})` }} />
-        </span>
+      {/* What's happening, on a line of its own so it's never squeezed out by the buttons. */}
+      <div className="call-status-line">
         <span className="call-status">
           {(state === "hearing" || state === "thinking" || state === "starting") && <span className="spinner" />} {status}
           {interim && <i className="call-interim">“{interim}”</i>}
         </span>
         {error && <span className="call-error">{error}</span>}
-        {serverVoice && "speechSynthesis" in window && (
-          <select className="call-voice" value={voice} onChange={(e) => pickVoice(e.target.value as Voice)} title="The librarian's voice">
-            <option value="browser">Browser voice (instant)</option>
-            <option value="server">Natural voice (slower)</option>
+      </div>
+      <div className="call-controls">
+        <span className={`call-mic ${state}`} title={state === "muted" ? "Muted" : "The microphone is open"}>
+          <span className="call-level" style={{ transform: `scaleY(${state === "muted" ? 0.08 : Math.max(0.08, level)})` }} />
+        </span>
+        {serverVoice && "speechSynthesis" in window ? (
+          <select
+            className="call-voice"
+            value={voice}
+            onChange={(e) => pickVoice(e.target.value as Voice)}
+            title="The librarian's voice: the browser's starts at once; the natural one sounds better but takes a moment"
+          >
+            <option value="browser">Browser voice</option>
+            <option value="server">Natural voice</option>
           </select>
+        ) : (
+          <span className="call-spacer" />
         )}
         <button type="button" className="secondary call-mute" onClick={toggleMute} title="Mute or unmute (M)">
           {state === "muted" ? "Unmute" : "Mute"} <kbd>M</kbd>
