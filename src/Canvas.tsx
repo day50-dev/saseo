@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { Card, type Side } from "./Card.tsx";
 import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
 import { players } from "./youtube.ts";
@@ -73,6 +73,7 @@ interface Pending {
 }
 
 const NONE: string[] = [];
+const NO_STAGES: Record<string, CardStage> = {};
 
 function clock(t: number): string {
   const s = Math.max(0, Math.floor(t));
@@ -850,6 +851,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       const res = await api.descend({ parentId: parent.id, selection, context, x, y });
       added(`explain “${selection.slice(0, 30)}”`, [res.card.id]);
       await refresh();
+      return res.card.id;
     } catch (e) {
       setError(`Couldn't go further down: ${e}`);
     } finally {
@@ -1037,6 +1039,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const explainedIn = new Map<string, string[]>();
   const explainingIn = new Map<string, string[]>();
   for (const p of expected) if (p.parentId) explainingIn.set(p.parentId, [...(explainingIn.get(p.parentId) ?? []), p.label]);
+  // Child cards still being written, by parent, with what they're doing.
+  const childStages = new Map<string, Record<string, CardStage>>();
+  for (const c of cards) if (isPending(c)) childStages.set(c.parentId, { ...childStages.get(c.parentId), [c.id]: c.stage });
   for (const c of visibleCards) {
     if (!c.selection) continue;
     const into = isPending(c) ? explainingIn : explainedIn;
@@ -1520,6 +1525,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               onUngrow={(extId) => api.unextend(c.id, extId).then(refresh, (e) => setError(`Couldn't take that away: ${e}`))}
               explained={explainedIn.get(c.id) ?? NONE}
               explaining={explainingIn.get(c.id) ?? NONE}
+              childStages={childStages.get(c.id) ?? NO_STAGES}
               onRemove={() => remove(c.id, `remove “${(c.subject ?? "card").slice(0, 30)}”`)}
             />
           ))}

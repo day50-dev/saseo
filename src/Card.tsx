@@ -104,7 +104,10 @@ export function Card(props: {
   lit: boolean;
   onHover: (on: boolean) => void;
   onHeight: (h: number) => void;
-  onDescend: (text: string, context: string, clientY: number) => void;
+  /** Resolves to the new card's id once it's on the canvas. */
+  onDescend: (text: string, context: string, clientY: number) => Promise<string | undefined>;
+  /** This card's children still being written, and the stage each is at. */
+  childStages: Record<string, CardStage>;
   onRemove: () => void;
   onRetry: () => void;
   /** Answers the librarian's question; "" means just explain. */
@@ -146,6 +149,14 @@ export function Card(props: {
   const { card, onHeight } = props;
   const ref = useRef<HTMLDivElement>(null);
   const [picked, setPicked] = useState<{ text: string; context: string; top: number; clientY: number } | null>(null);
+  // Explanations asked for from this card that haven't landed yet: the button stays where it was,
+  // turned into a working chip, so a press shows something at once.
+  const [sent, setSent] = useState<{ key: number; text: string; top: number; cardId?: string }[]>([]);
+  // A chip goes once its card has its answer (or the request failed).
+  const live = sent.filter((x) => !x.cardId || x.cardId in props.childStages);
+  useEffect(() => {
+    if (live.length !== sent.length) setSent(live);
+  });
 
   // The parent passes a fresh callback each render; observe once and call the latest.
   const heightCb = useRef(onHeight);
@@ -184,7 +195,9 @@ export function Card(props: {
   useEffect(() => () => clearMarks(card.id), [card.id]);
   const inText = (n: Node | null) => Boolean(n && (explainRef.current?.contains(n) || chatRef.current?.contains(n)));
 
-  const onMouseUp = () => {
+  const onMouseUp = (e: React.MouseEvent) => {
+    // Pressing the Explain button itself mustn't count as a new (empty) selection.
+    if ((e.target as HTMLElement).closest(".descend")) return;
     const sel = window.getSelection();
     const text = sel ? selectedText(sel).replace(/\s+/g, " ").trim() : "";
     const el = ref.current;
@@ -412,6 +425,24 @@ export function Card(props: {
         />
       ))}
 
+      {live.map((x) => {
+        const stage = x.cardId ? props.childStages[x.cardId] : undefined;
+        return (
+          <button
+            type="button"
+            key={x.key}
+            className="descend sent"
+            style={{ top: x.top }}
+            role="status"
+            title={x.cardId ? "Show the new card" : undefined}
+            onClick={() => x.cardId && props.onFocus(x.cardId)}
+          >
+            <span className="spinner" /> <b>“{x.text.length > 40 && !/\\[(\[]|\$/.test(x.text) ? `${x.text.slice(0, 40)}…` : withMath(x.text)}”</b>
+            {stage ? STAGE_TEXT[stage] : "Starting a new card…"}
+            {x.cardId && <span className="sent-go">Show ↗</span>}
+          </button>
+        );
+      })}
       {picked && (
         <button
           type="button"
@@ -419,7 +450,11 @@ export function Card(props: {
           style={{ top: picked.top }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
-            props.onDescend(picked.text, picked.context, picked.clientY);
+            const key = Date.now() + Math.random();
+            setSent((all) => [...all, { key, text: picked.text, top: picked.top }]);
+            void props
+              .onDescend(picked.text, picked.context, picked.clientY)
+              .then((cardId) => setSent((all) => (cardId ? all.map((x) => (x.key === key ? { ...x, cardId } : x)) : all.filter((x) => x.key !== key))));
             setPicked(null);
             window.getSelection()?.removeAllRanges();
           }}

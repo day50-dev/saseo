@@ -218,6 +218,14 @@ a { color: var(--accent); }
   max-width: calc(100% - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
+.descend.sent {
+  display: flex; align-items: center; gap: 7px; border-radius: 7px; font-weight: 400;
+  background: var(--card); color: var(--text); border: 1px solid var(--accent);
+  animation: sent-pulse 1.4s ease-in-out infinite;
+}
+.descend.sent b { font-weight: 600; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+.descend.sent .sent-go { margin-left: auto; padding-left: 8px; color: var(--accent); font-weight: 600; }
+@keyframes sent-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); } }
 
 .modes { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
 .modes button {
