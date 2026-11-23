@@ -4,13 +4,16 @@ import {
   type CardStage,
   type Clarify,
   type FoundSource,
+  type ImageItem,
   type Paper,
+  type Rect,
   paragraphs,
   REGISTERS,
   type RegisterNote,
   type Sem,
 } from "../shared/canvas.ts";
 import { PaperRow } from "./ArxivPanel.tsx";
+import { assetUrl } from "./canvasApi.ts";
 import { clearMarks, findPhrases, setMarks } from "./marks.ts";
 import { looksLikeTex, selectedText, Tex, textWithTex, withMath } from "./MathText.tsx";
 import { SemShapes } from "./SemShapes.tsx";
@@ -125,6 +128,10 @@ export function Card(props: {
   linking: boolean;
   /** For a relation card: the names of the two things it relates. */
   relatesNames?: string[];
+  /** The image this card's explanation points into, for `card.looks`. */
+  lookImage?: ImageItem;
+  /** Hovering a piece's picture: show where it is on the image itself. */
+  onPeek?: (peek: { imageId: string; rect: Rect } | null) => void;
   /** Words in this card that already have a card of their own. */
   explained: string[];
   /** Words in this card being explained right now. */
@@ -328,7 +335,15 @@ export function Card(props: {
           render={(t) => withRegister(t, card.sem!, sources)}
           onTitlePointerDown={props.onGrab}
           labels={pageCard ? { here: "Where the page goes" } : undefined}
-          extra={pageCard ? (key) => <FromPage card={card} anchorKey={key} onOpenPage={() => setView("page")} /> : undefined}
+          extra={(key) => (
+            <>
+              {pageCard && <FromPage card={card} anchorKey={key} onOpenPage={() => setView("page")} />}
+              {pageCard && <PageFigures card={card} anchorKey={key} />}
+              {card.looks?.[key] && props.lookImage && (
+                <Look image={props.lookImage} rect={card.looks[key]} onPeek={(on) => props.onPeek?.(on ? { imageId: props.lookImage!.id, rect: card.looks![key] } : null)} />
+              )}
+            </>
+          )}
         />
       )}
 
@@ -557,9 +572,10 @@ function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: 
 /** Under a piece of a page's shapes: the page's own words it came from, opened on demand. */
 function FromPage({ card, anchorKey, onOpenPage }: { card: CardItem; anchorKey: string; onOpenPage: () => void }) {
   const [open, setOpen] = useState(false);
-  const ns = card.anchors?.[anchorKey];
-  if (!ns?.length) return null;
   const paras = paragraphs(card.pageText ?? "");
+  // Figures show by themselves (PageFigures); this quotes the words.
+  const ns = card.anchors?.[anchorKey]?.filter((n) => !/^!\[/.test(paras[n] ?? ""));
+  if (!ns?.length) return null;
   return (
     <span className="from-page">
       <button
@@ -584,6 +600,50 @@ function FromPage({ card, anchorKey, onOpenPage }: { card: CardItem; anchorKey: 
         </span>
       )}
     </span>
+  );
+}
+
+/** The part of the page a piece refers to ("the diagram", "the second equation"), cut from the image itself. */
+function Look({ image, rect, onPeek }: { image: ImageItem; rect: Rect; onPeek: (on: boolean) => void }) {
+  // Natural size where it fits; smaller when the thing is tall. Sized in proportions, so when the
+  // column is narrower than that the whole picture shrinks with it instead of being cut off.
+  const k = Math.min(1.25, 220 / rect.h);
+  const pct = (at: number, size: number, whole: number) => (whole > size ? (at / (whole - size)) * 100 : 0);
+  return (
+    <span
+      className="look"
+      title="Where this is on the page (hover to see it there)"
+      role="img"
+      aria-label="The part of the page this refers to"
+      onPointerEnter={() => onPeek(true)}
+      onPointerLeave={() => onPeek(false)}
+      style={{
+        width: Math.round(rect.w * k),
+        aspectRatio: `${rect.w} / ${rect.h}`,
+        backgroundImage: `url(${assetUrl(image.asset)})`,
+        backgroundSize: `${(image.naturalW / rect.w) * 100}% ${(image.naturalH / rect.h) * 100}%`,
+        backgroundPosition: `${pct(rect.x, rect.w, image.naturalW)}% ${pct(rect.y, rect.h, image.naturalH)}%`,
+      }}
+    />
+  );
+}
+
+/** Figures on a linked page that a piece cites, shown with it. */
+function PageFigures({ card, anchorKey }: { card: CardItem; anchorKey: string }) {
+  const ns = card.anchors?.[anchorKey];
+  if (!ns?.length) return null;
+  const paras = paragraphs(card.pageText ?? "");
+  const figs = ns.map((n) => /^!\[([^\]]*)\]\(([^)\s]+)\)/.exec(paras[n] ?? "")).filter((m): m is RegExpExecArray => Boolean(m));
+  if (!figs.length) return null;
+  return (
+    <>
+      {figs.map((m) => (
+        <figure key={m[2]} className="look-figure">
+          <img src={m[2]} alt={m[1]} loading="lazy" />
+          {m[1] && <figcaption>{m[1]}</figcaption>}
+        </figure>
+      ))}
+    </>
   );
 }
 

@@ -215,6 +215,14 @@ export interface CardItem extends ItemState {
   anchors?: Record<string, number[]>;
   /** For a linked page: its shapes are being drawn, or couldn't be. */
   shaping?: "working" | "failed" | "done";
+  /**
+   * For an explanation of something on an image: where on that image (`lookImage`) each piece
+   * points, in the image's natural pixels, by piece key. Shown beside the piece, so "the diagram"
+   * or "the second equation" is there to see.
+   */
+  looks?: Record<string, Rect>;
+  lookImage?: string;
+  looking?: "working" | "failed" | "done";
   /** The beginner search the explanation will use, kept so it can resume after a question. */
   searchQuery?: string;
   subject?: string;

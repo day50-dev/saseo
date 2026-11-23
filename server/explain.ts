@@ -1,6 +1,6 @@
 // The librarian's loop for one card: read the region, go fish, write a descending
 // explanation from what was found, then check that it doesn't climb.
-import { CARD_WIDTH, paragraphs, type CardItem, type FoundSource, type Item, type ObjectKind, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
+import { CARD_WIDTH, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { readFile } from "node:fs/promises";
 import { assetPath, type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
@@ -306,6 +306,98 @@ async function finishRegion(store: CanvasStore, cardId: string) {
     .filter(Boolean)
     .join("\n\n");
   await write(store, card, subject, card.transcription ?? subject, card.topic, [], sources, context);
+  void pointAt(store, cardId);
+}
+
+// ---- Pointing at the page: what each piece refers to, shown beside it ----
+
+const POINT = `The image is a page (a slide, or a page of a paper) that a reader is studying.
+Below are the pieces of an explanation about part of it, each with a key.
+Some pieces refer to something visible on this page: an equation, a diagram or figure, a particular line, a term, a piece of a formula.
+For each piece that clearly does, give the box around that thing on the page.
+Boxes are [x0, y0, x1, y1] in thousandths of the image's width and height (0 to 1000), measured from the top-left corner.
+Make each box snug, but include all of the thing: the whole equation, the whole diagram.
+Leave out pieces that are general background and point at nothing in particular here. Never box the whole page.
+Return JSON only, no prose: {"boxes": {"<key>": [x0, y0, x1, y1]}}`;
+
+/** The keys and texts of a Sem's pieces, as SemShapes draws them. */
+function pieces(sem: Sem): [string, string][] {
+  return [
+    ...sem.why.map((t, i): [string, string] => [`why-${i}`, t]),
+    ...[sem.what.gist, ...sem.what.details].filter(Boolean).map((t, i): [string, string] => [`what-${i}`, t]),
+    ...sem.parts.map((p, i): [string, string] => [`part-${i}`, `${p.symbol}: ${p.meaning}. ${p.note}`]),
+    ...(sem.together ? [["together", sem.together] as [string, string]] : []),
+    ...sem.here.map((t, i): [string, string] => [`here-${i}`, t]),
+  ];
+}
+
+/** The image a card's explanation is ultimately about, if it came from a box on one. */
+async function sourceImage(store: CanvasStore, card: CardItem): Promise<ImageItem | undefined> {
+  let cur: Item | undefined = card;
+  for (let i = 0; cur && i < 50; i++) {
+    const parent: Item | undefined = await store.findItem(cur.kind === "card" ? cur.parentId : cur.kind === "region" ? cur.imageId : "");
+    if (!parent) return undefined;
+    if (parent.kind === "image") return parent;
+    cur = parent;
+  }
+  return undefined;
+}
+
+/** Converts a model's box to the image's natural pixels, or null if it isn't a usable box. */
+function toRect(v: unknown, img: ImageItem): Rect | null {
+  if (!Array.isArray(v) || v.length !== 4 || !v.every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+  let [x0, y0, x1, y1] = v as number[];
+  // Thousandths, as asked; some models answer in pixels or fractions instead.
+  const big = Math.max(x0, y0, x1, y1);
+  const [sx, sy] = big <= 1.0001 ? [img.naturalW, img.naturalH] : big <= 1000 ? [img.naturalW / 1000, img.naturalH / 1000] : [1, 1];
+  [x0, x1] = [Math.min(x0, x1) * sx, Math.max(x0, x1) * sx];
+  [y0, y1] = [Math.min(y0, y1) * sy, Math.max(y0, y1) * sy];
+  x0 = Math.max(0, x0);
+  y0 = Math.max(0, y0);
+  x1 = Math.min(img.naturalW, x1);
+  y1 = Math.min(img.naturalH, y1);
+  const w = x1 - x0;
+  const h = y1 - y0;
+  if (w < img.naturalW * 0.02 || h < img.naturalH * 0.015) return null;
+  if (w * h > img.naturalW * img.naturalH * 0.6) return null; // the whole page points at nothing
+  // A little margin, so the thing isn't cut off at its edges.
+  const m = Math.round(Math.min(img.naturalW, img.naturalH) * 0.01);
+  const rx = Math.max(0, Math.round(x0 - m));
+  const ry = Math.max(0, Math.round(y0 - m));
+  return { x: rx, y: ry, w: Math.min(img.naturalW - rx, Math.round(w + 2 * m)), h: Math.min(img.naturalH - ry, Math.round(h + 2 * m)) };
+}
+
+/** Finds where on the page each piece of a card's explanation points, if it came from an image. */
+export async function pointAt(store: CanvasStore, cardId: string) {
+  const card = (await store.findItem(cardId)) as CardItem | undefined;
+  if (!card?.sem) return;
+  const img = await sourceImage(store, card);
+  const found = img && assetPath(img.asset);
+  if (!img || !found) return;
+  await store.update(cardId, { looking: "working", lookImage: img.id });
+  try {
+    const url = `data:${found.mime};base64,${(await readFile(found.file)).toString("base64")}`;
+    const list = pieces(card.sem);
+    const r = await chatJson<{ boxes?: Record<string, unknown> }>((await loadConfig()).llm, [
+      { role: "system", content: POINT },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: `The pieces:\n${list.map(([k, t]) => `${k}: ${t}`).join("\n")}` },
+          { type: "image_url", image_url: { url } },
+        ],
+      },
+    ]);
+    const keys = new Set(list.map(([k]) => k));
+    const looks: Record<string, Rect> = {};
+    for (const [k, v] of Object.entries(r.boxes ?? {})) {
+      const rect = keys.has(k) ? toRect(v, img) : null;
+      if (rect) looks[k] = rect;
+    }
+    await store.update(cardId, { looks, looking: "done" });
+  } catch {
+    await store.update(cardId, { looking: "failed" });
+  }
 }
 
 const RESOLVE = `A reader selected some words inside an explanation because they want to know more.
@@ -436,6 +528,7 @@ async function finishSelection(store: CanvasStore, cardId: string) {
   await store.update(cardId, { stage: "writing", sources });
   const guidance = register ? `${REGISTER_GUIDANCE[register.register]}${register.means ? ` (${register.means})` : ""}` : "";
   await write(store, card, card.subject ?? selection, quoted, topic, path, sources, [context, guidance].filter(Boolean).join("\n\n"));
+  void pointAt(store, cardId);
 }
 
 // ---- Clarifying questions: about the reader's goal and context, before explaining ----
@@ -894,7 +987,9 @@ how it fits together, in the shape above. Add nothing the page doesn't support, 
 The page's paragraphs are numbered [P0], [P1], ... Also return "from": an object mapping each piece to the numbers of
 the paragraphs it comes from. Keys: "why-0", "why-1", ...; "what-0" for the gist, "what-1", ... for details;
 "part-0", ...; "together"; "here-0", .... Leave out pieces that are background, not from the page.
-Never write paragraph numbers in the pieces' text; they go only in "from".`;
+Never write paragraph numbers in the pieces' text; they go only in "from".
+A figure is listed as "[P12] (figure: its caption)". When a piece is about what a figure shows, or refers to "the
+diagram" or "the figure", include that figure's number in its "from", so the reader sees the figure beside it.`;
 
 /** Paragraph numbers in a reference like "P3", "P3-P5", "3, 7" or "P23–45"; a range gives at most 4. */
 function paraNumbers(ref: string): number[] {
@@ -917,8 +1012,9 @@ export async function shapePage(store: CanvasStore, cardId: string) {
     const numbered: string[] = [];
     let size = 0;
     for (const [i, p] of paras.entries()) {
-      if (/^!\[/.test(p)) continue; // an image: nothing to read
-      const line = `[P${i}] ${p.slice(0, 700)}`;
+      // A figure is numbered too, by its caption, so a piece about it can say where it is.
+      const fig = /^!\[([^\]]*)\]/.exec(p);
+      const line = fig ? `[P${i}] (figure${fig[1] ? `: ${fig[1].slice(0, 200)}` : ""})` : `[P${i}] ${p.slice(0, 700)}`;
       if ((size += line.length) > 20_000) break;
       numbered.push(line);
     }
@@ -951,7 +1047,7 @@ export async function shapePage(store: CanvasStore, cardId: string) {
     sem.together = cite("together", sem.together);
     const anchors: Record<string, number[]> = {};
     for (const [key, ns] of Object.entries(found)) {
-      const ok = [...new Set(ns)].filter((n) => n < paras.length && !/^!\[/.test(paras[n]));
+      const ok = [...new Set(ns)].filter((n) => n < paras.length);
       if (/^(why|what|part|here)-\d+$|^together$/.test(key) && ok.length) anchors[key] = ok.slice(0, 4);
     }
     await store.update(cardId, { sem, anchors, shaping: "done" });

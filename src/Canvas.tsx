@@ -110,6 +110,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   // The image or card the stacking buttons act on.
   const [selected, setSelected] = useState<string | null>(null);
   const [dockOpen, setDockOpen] = useState(false);
+  // A piece's picture is hovered: outline where it is on its image.
+  const [peek, setPeek] = useState<{ imageId: string; rect: Rect } | null>(null);
   // Explanations asked for but not on the canvas yet: a placeholder shows where each will land,
   // so a selection is answered at once rather than after the server replies.
   const [expected, setExpected] = useState<Pending[]>([]);
@@ -172,7 +174,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   }, [refresh]);
 
   // Poll only while some card is still being written.
-  const pending = items.some((i) => i.kind === "card" && (isPending(i) || i.chatPending));
+  const pending = items.some(
+    (i) => i.kind === "card" && (isPending(i) || i.chatPending || i.shaping === "working" || i.looking === "working"),
+  );
   // While a diagram is being drawn, poll fast enough to watch it appear.
   const drawing = items.some((i) => i.kind === "card" && i.objectKind === "diagram" && isPending(i));
   useEffect(() => {
@@ -942,6 +946,19 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     setSelected(id);
   };
 
+  // Cards about an image written before pieces pointed into their page: find those places once.
+  const looked = useRef(new Set<string>());
+  useEffect(() => {
+    for (const c of cards) {
+      if (c.stage !== "done" || !c.sem || c.looking || c.origin || looked.current.has(c.id)) continue;
+      let p = byId.get(c.parentId);
+      for (let i = 0; p?.kind === "card" && i < 50; i++) p = byId.get(p.parentId);
+      if (p?.kind !== "region" && p?.kind !== "image") continue;
+      looked.current.add(c.id);
+      api.look(c.id).then(refresh, () => {});
+    }
+  });
+
   // What each card's words have already been explained by, and what's still being explained.
   const explainedIn = new Map<string, string[]>();
   const explainingIn = new Map<string, string[]>();
@@ -1343,6 +1360,19 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             </Fragment>
           ))}
 
+          {peek &&
+            (() => {
+              const img = byId.get(peek.imageId);
+              if (img?.kind !== "image" || img.collapsed) return null;
+              const k = img.w / img.naturalW;
+              return (
+                <div
+                  className="region peek"
+                  style={{ left: img.x + peek.rect.x * k, top: img.y + peek.rect.y * k, width: peek.rect.w * k, height: peek.rect.h * k, zIndex: 99999 }}
+                />
+              );
+            })()}
+
           {draftRect && (
             // Above everything while drawing, or the image it's drawn on hides it.
             <div className="region drafting" style={{ left: draftRect.x, top: draftRect.y, width: draftRect.w, height: draftRect.h, zIndex: 99999 }} />
@@ -1380,6 +1410,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               moving={drag?.ids.includes(c.id) ?? false}
               z={rank.get(c.id) ?? 0}
               selected={selected === c.id}
+              lookImage={c.lookImage ? (byId.get(c.lookImage) as ImageItem | undefined) : undefined}
+              onPeek={setPeek}
               explained={explainedIn.get(c.id) ?? NONE}
               explaining={explainingIn.get(c.id) ?? NONE}
               onRemove={() => remove(c.id, `remove “${(c.subject ?? "card").slice(0, 30)}”`)}

@@ -8,7 +8,7 @@ import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/prov
 import { addReaderNote, assetPath, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
-import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, makeObject, readSource } from "./explain.ts";
+import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, makeObject, pointAt, readSource } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
@@ -243,6 +243,16 @@ app.post("/api/canvases/:cid/descend", async (c) => {
 
 // Runs a failed card again in place. A card from a box needs the images re-sent, since
 // only the box's position is stored, not the pixels sent to the model.
+// Finds where on its page each piece of a finished card points, for cards written before that existed.
+app.post("/api/canvases/:cid/cards/:id/look", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const card = await store.findItem(c.req.param("id"));
+  if (card?.kind !== "card" || card.stage !== "done" || !card.sem) return c.json({ error: "not a finished card" }, 409);
+  if (card.looking !== "working") void pointAt(store, card.id);
+  return c.json({ ok: true });
+});
+
 app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
   const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
