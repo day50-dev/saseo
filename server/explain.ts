@@ -1076,7 +1076,9 @@ async function placeBeside(store: CanvasStore, from: CardItem): Promise<{ x: num
   return { x, y };
 }
 
-const QUERY = `Write a short web search query, 2-6 plain words, for BEGINNER material on what the reader asked for, given the card it was asked about.
+const QUERY = `Write a short web search query, 2-6 plain words, for material on what the reader asked for, given the card it was asked about.
+Beginner material, unless they ask for something else (academic, from universities, advanced, by historians…): then put
+that in the query ("university lecture", "historian", "seminar").
 Never use terms specific to the page or paper. Return JSON only: {"searchQuery": "..."}`;
 
 async function queryFor(request: string, about: string, fallback: string): Promise<string> {
@@ -1089,6 +1091,47 @@ async function queryFor(request: string, about: string, fallback: string): Promi
     return str(r.searchQuery) || fallback;
   } catch {
     return fallback;
+  }
+}
+
+/** Each video's channel, from YouTube's oEmbed (no key needed); left out where it can't be had. */
+async function withChannels(videos: Video[]): Promise<Video[]> {
+  return Promise.all(
+    videos.map(async (v) => {
+      try {
+        const r = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(v.url)}`, { signal: AbortSignal.timeout(5000) });
+        const j = r.ok ? ((await r.json()) as { author_name?: string; title?: string }) : {};
+        return { ...v, ...(j.author_name ? { channel: j.author_name } : {}), ...(j.title ? { title: j.title } : {}) };
+      } catch {
+        return v;
+      }
+    }),
+  );
+}
+
+const JUDGE_VIDEOS = `You pick videos for a reader, from search results. Each has a title, the channel that posted it, and a snippet.
+Judge each against what the reader asked for, using the channel as much as the title:
+- If they asked for academic, scholarly or university material: prefer universities, museums, research institutes,
+  named professors and historians, conference or seminar talks; leave out general entertainment and explainer channels.
+- Otherwise prefer clear explanations of the subject from reliable channels.
+- Always leave out videos that aren't about the subject, reaction videos, and clips with no substance.
+Return JSON only: {"pick": [indices of the videos to show, best first, at most 6]}. An empty list if none fit.`;
+
+/** The videos that fit the request, best first (as found, if the judging fails). */
+async function judgeVideos(videos: Video[], request: string, subject: string): Promise<Video[]> {
+  if (videos.length <= 1) return videos;
+  try {
+    const list = videos.map((v, i) => `[${i}] ${v.title} | channel: ${v.channel ?? "unknown"} | ${v.snippet.slice(0, 160)}`).join("\n");
+    const r = await chatJson<{ pick?: unknown }>((await loadConfig()).llm, [
+      { role: "system", content: JUDGE_VIDEOS },
+      { role: "user", content: `Subject: ${subject}\nThey asked for: ${request}\n\nResults:\n${list}` },
+    ]);
+    const picked = (Array.isArray(r.pick) ? r.pick : []).map(Number).filter((i, k, a) => Number.isInteger(i) && videos[i] && a.indexOf(i) === k);
+    if (!picked.length) throw new Error("None of the videos found fit. Try asking differently.");
+    return picked.map((i) => videos[i]);
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("None of")) throw e;
+    return videos;
   }
 }
 
@@ -1138,7 +1181,11 @@ export function makeObject(store: CanvasStore, cardId: string) {
         }
       }
       if (!videos.length) throw new Error(`No videos found for "${q}". Try asking differently, or enable another searcher.`);
-      await store.update(cardId, { stage: "done", subject: `Videos: ${request}`, object: { type: "videos", videos: videos.slice(0, 6) } });
+      // Who posted each one, then a second look at which really fit what was asked (a university's
+      // lecture, not a hobby channel's, when that's what they want).
+      await store.update(cardId, { stage: "writing" });
+      const judged = await judgeVideos(await withChannels(videos.slice(0, 15)), request, about.name);
+      await store.update(cardId, { stage: "done", subject: `Videos: ${request}`, object: { type: "videos", videos: judged.slice(0, 6) } });
     } else if (card.objectKind === "links") {
       await store.update(cardId, { stage: "searching" });
       const q = await queryFor(request, about.text, `${about.name} introduction`);

@@ -250,6 +250,8 @@ export interface Video {
   videoId: string;
   title: string;
   snippet: string;
+  /** Who posted it (the YouTube channel): a university, a museum, a lecturer, or a hobbyist. */
+  channel?: string;
 }
 
 /**

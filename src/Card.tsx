@@ -645,6 +645,7 @@ function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: 
             <button key={v.videoId} type="button" className="video" onClick={() => setPlaying(v.videoId)} title="Play here">
               <img src={`https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`} alt="" loading="lazy" draggable={false} />
               <span className="video-title">{v.title}</span>
+              {v.channel && <span className="video-channel">{v.channel}</span>}
             </button>
           ),
         )}

@@ -335,7 +335,11 @@ app.post("/api/canvases/:cid/call", async (c) => {
       void explainSelection(store, child.id);
       return child;
     },
-  }).catch((err) => ({ say: `Sorry, something went wrong on my end: ${err instanceof Error ? err.message : err}.`, did: undefined }));
+  }).catch((err) => {
+    // Said briefly: the details go to the log, not out loud.
+    console.warn("call turn failed:", err);
+    return { say: "Sorry, I lost that one. Could you say it again?", did: undefined };
+  });
   return c.json(turn);
 });
 

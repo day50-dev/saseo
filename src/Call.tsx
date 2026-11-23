@@ -210,6 +210,17 @@ export function CallBar({
     };
   }, []);
 
+  // While the librarian speaks, the microphone is ignored: what it hears then is mostly the
+  // librarian itself. Interrupt (the Mute button's place, or M) cuts it off and listens again.
+  const deaf = useRef(false);
+  /** Drops whatever the recognizer half-heard (the librarian's tail), so it starts clean. */
+  const flush = useRef<() => void>(() => {});
+  const interrupt = () => {
+    hush();
+    deaf.current = false;
+    flush.current();
+  };
+
   /** Stops the librarian mid-sentence, whichever voice it's using. */
   const hush = () => {
     audio.current?.pause();
@@ -276,7 +287,14 @@ export function CallBar({
       speaking.current = [...speaking.current.filter((x) => x.until > Date.now()), spoken].slice(-3);
       echoClear.current = () => (spoken.until = Date.now() + 4000);
       if (did) onChanged(removed);
+      deaf.current = true;
       await speak(say);
+      if (deaf.current) {
+        // A moment for the room (and the recognizer) to catch up, then a clean start.
+        await new Promise((r) => setTimeout(r, 350));
+        flush.current();
+        deaf.current = false;
+      }
       echoClear.current();
     } catch (e) {
       setError(String(e));
@@ -305,13 +323,14 @@ export function CallBar({
     rec.continuous = true;
     rec.interimResults = true;
     rec.lang = navigator.language || "en-US";
+    flush.current = () => rec.abort(); // onend starts it again
     rec.onspeechstart = () => {
-      if (muted.current) return;
+      if (muted.current || deaf.current) return;
       startedAt.current = Date.now();
       during.current = pointingAt(hovered.current);
     };
     rec.onresult = (e) => {
-      if (muted.current) return;
+      if (muted.current || deaf.current) return;
       let fin = "";
       let part = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -319,15 +338,12 @@ export function CallBar({
         if (r.isFinal) fin += r[0].transcript;
         else part += r[0].transcript;
       }
-      const talking = stateRef.current === "speaking";
       const live = yours(fin || part);
       if (live) {
         if (!during.current) {
           startedAt.current = Date.now();
           during.current = pointingAt(hovered.current);
         }
-        // Talking over the librarian stops it.
-        if (talking && live.split(/\s+/).length >= 2) hush();
         setInterim(part.trim());
         if (stateRef.current === "listening") setState("talking");
       }
@@ -400,7 +416,7 @@ export function CallBar({
           shown = now;
           setLevel(Math.min(1, rms / 0.15));
         }
-        if (muted.current) {
+        if (muted.current || deaf.current) {
           speech = null;
           above = 0;
           return;
@@ -420,7 +436,6 @@ export function CallBar({
             quiet = 0;
             startedAt.current = Date.now();
             during.current = pointingAt(hovered.current);
-            if (talking) hush(); // talking over the librarian stops it
             setState("talking");
           }
           return;
@@ -465,7 +480,7 @@ export function CallBar({
   useEffect(() => {
     const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA"].includes(t.tagName));
     const down = (e: KeyboardEvent) => {
-      if ((e.key === "m" || e.key === "M") && !e.repeat && !e.metaKey && !e.ctrlKey && !typing(e.target)) toggleMute();
+      if ((e.key === "m" || e.key === "M") && !e.repeat && !e.metaKey && !e.ctrlKey && !typing(e.target)) (stateRef.current === "speaking" ? interrupt : toggleMute)();
     };
     window.addEventListener("keydown", down);
     return () => window.removeEventListener("keydown", down);
@@ -478,7 +493,7 @@ export function CallBar({
     talking: where ? `Hearing you, about ${where}` : "Hearing you…",
     hearing: BrowserSTT ? "Got it…" : "Working out what you said…",
     thinking: "Thinking…",
-    speaking: "Speaking (talk to interrupt)",
+    speaking: "Speaking. You're muted until it's done: Interrupt (M) to cut in",
     muted: "Muted (M to unmute)",
   }[state];
 
@@ -506,7 +521,7 @@ export function CallBar({
       </div>
       <div className="call-controls">
         <span className={`call-mic ${state}`} title={state === "muted" ? "Muted" : "The microphone is open"}>
-          <span className="call-level" style={{ transform: `scaleY(${state === "muted" ? 0.08 : Math.max(0.08, level)})` }} />
+          <span className="call-level" style={{ transform: `scaleY(${state === "muted" || state === "speaking" ? 0.08 : Math.max(0.08, level)})` }} />
         </span>
         {serverVoice && "speechSynthesis" in window ? (
           <select
@@ -521,8 +536,14 @@ export function CallBar({
         ) : (
           <span className="call-spacer" />
         )}
-        <button type="button" className="secondary call-mute" onClick={toggleMute} title="Mute or unmute (M)">
-          {state === "muted" ? "Unmute" : "Mute"} <kbd>M</kbd>
+        {/* One place, one key: while it speaks, this cuts it off; otherwise it mutes. */}
+        <button
+          type="button"
+          className={state === "speaking" ? "call-mute interrupting" : "secondary call-mute"}
+          onClick={state === "speaking" ? interrupt : toggleMute}
+          title={state === "speaking" ? "Stop it talking and listen to you (M)" : "Mute or unmute (M)"}
+        >
+          {state === "speaking" ? "Interrupt" : state === "muted" ? "Unmute" : "Mute"} <kbd>M</kbd>
         </button>
         <button type="button" className="call-end" onClick={onClose} title="Hang up">
           Hang up

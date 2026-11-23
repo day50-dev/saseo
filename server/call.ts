@@ -5,7 +5,7 @@
 import { CARD_WIDTH, type CardItem, EXTENSION_SHAPES, type Extension, type ExtensionShape, type ObjectKind } from "../shared/canvas.ts";
 import { type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
-import { chatJson } from "./llm.ts";
+import { chat } from "./llm.ts";
 
 export const SPEECH = {
   tts: process.env.LIBRARIAN_TTS_URL ?? "",
@@ -130,10 +130,23 @@ export async function callTurn(
     `They just said: "${text}"`,
   ].filter(Boolean);
   type Action = { kind?: string; shape?: string; phrase?: string; find?: string; request?: string; ids?: unknown };
-  const r = await chatJson<{ say?: string; action?: Action; actions?: Action[] }>((await loadConfig()).llm, [
+  // A reply that isn't JSON is still a reply: it's said as it is (never an error read aloud, which
+  // the microphone would hear and answer, round and round).
+  const raw = await chat((await loadConfig()).llm, [
     { role: "system", content: CALL },
     { role: "user", content: lines.join("\n\n") },
   ]);
+  let r: { say?: string; action?: Action; actions?: Action[] } = {};
+  const j0 = raw.indexOf("{");
+  const j1 = raw.lastIndexOf("}");
+  try {
+    if (j0 >= 0 && j1 > j0) r = JSON.parse(raw.slice(j0, j1 + 1));
+  } catch {}
+  if (!r.say && !r.actions && !r.action) {
+    // Plain words, minus a template's brackets or a stray code fence.
+    const plain = raw.replace(/```\w*|```/g, "").replace(/^\s*\[|\]\s*$/g, "").trim();
+    r = { say: /^[{[]/.test(plain) ? "" : plain.slice(0, 600) };
+  }
   let spoken = String(r.say ?? "").trim() || "Sorry, I didn't catch that. Could you say it again?";
   const actions = (Array.isArray(r.actions) ? r.actions : r.action ? [r.action] : []).slice(0, 3);
   const done: string[] = [];
