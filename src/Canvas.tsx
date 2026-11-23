@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { Card, type Side } from "./Card.tsx";
 import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
 import { players } from "./youtube.ts";
@@ -643,6 +643,50 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     }
     setDrag({ ids, start: toWorld(e.clientX, e.clientY), orig, avoid, dx: 0, dy: 0 });
     stageRef.current?.setPointerCapture(e.pointerId);
+  };
+
+  /**
+   * Drags a card's right edge: wider (or narrower). The cards it explains that sit to its right
+   * keep their distance from its edge, moving with it.
+   */
+  const startResize = (id: string, e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const card = byId.get(id);
+    if (card?.kind !== "card") return;
+    e.stopPropagation();
+    e.preventDefault();
+    setSelected(id);
+    const x0 = e.clientX;
+    const w0 = card.w;
+    const edge = card.x + w0;
+    const along: Record<string, number> = {};
+    for (const sid of subtree(id)) {
+      const i = byId.get(sid);
+      if (sid !== id && i?.kind === "card" && i.x >= edge - 1) along[sid] = i.x;
+    }
+    let w = w0;
+    const move = (ev: PointerEvent) => {
+      w = Math.round(Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, w0 + (ev.clientX - x0) / view.scale)));
+      setItems((all) => all.map((i) => (i.id === id && i.kind === "card" ? { ...i, w } : i.id in along && i.kind === "card" ? { ...i, x: along[i.id] + w - w0 } : i)));
+    };
+    const up = async () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.classList.remove("resizing");
+      if (Math.abs(w - w0) < 2) return;
+      const to = [{ id, x: card.x, y: card.y, w }, ...Object.entries(along).map(([sid, x]) => ({ id: sid, x: x + w - w0, y: (byId.get(sid) as CardItem).y }))];
+      const from = [{ id, x: card.x, y: card.y, w: w0 }, ...Object.entries(along).map(([sid, x]) => ({ id: sid, x, y: (byId.get(sid) as CardItem).y }))];
+      try {
+        await api.move(to);
+        pushStep({ label: "resize", undo: () => api.move(from), redo: () => api.move(to) });
+      } catch (err) {
+        setError(`Couldn't resize: ${err}`);
+      }
+      await refresh();
+    };
+    document.body.classList.add("resizing");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   };
 
   /**
@@ -1510,6 +1554,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 }
               }}
               onGrab={(e) => startMove(c.id, e)}
+              onResize={(e) => startResize(c.id, e)}
               onPortDown={(side, e) => startLink(c.id, side, e)}
               linking={!!link && link.from !== c.id}
               relatesNames={c.relates?.map((id) => {

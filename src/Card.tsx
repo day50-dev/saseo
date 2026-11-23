@@ -108,6 +108,8 @@ export function Card(props: {
   onDescend: (text: string, context: string, clientY: number) => Promise<string | undefined>;
   /** This card's children still being written, and the stage each is at. */
   childStages: Record<string, CardStage>;
+  /** Starts dragging the card's right edge, to make it wider or narrower. */
+  onResize: (e: React.PointerEvent) => void;
   onRemove: () => void;
   onRetry: () => void;
   /** Answers the librarian's question; "" means just explain. */
@@ -416,6 +418,9 @@ export function Card(props: {
       </>
       )}
 
+      {/* The right edge, and a grip at the bottom-right corner, drag the card wider. */}
+      <div className="card-resize" title="Drag to make this card wider or narrower" onPointerDown={props.onResize} />
+      <div className="card-resize-grip" title="Drag to make this card wider or narrower" onPointerDown={props.onResize} />
       {(["left", "right", "top", "bottom"] as const).map((side) => (
         <div
           key={side}

@@ -381,6 +381,20 @@ kbd {
 .port-top { left: 50%; top: 0; }
 .port-bottom { left: 50%; top: 100%; }
 .card-item:hover .port { opacity: 1; }
+/* Width: the right edge drags, and a grip at the corner shows it can (same size at any zoom). */
+.card-resize {
+  position: absolute; top: 0; bottom: 0; right: calc(-5px / var(--zoom, 1)); width: calc(10px / var(--zoom, 1));
+  cursor: ew-resize; z-index: 1;
+}
+.card-resize:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.card-resize-grip {
+  position: absolute; right: 0; bottom: 0; z-index: 2; cursor: ew-resize;
+  width: calc(18px / var(--zoom, 1)); height: calc(18px / var(--zoom, 1));
+  background: linear-gradient(135deg, transparent 50%, var(--line) 50%, var(--line) 58%, transparent 58%, transparent 70%, var(--line) 70%, var(--line) 78%, transparent 78%);
+  border-bottom-right-radius: 8px; opacity: 0.8;
+}
+.card-item:hover .card-resize-grip { background: linear-gradient(135deg, transparent 50%, var(--accent) 50%, var(--accent) 58%, transparent 58%, transparent 70%, var(--accent) 70%, var(--accent) 78%, transparent 78%); opacity: 1; }
+body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none; }
 .port:hover { transform: translate(-50%, -50%) scale(1.3); background: var(--sem-line); opacity: 1; }
 .stage.mode-select .port { cursor: crosshair; }
 .card-item.link-target:hover { outline: 3px solid var(--accent); outline-offset: 2px; }

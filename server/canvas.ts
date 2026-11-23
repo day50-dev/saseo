@@ -5,6 +5,8 @@ import { appendFile, copyFile, mkdir, readFile, rename, rm, writeFile } from "no
 import path from "node:path";
 import {
   type CanvasEvent,
+  CARD_MAX_WIDTH,
+  CARD_MIN_WIDTH,
   type CanvasInfo,
   type CanvasState,
   type CardItem,
@@ -192,7 +194,7 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   } else if (e.type === "move") {
     for (const m of e.moves) {
       const item = s.items.find((i) => i.id === m.id);
-      if (item && item.kind !== "region") Object.assign(item, { x: m.x, y: m.y }, item.kind === "card" && m.h ? { h: m.h } : {});
+      if (item && item.kind !== "region") Object.assign(item, { x: m.x, y: m.y }, item.kind === "card" && m.h ? { h: m.h } : {}, item.kind === "card" && m.w ? { w: m.w } : {});
     }
   } else {
     const ids = new Set(e.ids);
@@ -386,6 +388,7 @@ export class CanvasStore {
       const item = items.find((i) => i.id === m.id);
       if (!item || item.kind === "region") return { ok: false, error: `can't move ${m.id}` };
       if (!Number.isFinite(m.x) || !Number.isFinite(m.y)) return { ok: false, error: "x and y must be numbers" };
+      if (m.w !== undefined && (item.kind !== "card" || !Number.isFinite(m.w))) return { ok: false, error: "only a card's width can be set" };
     }
     // Check every visible card whose own position or whose parent's position changes.
     for (const card of items) {
@@ -401,7 +404,7 @@ export class CanvasStore {
     }
     await this.record({
       type: "move",
-      moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y), ...(m.h ? { h: Math.round(m.h) } : {}) })),
+      moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y), ...(m.h ? { h: Math.round(m.h) } : {}), ...(m.w ? { w: Math.round(Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, m.w))) } : {}) })),
     });
     return { ok: true };
   }

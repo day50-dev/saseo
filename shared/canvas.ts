@@ -375,7 +375,13 @@ export interface Move {
   y: number;
   /** A card's height as drawn when it was moved, so overlap above and below can be checked. */
   h?: number;
+  /** A card's new width, when it was resized. */
+  w?: number;
 }
+
+/** How narrow and how wide a card can be dragged. */
+export const CARD_MIN_WIDTH = 280;
+export const CARD_MAX_WIDTH = 4000;
 
 /** Position is semantic: an explanation sits at least this far from what it explains, on any side, never on it. */
 export const MIN_CHILD_GAP = 24;
@@ -420,6 +426,7 @@ export interface CanvasState {
   updatedAt?: string;
 }
 
-export const CARD_WIDTH = 480;
+/** New cards are laid out for landscape screens; any card's right edge drags it wider or narrower. */
+export const CARD_WIDTH = 720;
 /** A page read from a link is wider: it holds an article, not a diagram. */
-export const SOURCE_WIDTH = 640;
+export const SOURCE_WIDTH = 960;

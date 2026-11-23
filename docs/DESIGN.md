@@ -278,7 +278,7 @@ Ideas still being worked out, such as video lectures and the course map, live in
 - Undo history currently lives in the open page and resets on reload; the log already holds what's needed to keep it.
 - The first card on a dense formula still tends to climb; better onramp sources and a stronger rewrite are the levers.
 - The course map's next step: flag an explanation whose own terms are usually taught later than its subject ("reaches ahead").
-- Cards are narrow, so horizontal shapes (asides, forks) are fitted inside them; letting a card widen into free space would give them more room without moving anything.
+- Cards start 720px wide (pages 960) and any card's right edge (or its corner grip) drags it wider or narrower; the cards it explains to its right move with its edge. Widening a card into free space automatically, when a horizontal shape needs room, is still open.
 
 ### Later: meet people in the tools they already use
 
