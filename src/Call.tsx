@@ -3,6 +3,7 @@
 // you start and stop speaking, so your hand stays on the document. It answers aloud, and grows
 // or opens cards as it goes.
 import { useEffect, useRef, useState } from "react";
+import { selectedText, textWithTex } from "./MathText.tsx";
 
 type Turn = { role: "you" | "librarian"; text: string };
 type State = "starting" | "listening" | "talking" | "hearing" | "thinking" | "speaking" | "muted";
@@ -12,26 +13,40 @@ export interface Pointing {
   key?: string;
   pieceText?: string;
   selection?: string;
+  /** The sentence or line the selection sits in, so "this part" can be read in place. */
+  selectionContext?: string;
 }
 
 const PIECE = "[data-a], [data-x]";
 
+/** An element's words (with its math as TeX), leaving out buttons like a piece's "+". */
+function plain(el: Element): string {
+  const copy = el.cloneNode(true) as Element;
+  for (const b of [...copy.querySelectorAll("button")]) b.remove();
+  return textWithTex(copy).replace(/\s+/g, " ").trim();
+}
+
 /** What's being pointed at: the selection if there is one, else the piece under the pointer. */
 function pointingAt(hovered: Element | null): Pointing {
   const sel = window.getSelection();
-  const text = sel && !sel.isCollapsed ? sel.toString().replace(/\s+/g, " ").trim().slice(0, 300) : "";
-  const anchor = text && sel?.anchorNode ? (sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode.parentElement) : null;
-  const el = anchor ?? hovered;
+  const node = sel && !sel.isCollapsed && sel.anchorNode ? (sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode.parentElement) : null;
+  // Words selected in the call bar itself aren't about the canvas.
+  const anchor = node && !node.closest(".call-bar") ? node : null;
+  const text = anchor && sel ? selectedText(sel).replace(/\s+/g, " ").trim().slice(0, 1500) : "";
+  const line = anchor?.closest(".sem-step, .sem-desc, .sem-part, .sem-together, .sem-aside, .facet p, .chat-text, .source-para, p, li");
+  const context = line ? plain(line).slice(0, 800) : "";
+  const el = (text ? anchor : null) ?? hovered;
   const card = el?.closest<HTMLElement>(".card-item");
-  if (!card) return text ? { selection: text } : {};
+  const selected = text ? { selection: text, ...(context && context !== text ? { selectionContext: context } : {}) } : {};
+  if (!card) return selected;
   const piece = el?.closest<HTMLElement>(PIECE);
   const key = piece?.dataset.a ?? piece?.dataset.x;
   // Section headings ("cat-why") count as pieces; the title and decorations don't.
   const usable = key && key !== "title" && key !== "aside" ? key : undefined;
   return {
     cardId: card.dataset.cardId,
-    ...(usable ? { key: usable, pieceText: piece!.innerText.replace(/\s+/g, " ").trim().slice(0, 500) } : {}),
-    ...(text ? { selection: text } : {}),
+    ...(usable ? { key: usable, pieceText: plain(piece!).slice(0, 500) } : {}),
+    ...selected,
   };
 }
 
@@ -142,6 +157,18 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
   const muted = useRef(false);
   // What you pointed at while saying it: the last thing on a card, during the utterance.
   const during = useRef<Pointing | null>(null);
+  // The last words selected, and when: a selection made just before speaking counts even if a
+  // click has since cleared it.
+  const lastSel = useRef<{ p: Pointing; at: number } | null>(null);
+  const startedAt = useRef(0);
+  /** What an utterance was about: the selection first (now, or made shortly before), else the pointer. */
+  const about = (pointer: Pointing | null): Pointing => {
+    const now = pointingAt(hovered.current);
+    if (now.selection) return now;
+    const last = lastSel.current;
+    if (last && last.at >= startedAt.current - 15_000) return last.p;
+    return pointer ?? now;
+  };
   // Utterances are answered one at a time, in order.
   const queue = useRef<Promise<void>>(Promise.resolve());
 
@@ -161,9 +188,19 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
       setPointed(p);
       if (during.current && p.cardId) during.current = p;
     };
+    // Selecting words shows at once what "this" now means.
+    const selected = () => {
+      const p = pointingAt(hovered.current);
+      if (p.selection) {
+        lastSel.current = { p, at: Date.now() };
+        setPointed(p);
+      }
+    };
     document.addEventListener("pointermove", move);
+    document.addEventListener("selectionchange", selected);
     return () => {
       document.removeEventListener("pointermove", move);
+      document.removeEventListener("selectionchange", selected);
       lit?.classList.remove("call-pointed");
     };
   }, []);
@@ -252,7 +289,9 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
     rec.interimResults = true;
     rec.lang = navigator.language || "en-US";
     rec.onspeechstart = () => {
-      if (!muted.current) during.current = pointingAt(hovered.current);
+      if (muted.current) return;
+      startedAt.current = Date.now();
+      during.current = pointingAt(hovered.current);
     };
     rec.onresult = (e) => {
       if (muted.current) return;
@@ -266,7 +305,10 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
       const talking = stateRef.current === "speaking";
       const live = (fin || part).trim();
       if (live && !(talking && echoOf(live, speaking.current))) {
-        during.current ??= pointingAt(hovered.current);
+        if (!during.current) {
+          startedAt.current = Date.now();
+          during.current = pointingAt(hovered.current);
+        }
         // Talking over the librarian stops it.
         if (talking && live.split(/\s+/).length >= 2) hush();
         setInterim(part.trim());
@@ -275,7 +317,7 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
       const text = fin.trim();
       if (!text) return;
       setInterim("");
-      const pointing = during.current ?? pointingAt(hovered.current);
+      const pointing = about(during.current);
       during.current = null;
       if (talking && echoOf(text, speaking.current)) return;
       queue.current = queue.current.then(() => heard(text, pointing));
@@ -353,6 +395,7 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
           if (above >= START_MS) {
             speech = [...pre];
             quiet = 0;
+            startedAt.current = Date.now();
             during.current = pointingAt(hovered.current);
             if (talking) hush(); // talking over the librarian stops it
             setState("talking");
@@ -366,7 +409,7 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
           const said = speech;
           speech = null;
           above = 0;
-          const pointing = during.current ?? {};
+          const pointing = about(during.current);
           during.current = null;
           if (long - quiet < MIN_MS) {
             setState((s) => (s === "talking" ? "listening" : s));
@@ -405,7 +448,7 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
     return () => window.removeEventListener("keydown", down);
   });
 
-  const where = pointed.selection ? `“${pointed.selection.slice(0, 40)}”` : pointed.pieceText ? `“${pointed.pieceText.slice(0, 50)}…”` : "";
+  const where = pointed.selection ? `your selection “${pointed.selection.slice(0, 50)}${pointed.selection.length > 50 ? "…" : ""}”` : pointed.pieceText ? `“${pointed.pieceText.slice(0, 50)}…”` : "";
   const status = {
     starting: "Opening the microphone…",
     listening: where ? `Listening. Pointing at ${where}` : "Listening. Just talk, and point at what you mean",

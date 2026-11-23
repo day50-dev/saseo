@@ -15,7 +15,7 @@ import { allSightings } from "./curriculum.ts";
 import { besideOf, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
-import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
+import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, findFor, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
@@ -313,6 +313,7 @@ app.post("/api/canvases/:cid/call", async (c) => {
       await store.edit(card.id, (now) => (now?.kind === "card" ? { ext: [...(now.ext ?? []), ext] } : null));
       void extendPiece(store, card.id, ext.id);
     },
+    find: (near, kind, request) => findFor(store, near, kind, request),
     descend: async (card, phrase) => {
       const cards = (await store.getState()).items.filter((i): i is CardItem => i.kind === "card" && !i.hidden);
       const at = besideOf(cards, card, (x) => x.h ?? (x.sem ? 900 : 300));

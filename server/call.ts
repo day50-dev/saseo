@@ -2,7 +2,7 @@
 // and changes the canvas as it goes (grows a piece, opens a deeper card). Speech runs on
 // OpenAI-compatible servers you point it at: Kokoro for speaking, a /transcribe endpoint
 // (faster-whisper) for listening. See docs/DESIGN.md, "A call with the librarian".
-import { CARD_WIDTH, type CardItem, EXTENSION_SHAPES, type Extension, type ExtensionShape } from "../shared/canvas.ts";
+import { CARD_WIDTH, type CardItem, EXTENSION_SHAPES, type Extension, type ExtensionShape, type ObjectKind } from "../shared/canvas.ts";
 import { type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { chatJson } from "./llm.ts";
@@ -50,6 +50,8 @@ export interface Pointing {
   pieceText?: string;
   /** Words selected on the canvas. */
   selection?: string;
+  /** The sentence or line those words sit in. */
+  selectionContext?: string;
 }
 
 export interface Turn {
@@ -61,6 +63,8 @@ const CALL = `You are a research librarian on a voice call with a curious, intel
 They are looking at a canvas of explanations drawn as diagrams, and they can point at a piece of one while they talk.
 Answer the way you'd talk on the phone: warm, plain, short. One to three sentences, no lists, no markdown, no citations,
 no LaTeX (say math in words: "A sub j", "the integral of"). Descend: explain with ideas more familiar than what they ask about.
+When they say "this", "this part", "right here", "that bit" or "here", they mean the words they have selected, if any;
+otherwise the piece they are pointing at. Speak to exactly that: say briefly which part you're taking up, then help with it.
 You can also change the canvas while you talk. Choose at most one action:
 - "grow": add a shape to the piece they're pointing at. Shapes: aside (say more), why (reasons leading up to it), then
   (what follows), steps (how it's done), parts (break it down), split (two ways or cases), example (a worked example),
@@ -68,8 +72,13 @@ You can also change the canvas while you talk. Choose at most one action:
   than talk. Then your words briefly say what you're adding ("Let me break that down for you on the card.").
 - "descend": open a new card that explains a phrase (they selected it, or it's in the piece they point at). Use it when
   they ask what a term means and it deserves a full explanation.
+- "find": put something new on the canvas: "videos" (lectures, explainers), "links" (reading: articles, notes,
+  tutorials), "papers" (research papers on arXiv) or "diagram" (draw one). "request" says what, in a few words
+  ("eigenvectors, visual intuition"). Use it whenever they ask you to find, pull up, show or get videos, reading,
+  papers or a picture. Your words say what you're fetching ("I'll pull up some videos on eigenvectors.").
 - "none": just talk.
-Return JSON only: {"say": "...", "action": {"kind": "none" | "grow" | "descend", "shape": "...", "phrase": "..."}}`;
+Return JSON only: {"say": "...", "action": {"kind": "none" | "grow" | "descend" | "find", "shape": "...", "phrase": "...",
+  "find": "videos" | "links" | "papers" | "diagram", "request": "..."}}`;
 
 /** One turn of the call: what to say back, and what was done on the canvas. */
 export async function callTurn(
@@ -77,7 +86,11 @@ export async function callTurn(
   text: string,
   pointing: Pointing,
   history: Turn[],
-  hooks: { grow: (card: CardItem, ext: Extension) => Promise<void>; descend: (card: CardItem, phrase: string) => Promise<CardItem> },
+  hooks: {
+    grow: (card: CardItem, ext: Extension) => Promise<void>;
+    descend: (card: CardItem, phrase: string) => Promise<CardItem>;
+    find: (near: CardItem | undefined, kind: ObjectKind, request: string) => Promise<CardItem>;
+  },
 ): Promise<{ say: string; did?: string }> {
   const { items } = await store.getState();
   const cards = items.filter((i): i is CardItem => i.kind === "card" && !i.hidden);
@@ -100,11 +113,13 @@ export async function callTurn(
     notes.length ? `What they've told you about themselves: ${notes.join("; ")}` : "",
     card ? `They are pointing at the card "${card.subject ?? card.selection}":\n${semText(card)}` : "They aren't pointing at anything.",
     pointing.pieceText ? `Specifically this piece of it: "${pointing.pieceText}"` : "",
-    pointing.selection ? `They have selected these words: "${pointing.selection}"` : "",
+    pointing.selection
+      ? `They have SELECTED these words (this is what "this" means): "${pointing.selection}"${pointing.selectionContext ? `\nThey sit in: "${pointing.selectionContext}"` : ""}`
+      : "",
     history.length ? `The call so far:\n${history.slice(-8).map((t) => `${t.role === "you" ? "Reader" : "You"}: ${t.text}`).join("\n")}` : "",
     `They just said: "${text}"`,
   ].filter(Boolean);
-  const r = await chatJson<{ say?: string; action?: { kind?: string; shape?: string; phrase?: string } }>((await loadConfig()).llm, [
+  const r = await chatJson<{ say?: string; action?: { kind?: string; shape?: string; phrase?: string; find?: string; request?: string } }>((await loadConfig()).llm, [
     { role: "system", content: CALL },
     { role: "user", content: lines.join("\n\n") },
   ]);
@@ -117,6 +132,12 @@ export async function callTurn(
       const ext: Extension = { id: newId(), at: pointing.key, shape, ask: text.slice(0, 500), status: "working" };
       await hooks.grow(card, ext);
       did = `grew ${shape} on ${pointing.key}`;
+    } else if (kind === "find") {
+      const what = (["videos", "links", "papers", "diagram"] as const).find((k) => k === r.action?.find) ?? "videos";
+      const request = (r.action?.request || pointing.selection || text).trim().slice(0, 300);
+      // Beside what they're pointing at, else beside the newest card.
+      const made = await hooks.find(card ?? cards.at(-1), what, request);
+      did = `finding ${what}: ${request} (${made.id})`;
     } else if (kind === "descend" && card) {
       const phrase = (pointing.selection || r.action?.phrase || "").trim().slice(0, 300);
       if (phrase) {

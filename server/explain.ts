@@ -1183,11 +1183,23 @@ export async function handleChat(store: CanvasStore, cardId: string) {
   const { kind, request } = await decideIntent(last.text, card.subject ?? card.selection ?? "this");
   if (kind === "answer") return chatAbout(store, cardId);
 
-  const at = await placeBeside(store, card);
+  const object = await addObject(store, card, kind, request);
+  await store.record({
+    type: "chat",
+    id: cardId,
+    message: { role: "assistant", text: `${MADE[kind]}: ${request}`, at: new Date().toISOString(), objectId: object.id },
+  });
+  await store.update(cardId, { chatPending: false });
+  await makeObject(store, object.id);
+}
+
+/** Puts a card that will hold videos, reading, papers or a diagram beside `from`; returns it at once. */
+async function addObject(store: CanvasStore, from: CardItem | undefined, kind: ObjectKind, request: string): Promise<CardItem> {
+  const at = from ? await placeBeside(store, from) : { x: 0, y: 0 };
   const object: CardItem = {
     kind: "card",
     id: newId(),
-    parentId: card.id,
+    parentId: from?.id ?? "",
     objectKind: kind,
     request,
     x: at.x,
@@ -1197,13 +1209,14 @@ export async function handleChat(store: CanvasStore, cardId: string) {
     subject: request,
   };
   await store.add(object);
-  await store.record({
-    type: "chat",
-    id: cardId,
-    message: { role: "assistant", text: `${MADE[kind]}: ${request}`, at: new Date().toISOString(), objectId: object.id },
-  });
-  await store.update(cardId, { chatPending: false });
-  await makeObject(store, object.id);
+  return object;
+}
+
+/** Finds videos, reading or papers (or draws a diagram) for a request, beside a card; the search runs on. */
+export async function findFor(store: CanvasStore, from: CardItem | undefined, kind: ObjectKind, request: string): Promise<CardItem> {
+  const object = await addObject(store, from, kind, request);
+  void makeObject(store, object.id);
+  return object;
 }
 
 // ---- Starting from a link or a statement ----
