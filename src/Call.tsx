@@ -3,6 +3,7 @@
 // you start and stop speaking, so your hand stays on the document. It answers aloud, and grows
 // or opens cards as it goes.
 import { useEffect, useRef, useState } from "react";
+import { substantive } from "../shared/canvas.ts";
 import { selectedText, textWithTex } from "./MathText.tsx";
 
 type Turn = { role: "you" | "librarian"; text: string };
@@ -254,7 +255,7 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
         if (r.error) throw new Error(r.error);
         text = r.text ?? "";
       }
-      if (!text) return;
+      if (!substantive(text)) return;
       const history = turnsRef.current;
       setTurns([...history, { role: "you", text }]);
       setState("thinking");
@@ -264,6 +265,7 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
         body: JSON.stringify({ text, pointing, history }),
       });
       const { say, did } = (await r.json()) as { say: string; did?: string };
+      if (!say) return;
       setTurns((t) => [...t, { role: "librarian", text: say }]);
       speaking.current = say;
       if (did) onChanged();
@@ -316,6 +318,13 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
       }
       const text = fin.trim();
       if (!text) return;
+      // Noise, a stray syllable, or nothing: not a question. Back to listening, quietly.
+      if (!substantive(text)) {
+        setInterim("");
+        during.current = null;
+        setState((st) => (st === "talking" ? "listening" : st));
+        return;
+      }
       setInterim("");
       const pointing = about(during.current);
       during.current = null;

@@ -6,7 +6,7 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
-import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, EXTENSION_SHAPES, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { remember } from "./pagecache.ts";
 import { addReaderNote, assetPath, autoName, DATA_DIR, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
@@ -310,6 +310,8 @@ app.post("/api/canvases/:cid/call", async (c) => {
   const body = (await c.req.json()) as { text?: string; pointing?: Pointing; history?: Turn[] };
   const text = body.text?.trim().slice(0, 2000);
   if (!text) return c.json({ error: "text is required" }, 400);
+  // A stray syllable or noise gets no answer at all (the call goes on listening).
+  if (!substantive(text)) return c.json({ say: "" });
   const turn = await callTurn(store, text, body.pointing ?? {}, Array.isArray(body.history) ? body.history.slice(-12) : [], {
     grow: async (card, ext) => {
       await store.edit(card.id, (now) => (now?.kind === "card" ? { ext: [...(now.ext ?? []), ext] } : null));

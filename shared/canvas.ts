@@ -430,3 +430,17 @@ export interface CanvasState {
 export const CARD_WIDTH = 720;
 /** A page read from a link is wider: it holds an article, not a diagram. */
 export const SOURCE_WIDTH = 960;
+
+// Sounds an open microphone hears that aren't anyone asking anything.
+const FILLER = new Set(["a", "i", "o", "oh", "uh", "um", "umm", "uhm", "hmm", "hm", "mm", "mhm", "ah", "eh", "er", "huh", "the", "and", "so", "is", "it", "to", "of", "you", "thank", "thanks", "bye"]);
+
+/**
+ * Whether something heard on a call is worth answering: real words, not a stray "o" or "a",
+ * a cough the recognizer turned into a syllable, or silence. One word counts if it's a word
+ * that could be a question on its own ("why", "really", "eigenvectors").
+ */
+export function substantive(text: string): boolean {
+  const words = (text.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []).filter((w) => !FILLER.has(w));
+  if (words.length >= 2) return true;
+  return words.length === 1 && (words[0].length >= 3 || ["no", "ok", "go"].includes(words[0]));
+}
