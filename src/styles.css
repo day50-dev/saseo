@@ -856,9 +856,13 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 }
 .nb-resize { position: absolute; left: -5px; top: 0; bottom: 0; width: 10px; cursor: ew-resize; z-index: 1; }
 .nb-resize:hover { background: color-mix(in srgb, var(--accent) 25%, transparent); }
-.nb-head { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
+.nb-head { display: flex; gap: 10px; align-items: flex-start; padding: 8px 14px 8px; border-bottom: 1px solid var(--line); }
 .nb-title { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.nb-title strong { font-size: 16px; cursor: pointer; }
+.nb-title strong { font-size: 15px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nb-about-toggle { background: none; border: none; padding: 0; text-align: left; cursor: pointer; color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+.nb-about-toggle:hover .nb-src { text-decoration: underline; }
+.nb-about { max-height: 30vh; overflow-y: auto; }
+.nb-about p { margin: 4px 0; }
 .nb-title a { word-break: break-all; }
 .nb-written { color: #9a5b00; }
 .nb-tools { display: flex; gap: 6px; flex: none; }

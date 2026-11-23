@@ -731,7 +731,13 @@ app.post("/api/canvases/:cid/videos/:id/moments", async (c) => {
   const t = Number(body.t);
   if (!Number.isFinite(t) || !Number.isFinite(body.x) || !Number.isFinite(body.y)) return c.json({ error: "t, x and y are required" }, 400);
   const { videoId, title } = video.video;
-  const [frame, caps] = await Promise.all([frameAt(videoId, t), captions(videoId).catch(() => [])]);
+  let frame: Awaited<ReturnType<typeof frameAt>>;
+  let caps: Awaited<ReturnType<typeof captions>>;
+  try {
+    [frame, caps] = await Promise.all([frameAt(videoId, t), captions(videoId).catch(() => [])]);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 502);
+  }
   const asset = await saveAsset(frame.jpeg, "image/jpeg");
   const transcript = around(caps, t);
   const w = MOMENT_WIDTH;

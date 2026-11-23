@@ -11,7 +11,35 @@ import { DATA_DIR } from "./canvas.ts";
 const run = promisify(execFile);
 const DIR = path.join(DATA_DIR, "videos");
 // YouTube needs a JavaScript runtime to hand out streams; node is the one we have.
-const YTDLP = ["--js-runtimes", "node", "--no-warnings", "--no-playlist"];
+const BASE = ["--js-runtimes", "node", "--no-warnings", "--no-playlist"];
+
+/**
+ * YouTube sometimes refuses a server as a bot ("Sign in to confirm you're not a bot"). Cookies from
+ * a browser signed in to YouTube get it through: a Netscape-format cookies file at
+ * data/youtube-cookies.txt, or wherever LIBRARIAN_YTDLP_COOKIES points.
+ */
+export const COOKIES = process.env.LIBRARIAN_YTDLP_COOKIES ?? path.join(DATA_DIR, "youtube-cookies.txt");
+let YTDLP = BASE;
+const useCookies = async () => {
+  const has = await stat(COOKIES).then((s) => s.isFile() && s.size > 0, () => false);
+  YTDLP = has ? [...BASE, "--cookies", COOKIES] : BASE;
+};
+void useCookies();
+// Picked up when the file appears or changes, without a restart.
+setInterval(() => void useCookies(), 60_000).unref();
+
+/** Says plainly when YouTube has refused the server, and what fixes it. */
+function explain(err: unknown): Error {
+  const msg = err instanceof Error ? `${err.message} ${(err as { stderr?: string }).stderr ?? ""}` : String(err);
+  if (/not a bot|Sign in to confirm/i.test(msg)) {
+    return new Error(
+      YTDLP.includes("--cookies")
+        ? "YouTube is refusing this server even with its cookies; they may have expired. Export fresh ones from a signed-in browser to data/youtube-cookies.txt."
+        : "YouTube is refusing this server as a bot. It needs cookies from a browser signed in to YouTube, saved as data/youtube-cookies.txt on the server.",
+    );
+  }
+  return err instanceof Error ? err : new Error(msg);
+}
 
 export const YOUTUBE_ID = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
 
@@ -40,8 +68,12 @@ export interface Caption {
 const ytUrl = (id: string) => `https://www.youtube.com/watch?v=${id}`;
 
 async function ytdlp(args: string[], timeout = 120_000): Promise<string> {
-  const { stdout } = await run("yt-dlp", [...YTDLP, ...args], { timeout, maxBuffer: 64 * 1024 * 1024 });
-  return stdout;
+  try {
+    const { stdout } = await run("yt-dlp", [...YTDLP, ...args], { timeout, maxBuffer: 64 * 1024 * 1024 });
+    return stdout;
+  } catch (err) {
+    throw explain(err);
+  }
 }
 
 /** Title, channel, length and description, fetched once per video. */
@@ -197,7 +229,7 @@ function download(id: string, args: string[]): Promise<void> {
     child.on("close", (code) => {
       clearTimeout(timer);
       if (code === 0) resolve();
-      else reject(new Error(tail.replace(/^ERROR:\s*/, "") || `yt-dlp exited with ${code}`));
+      else reject(explain(new Error(tail.replace(/^ERROR:\s*/, "") || `yt-dlp exited with ${code}`)));
     });
   });
 }

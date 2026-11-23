@@ -121,7 +121,7 @@ npm install
 npm run dev
 ```
 
-Videos need [yt-dlp](https://github.com/yt-dlp/yt-dlp) (a recent one: YouTube's protections change often) and [ffmpeg](https://ffmpeg.org) on the server, and Node for yt-dlp's JavaScript runtime.
+Videos need [yt-dlp](https://github.com/yt-dlp/yt-dlp) (a recent one: YouTube's protections change often) and [ffmpeg](https://ffmpeg.org) on the server, and Node for yt-dlp's JavaScript runtime. YouTube sometimes refuses servers as bots ("Sign in to confirm you're not a bot"); then stopping a lecture fails until the server has cookies from a browser signed in to YouTube: export them in Netscape format (yt-dlp's [guide](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)) to `data/youtube-cookies.txt`, or point `LIBRARIAN_YTDLP_COOKIES` at the file. It's picked up within a minute, no restart needed.
 
 Then open http://localhost:5173, set up a model under **Settings**, and press **Test**. For a production build, run `npm run build && npm start`, which serves everything from port 8787.
 

@@ -165,6 +165,8 @@ export function NotebookPanel(props: {
   const [status, setStatus] = useState("");
   const [width, setWidth] = useState(() => Math.min(760, Math.round(window.innerWidth * 0.42)));
   const [editing, setEditing] = useState<string | null>(null);
+  // The notebook's description, folded by default so its cells come first.
+  const [about, setAbout] = useState(false);
   const ran = useRef(false);
   const saveTimer = useRef<number | undefined>(undefined);
   const cellsRef = useRef(cells);
@@ -243,33 +245,51 @@ export function NotebookPanel(props: {
       <div className="nb-resize" onPointerDown={startResize} title="Drag to make the notebook wider or narrower" />
       <header className="nb-head">
         <div className="nb-title">
-          <strong title="Show its card on the canvas" onClick={props.onShowCard}>
+          <strong title={`${nb?.title ?? ""}\nShow its card on the canvas`} onClick={props.onShowCard}>
             {nb?.title ?? card.request ?? "Notebook"}
           </strong>
-          {nb?.source ? (
-            <span className="small muted">
-              Found online:{" "}
-              <a href={nb.source.url} target="_blank" rel="noreferrer">
-                {nb.source.title}
-              </a>{" "}
-              (cells kept as written)
-            </span>
-          ) : nb ? (
-            <span className="small nb-written">No example found online that fits, so the librarian wrote this one. Check it.</span>
-          ) : null}
-          {nb?.why && <span className="small">{nb.why}</span>}
-          {nb && !live && (
-            <span className="small nb-written">
-              {langName} notebook: shown with its author's own results, since {langName} can't run in the browser.
-              {nb.source?.binder && (
-                <>
-                  {" "}
-                  <a href={nb.source.binder} target="_blank" rel="noreferrer">
-                    Run it live on Binder
-                  </a>
-                </>
+          {nb && (
+            // Where it came from, in one line; what it shows and the rest, folded away until asked for.
+            <button type="button" className="nb-about-toggle small" aria-expanded={about} onClick={() => setAbout(!about)} title={about ? "Hide the details" : "Show what this notebook is and where it's from"}>
+              {about ? "▾" : "▸"}{" "}
+              {nb.source ? (
+                <span className="muted">
+                  From <span className="nb-src">{nb.source.title}</span>
+                </span>
+              ) : (
+                <span className="nb-written">Written by the librarian</span>
               )}
-            </span>
+              {!live && <span className="nb-written"> · {langName}, author's results</span>}
+            </button>
+          )}
+          {nb && about && (
+            <div className="nb-about small">
+              {nb.source ? (
+                <p>
+                  Found online:{" "}
+                  <a href={nb.source.url} target="_blank" rel="noreferrer">
+                    {nb.source.title}
+                  </a>{" "}
+                  (cells kept as written)
+                </p>
+              ) : (
+                <p className="nb-written">No example found online that fits, so the librarian wrote this one. Check it.</p>
+              )}
+              {nb.why && <p>{nb.why}</p>}
+              {!live && (
+                <p className="nb-written">
+                  {langName} notebook: shown with its author's own results, since {langName} can't run in the browser.
+                  {nb.source?.binder && (
+                    <>
+                      {" "}
+                      <a href={nb.source.binder} target="_blank" rel="noreferrer">
+                        Run it live on Binder
+                      </a>
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
           )}
         </div>
         <div className="nb-tools">
