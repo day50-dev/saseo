@@ -13,9 +13,23 @@ function headers(ep: Endpoint): Record<string, string> {
   return h;
 }
 
+/**
+ * fetch, tried once more when the connection itself drops ("fetch failed": reset, refused, DNS).
+ * Not on a timeout or an HTTP error: those are answers, and repeating them only adds waiting.
+ */
+async function send(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (!(err instanceof TypeError)) throw err;
+    await new Promise((r) => setTimeout(r, 1000));
+    return fetch(url, init);
+  }
+}
+
 export async function chat(ep: Endpoint, messages: Message[], timeoutMs = ep.timeoutSeconds * 1000): Promise<string> {
   if (!ep.baseUrl || !ep.model) throw new Error("The language model isn't configured (Settings)");
-  const res = await fetch(`${ep.baseUrl}/chat/completions`, {
+  const res = await send(`${ep.baseUrl}/chat/completions`, {
     method: "POST",
     headers: headers(ep),
     signal: AbortSignal.timeout(timeoutMs),
@@ -40,7 +54,7 @@ const visible = (text: string) => text.replace(/<think>[\s\S]*?(<\/think>|$)/g, 
  */
 export async function chatStream(ep: Endpoint, messages: Message[], onText: (soFar: string) => void): Promise<string> {
   if (!ep.baseUrl || !ep.model) throw new Error("The language model isn't configured (Settings)");
-  const res = await fetch(`${ep.baseUrl}/chat/completions`, {
+  const res = await send(`${ep.baseUrl}/chat/completions`, {
     method: "POST",
     headers: headers(ep),
     signal: AbortSignal.timeout(ep.timeoutSeconds * 1000),
@@ -120,7 +134,7 @@ export async function decideChoice(
   instructions: string,
   criteria: Record<string, string>,
 ): Promise<{ choice: string; confidence: number }> {
-  const res = await fetch(`${ep.baseUrl}/systemone`, {
+  const res = await send(`${ep.baseUrl}/systemone`, {
     method: "POST",
     headers: headers(ep),
     signal: AbortSignal.timeout(ep.timeoutSeconds * 1000),
@@ -136,7 +150,7 @@ export const systemOneConfigured = (ep: Endpoint) => Boolean(ep.baseUrl && ep.mo
 
 /** One yes/no System One question; returns the probability of yes. */
 export async function decideYesNo(ep: Endpoint, state: unknown, instructions: string): Promise<number> {
-  const res = await fetch(`${ep.baseUrl}/systemone`, {
+  const res = await send(`${ep.baseUrl}/systemone`, {
     method: "POST",
     headers: headers(ep),
     signal: AbortSignal.timeout(ep.timeoutSeconds * 1000),
