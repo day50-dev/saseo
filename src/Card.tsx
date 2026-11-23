@@ -90,7 +90,8 @@ function registerMarks(text: string, sem: Sem, sources: FoundSource[]): ReactNod
       </span>
     ) : (
       <span key={i} className="sem-standin" data-explain={m.concept} title={`Plain-language stand-in for: ${m.concept}. Click to have that explained.`}>
-        {part}
+        {/* The tint is on the words alone: on the whole span it would show through the box's last line. */}
+        <span className="sem-standin-word">{part}</span>
         <span className="sem-standin-for">{m.concept}</span>
       </span>
     );
