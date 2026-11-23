@@ -113,6 +113,37 @@ export interface Sem {
 }
 
 /**
+ * A shape grown from one piece of an explanation because the reader wanted more there (the
+ * VizShapes vocabulary): an aside off to the side, a path down, numbered steps, a split into two
+ * ways, a break-down into parts. Its own pieces can be extended in turn, so it grows as deep as
+ * the reader takes it.
+ */
+export const EXTENSION_SHAPES = ["aside", "why", "then", "steps", "parts", "split", "example"] as const;
+export type ExtensionShape = (typeof EXTENSION_SHAPES)[number];
+
+export interface Extension {
+  id: string;
+  /** The piece it grows from: a Sem key ("why-1", "cat-why", "part-0") or an extension piece ("x3.1"). */
+  at: string;
+  shape: ExtensionShape;
+  /** What the reader typed, when they asked in their own words (the model then chose the shape). */
+  ask?: string;
+  /** Words selected inside the piece: the extension is about those (a source connector's circle). */
+  focus?: string;
+  status: "working" | "done" | "failed";
+  error?: string;
+  /** The pieces: lines for asides, paths, steps and examples. */
+  items?: string[];
+  /** A heading per branch for a split ("The hard way", "The easy way"), then each branch's lines. */
+  branches?: { label: string; items: string[] }[];
+  /** For parts: each part, and what they add up to. */
+  parts?: { name: string; note: string }[];
+  together?: string;
+  /** A short label drawn on the connector ("Two ways", "4 steps"), per the deck's Label shape. */
+  label?: string;
+}
+
+/**
  * Principle 9: the same English words can be a strict term of art or casual description, and
  * an outsider can't tell which. Every phrase the librarian explains or flags carries its register.
  */
@@ -281,6 +312,8 @@ export interface CardItem extends ItemState {
    * or "the second equation" is there to see.
    */
   looks?: Record<string, Rect>;
+  /** Shapes the reader grew from pieces of the explanation, oldest first. */
+  ext?: Extension[];
   /** Explains a typed question: its last section is how it unfolds, not how a page uses it. */
   flow?: boolean;
   /** Where the card's subject has been seen taught (or assumed), from the course map. */

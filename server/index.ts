@@ -5,14 +5,14 @@ import { type Context, Hono, type Next } from "hono";
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
-import { CARD_WIDTH, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { addReaderNote, assetPath, autoName, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
-import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, makeObject, mapCourses, pointAt, readSource } from "./explain.ts";
+import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, makeObject, mapCourses, pointAt, readSource } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
@@ -259,6 +259,54 @@ app.post("/api/canvases/:cid/descend", async (c) => {
 // only the box's position is stored, not the pixels sent to the model.
 // The course map gathered so far: every sighting of a concept in a course.
 app.get("/api/curriculum", async (c) => c.json({ sightings: await allSightings() }));
+
+// Grows a shape from one piece of a card's diagram: one the reader picked, or the one their words call for.
+app.post("/api/canvases/:cid/cards/:id/extend", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const card = await store.findItem(c.req.param("id"));
+  if (card?.kind !== "card" || !card.sem) return c.json({ error: "not a card with a diagram" }, 409);
+  const body = (await c.req.json()) as { at?: string; shape?: string; ask?: string; focus?: string };
+  const at = typeof body.at === "string" ? body.at.slice(0, 80) : "";
+  const ask = typeof body.ask === "string" ? body.ask.trim().slice(0, 500) : "";
+  const shape = EXTENSION_SHAPES.find((s) => s === body.shape) ?? (ask ? "aside" : undefined);
+  if (!at || !shape) return c.json({ error: "a piece and a shape (or a question) are required" }, 400);
+  const ext: Extension = {
+    id: newId(),
+    at,
+    shape,
+    ...(ask ? { ask } : {}),
+    ...(typeof body.focus === "string" && body.focus.trim() ? { focus: body.focus.trim().slice(0, 200) } : {}),
+    status: "working",
+  };
+  await store.edit(card.id, (now) => (now?.kind === "card" ? { ext: [...(now.ext ?? []), ext] } : null));
+  void extendPiece(store, card.id, ext.id);
+  return c.json({ ext });
+});
+
+// Takes a grown shape away, with everything grown from its pieces.
+app.post("/api/canvases/:cid/cards/:id/extend/:extId/remove", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const card = await store.findItem(c.req.param("id"));
+  if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
+  const gone = new Set([c.req.param("extId")]);
+  await store.edit(card.id, (now) => {
+    if (now?.kind !== "card") return null;
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const e of now.ext ?? []) {
+        const from = /^x([^.]+)\./.exec(e.at)?.[1];
+        if (from && gone.has(from) && !gone.has(e.id)) {
+          gone.add(e.id);
+          grew = true;
+        }
+      }
+    }
+    return { ext: (now.ext ?? []).filter((e) => !gone.has(e.id)) };
+  });
+  return c.json({ removed: [...gone] });
+});
 
 // Looks up where a finished card's subject is taught, for cards written before the course map.
 app.post("/api/canvases/:cid/cards/:id/courses", async (c) => {

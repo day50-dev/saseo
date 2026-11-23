@@ -684,3 +684,89 @@ kbd {
 .video-wait-note.failed .video-wait-status { color: #ffb4b4; }
 .video-wait-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
 .video-wait-bar > div { height: 100%; background: var(--accent); transition: width 0.4s; }
+
+/* ---- Growing the diagram from a piece (VizShapes: aside, path, procedure, category, bifurcation) ---- */
+.sem-cat-row { display: flex; align-items: center; gap: 6px; }
+.grow { position: relative; display: inline-block; vertical-align: baseline; margin-left: 4px; }
+.grow-btn {
+  width: 18px; height: 18px; padding: 0; border-radius: 50%; font-size: 13px; line-height: 16px; font-weight: 700;
+  border: 1.5px solid var(--sem-line); background: var(--card); color: var(--sem-line); cursor: pointer;
+  opacity: 0; transition: opacity 0.15s;
+}
+/* Shown on the piece being pointed at, on a section heading, and whenever its palette is open. */
+.sem-step:hover > .grow .grow-btn, .sem-desc:hover > .grow .grow-btn, .sem-part:hover > .grow .grow-btn,
+.sem-together:hover > .grow .grow-btn, .sem-aside:hover > .grow .grow-btn, .grown-piece:hover > .grow .grow-btn,
+.sem-cat-row:hover .grow-btn, .grow.open .grow-btn, .grow-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .grow-btn { opacity: 0.6; } }
+.grow-btn:hover { background: var(--sem-line); color: var(--card); }
+.grow-menu {
+  position: absolute; left: 0; top: 24px; z-index: 50; width: 290px; padding: 8px; border-radius: 10px;
+  background: var(--card); border: 1px solid var(--line); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+  display: flex; flex-direction: column; gap: 6px; font-size: 13px; cursor: default;
+}
+.grow-shapes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.grow-shapes button {
+  display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 6px; font-size: 13px; text-align: left;
+  background: transparent; border: 1px solid var(--line); color: var(--text);
+}
+.grow-shapes button:hover { border-color: var(--sem-line); background: color-mix(in srgb, var(--sem-line) 8%, transparent); }
+.grow-icon { width: 20px; height: 16px; flex: none; fill: none; stroke: var(--sem-line); stroke-width: 1.6; }
+.grow-ask input { width: 100%; box-sizing: border-box; font-size: 13px; }
+.grow-focus, .grown-about { font-size: 12px; color: var(--muted); }
+/* The source connector's circle around the words grown from. */
+.grow-circle { border: 1.5px solid var(--sem-line); border-radius: 9px; padding: 0 6px; color: var(--text); white-space: nowrap; }
+
+.grown { position: relative; margin: 6px 0 4px; }
+.grown-remove {
+  position: absolute; right: 0; top: -2px; border: none; background: none; color: var(--muted); cursor: pointer;
+  font-size: 14px; opacity: 0; padding: 0 4px;
+}
+.grown:hover > .grown-remove { opacity: 1; }
+.grown-ask { font-size: 12px; color: var(--muted); font-style: italic; margin-bottom: 2px; }
+.grown-working, .grown-failed { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.grown-failed { color: var(--fail); }
+.grown-label { font-size: 12px; font-weight: 600; color: var(--sem-line); letter-spacing: 0.02em; }
+.grown-piece { position: relative; }
+.grown-arrow, .grown-story, .grown-fork, .grown-y { fill: none; stroke: var(--sem-line); stroke-width: 1.6; }
+.grown-arrow .head, .grown-fork .head { fill: var(--sem-line); stroke: none; }
+
+/* Aside: off to the side of its piece, the aside bend down to each line. */
+.grown-aside-col { margin-left: 36%; display: flex; flex-direction: column; gap: 4px; }
+.grown-aside-row { display: flex; align-items: flex-start; gap: 4px; }
+.grown-arrow.aside { width: 24px; height: 20px; flex: none; margin-top: -4px; }
+
+/* Path: a story arrow, then bended arrows into each next step. */
+.grown-path { margin-left: 10px; }
+.grown-story { width: 16px; height: 12px; fill: var(--sem-line); stroke: none; display: block; margin: 2px 0 4px 6px; }
+.grown-path-step { display: flex; align-items: flex-start; gap: 4px; margin-top: 4px; }
+.grown-arrow.bend { width: 20px; height: 20px; flex: none; margin-top: -6px; }
+
+/* Procedure: a curved numeral per step. */
+.grown-steps { margin-left: 10px; display: flex; flex-direction: column; gap: 5px; border-left: 2px solid var(--sem-line); padding-left: 10px; }
+.grown-step { display: flex; align-items: flex-start; gap: 8px; }
+.grown-numeral {
+  flex: none; font-size: 1.3em; font-weight: 700; line-height: 1; color: var(--sem-line);
+  padding: 0.05em 0.5em 0.25em 0.25em; border: solid var(--sem-line); border-width: 0 2px 2px 0; border-radius: 0 0 999px 0;
+}
+
+/* Category, horizontal: a bus into each part, then a Y-connector into what they add up to. */
+.grown-parts { margin-left: 10px; }
+.grown-parts-row { display: grid; gap: 6px; border-top: 2px solid var(--sem-line); padding-top: 8px; margin-top: 4px; }
+.grown-part {
+  position: relative; padding: 5px 7px; font-size: 13px; border-top: 3px solid var(--sem-parts);
+  background: color-mix(in srgb, var(--sem-parts) 10%, transparent);
+}
+.grown-part::before { content: ""; position: absolute; left: 50%; top: -11px; height: 8px; border-left: 2px solid var(--sem-line); }
+.grown-y { display: block; width: 100%; height: 18px; margin-top: 2px; }
+.grown-together { text-align: center; font-weight: 600; border-bottom: 2px solid var(--sem-line); padding-bottom: 2px; margin: 0 15%; }
+
+/* Bifurcation: a fork into two columns, the left one right-aligned, as in the deck. */
+.grown-split-label { text-align: center; }
+.grown-fork { display: block; width: 60px; height: 22px; margin: 0 auto; }
+.grown-split-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grown-branch { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.grown-branch.left { text-align: right; }
+.grown-branch-head { font-weight: 600; border-bottom: 2px solid var(--sem-line); padding-bottom: 1px; margin-bottom: 2px; }
+/* While a palette is open, its card comes to the front so nothing covers the palette. */
+.card-item:has(.grow.open) { z-index: 999999 !important; }
+.grown-from { font-size: 12px; color: var(--muted); margin-bottom: 2px; }

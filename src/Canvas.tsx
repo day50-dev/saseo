@@ -194,6 +194,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         i.chatPending ||
         i.shaping === "working" ||
         i.looking === "working" ||
+        Boolean(i.ext?.some((e) => e.status === "working")) ||
         // Still waiting to hear where its subject is taught.
         (i.stage === "done" && Boolean(i.sem) && !i.taught && !i.relates && !i.objectKind))),
   );
@@ -1499,6 +1500,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               selected={selected === c.id}
               lookImage={c.lookImage ? (byId.get(c.lookImage) as ImageItem | undefined) : undefined}
               onPeek={setPeek}
+              onGrow={(r) => api.extend(c.id, r).then(refresh, (e) => setError(`Couldn't grow that: ${e}`))}
+              onUngrow={(extId) => api.unextend(c.id, extId).then(refresh, (e) => setError(`Couldn't take that away: ${e}`))}
               explained={explainedIn.get(c.id) ?? NONE}
               explaining={explainingIn.get(c.id) ?? NONE}
               onRemove={() => remove(c.id, `remove “${(c.subject ?? "card").slice(0, 30)}”`)}

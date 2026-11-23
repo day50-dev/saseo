@@ -117,6 +117,28 @@ Every explanation is stored as structure (`Sem` in `shared/canvas.ts`), not pros
 
 *Why* comes first and is never omitted. The 2013 shape grammar is the v1 stylesheet; the plan is to move away from it quickly.
 
+### Growing the diagram
+
+A diagram's termination points aren't final. Every piece, and every section heading, has a **+** that grows
+more from it, in a shape the reader picks from the VizShapes vocabulary (`src/Grow.tsx`, `extendPiece` in
+`server/explain.ts`):
+
+| Choice | Shape | Grows |
+| --- | --- | --- |
+| Say more | Aside | A second column off to the side, the aside bend down to each line |
+| Why? | Path (logic) | Since… and since… so…, leading up to the piece |
+| Then what? | Path (events) | What follows, in order |
+| Steps | Procedure | Numbered steps with curved numerals |
+| Break it down | Category (horizontal) + Y-connector | Parts side by side, and what they add up to |
+| Two ways | Path bifurcation | A fork into two columns (two ways, cases or sides) |
+| For example | Aside | One concrete example, worked through |
+
+Or the reader says what they want in their own words and the model picks the shape that answers it; a vague
+"more" continues the piece's own shape (more reasons under *Why it exists*). Words selected in a piece before
+pressing + become what it grows about (the source connector's circle). Every grown piece has its own +, so it
+grows as deep as the reader takes it; anything grown from a narrow box in a row of parts is drawn at full width
+under the row. Grown shapes are stored on the card (`CardItem.ext`), keyed by the piece they hang from.
+
 ## Worked examples: the Chern-Simons-Schrödinger talk
 
 The development fixture is Jason Zhao's (Berkeley) research talk, "The Cauchy problem for Manton's Chern-Simons-Schrödinger equation" ([arXiv:2609.13096](https://arxiv.org/html/2609.13096)). It was attended over Zoom, streamed by Terence Tao from a small room at UCLA. Perhaps a thousand people could follow it live. If an outsider can be drawn into it, the idea is proven.

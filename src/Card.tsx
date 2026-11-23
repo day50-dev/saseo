@@ -14,6 +14,7 @@ import {
   type Sem,
 } from "../shared/canvas.ts";
 import { PaperRow } from "./ArxivPanel.tsx";
+import { type GrowRequest, GrowButton, Grown } from "./Grow.tsx";
 import { assetUrl } from "./canvasApi.ts";
 import { clearMarks, findPhrases, setMarks } from "./marks.ts";
 import { looksLikeTex, selectedText, Tex, textWithTex, withMath } from "./MathText.tsx";
@@ -129,6 +130,10 @@ export function Card(props: {
   linking: boolean;
   /** For a relation card: the names of the two things it relates. */
   relatesNames?: string[];
+  /** Grow a shape from a piece of the diagram. */
+  onGrow: (r: GrowRequest) => void;
+  /** Take a grown shape away. */
+  onUngrow: (extId: string) => void;
   /** The image this card's explanation points into, for `card.looks`. */
   lookImage?: ImageItem;
   /** Hovering a piece's picture: show where it is on the image itself. */
@@ -336,8 +341,17 @@ export function Card(props: {
           render={(t) => withRegister(t, card.sem!, sources)}
           onTitlePointerDown={props.onGrab}
           labels={pageCard ? { here: "Where the page goes" } : card.flow ? { here: "How it unfolds" } : undefined}
+          head={(key) => <GrowButton at={key} onGrow={props.onGrow} title="Grow more here" />}
+          belowParts={(key, name) => (
+            <Grown ext={card.ext ?? []} at={key} from={name} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} />
+          )}
           extra={(key) => (
             <>
+              {!key.startsWith("cat-") && <GrowButton at={key} onGrow={props.onGrow} />}
+              {/* A part's box is narrow: what grows from it is drawn under the row instead (belowParts). */}
+              {!key.startsWith("part-") && (
+                <Grown ext={card.ext ?? []} at={key} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} />
+              )}
               {pageCard && <FromPage card={card} anchorKey={key} onOpenPage={() => setView("page")} />}
               {pageCard && <PageFigures card={card} anchorKey={key} />}
               {card.looks?.[key] && props.lookImage && (

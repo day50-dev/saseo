@@ -45,6 +45,8 @@ export function SemShapes({
   onTitlePointerDown,
   extra,
   labels,
+  head,
+  belowParts,
 }: {
   title: string;
   sem: Sem;
@@ -53,6 +55,13 @@ export function SemShapes({
   extra?: (key: string) => ReactNode;
   /** Section headings to use instead of the usual ones. */
   labels?: Partial<Record<Section["key"], string>>;
+  /** Anything to show beside a section's heading, by its key ("cat-why", …). */
+  head?: (key: string) => ReactNode;
+  /**
+   * Anything grown from a part, drawn at full width under the row of parts rather than squeezed
+   * into its narrow box, with the part's name.
+   */
+  belowParts?: (key: string, name: string) => ReactNode;
   /** The title doubles as the card's move handle. */
   onTitlePointerDown?: (e: React.PointerEvent) => void;
 }) {
@@ -187,8 +196,11 @@ export function SemShapes({
       <div className="sem-body">
         {present.map((s) => (
           <div key={s.key} className={`sem-section facet-${s.key}`}>
-            <div className="sem-cat" data-a={`cat-${s.key}`}>
-              {labels?.[s.key] ?? s.label}
+            <div className="sem-cat-row">
+              <div className="sem-cat" data-a={`cat-${s.key}`}>
+                {labels?.[s.key] ?? s.label}
+              </div>
+              {head?.(`cat-${s.key}`)}
             </div>
             <div className="sem-kids">
               {(s.key === "why" || s.key === "here") &&
@@ -223,14 +235,20 @@ export function SemShapes({
                       {extra?.("together")}
                     </div>
                   )}
+                  {/* After what they add up to, so the Y-connector into it stays clear. */}
+                  {sem.parts.map((p, i) => (
+                    <div key={i}>{belowParts?.(`part-${i}`, p.meaning || p.symbol)}</div>
+                  ))}
                 </>
               )}
+              {extra?.(`cat-${s.key}`)}
             </div>
           </div>
         ))}
         {sem.name && (
           <div className="sem-aside" data-a="aside">
             <span className="sem-aside-label">The name</span> {render(sem.name)}
+            {extra?.("aside")}
           </div>
         )}
       </div>

@@ -316,6 +316,22 @@ export class CanvasStore {
   add = (item: Item) => this.record({ type: "add", item });
   update = (id: string, patch: ItemPatch) => this.record({ type: "update", id, patch });
 
+  private editing: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Reads an item and writes a change made from it, with no other edit in between: for patches
+   * built from the item's current value (appending to a list), which concurrent requests would
+   * otherwise overwrite.
+   */
+  edit<T>(id: string, change: (item: Item | undefined) => ItemPatch | null): Promise<T | void> {
+    const run = this.editing.then(async () => {
+      const patch = change(await this.findItem(id));
+      if (patch) await this.update(id, patch);
+    });
+    this.editing = run.catch(() => {});
+    return run;
+  }
+
   async findItem(id: string): Promise<Item | undefined> {
     return (await this.getState()).items.find((i) => i.id === id);
   }

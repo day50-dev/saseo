@@ -1,5 +1,5 @@
 import { unreachable } from "./api.ts";
-import type { CanvasInfo, CanvasState, CanvasSummary, CardItem, ImageItem, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
+import type { CanvasInfo, CanvasState, CanvasSummary, CardItem, Extension, ImageItem, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
 
 async function json<T>(res: Response): Promise<T> {
   if (res.status === 401) location.reload();
@@ -82,6 +82,10 @@ export function canvasApi(cid: string) {
       post(`${base}/move`, { moves }).then((r) => json<{ ok: true }>(r)),
 
     /** Answers the librarian's question on a card; "" skips it. */
+    /** Grows a shape from a piece of a card's diagram. */
+    extend: (cardId: string, body: { at: string; shape?: string; ask?: string; focus?: string }) =>
+      post(`${base}/cards/${cardId}/extend`, body).then((r) => json<{ ext: Extension }>(r)),
+    unextend: (cardId: string, extId: string) => post(`${base}/cards/${cardId}/extend/${extId}/remove`, {}).then((r) => json<{ removed: string[] }>(r)),
     courses: (cardId: string) => post(`${base}/cards/${cardId}/courses`, {}).then((r) => json<{ ok: true }>(r)),
     look: (cardId: string) => post(`${base}/cards/${cardId}/look`, {}).then((r) => json<{ ok: true }>(r)),
     answer: (cardId: string, answer: string) => post(`${base}/cards/${cardId}/answer`, { answer }).then((r) => json<{ ok: true }>(r)),

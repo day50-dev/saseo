@@ -1,6 +1,6 @@
 // The librarian's loop for one card: read the region, go fish, write a descending
 // explanation from what was found, then check that it doesn't climb.
-import { CARD_WIDTH, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
+import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, type ExtensionShape, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { readFile } from "node:fs/promises";
 import { assetPath, type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
@@ -396,6 +396,145 @@ async function finishRegion(store: CanvasStore, cardId: string) {
     .join("\n\n");
   await write(store, card, subject, card.transcription ?? subject, card.topic, [], sources, context);
   void pointAt(store, cardId);
+}
+
+// ---- Growing the diagram: more, in a chosen shape, from one piece ----
+
+const EXTEND_SHAPES: Record<ExtensionShape, string> = {
+  aside: `"aside": 1 to 3 lines off to the side that say more about the piece: what it means, a clarification, the background it assumes. JSON: {"items": [...]}`,
+  why: `"why": a chain of 2 to 4 steps of reasoning that leads up to the piece: why it holds ("since … ", "and since … ", "so …"). The last step is what the piece follows from; don't repeat the piece itself. JSON: {"items": [...]}`,
+  then: `"then": 2 to 4 steps of what follows from the piece, in order: consequences, or what happens next. JSON: {"items": [...]}`,
+  steps: `"steps": 2 to 6 numbered steps of how it is done or how it works, in order, each one plain action or stage. JSON: {"label": "N steps", "items": [...]}`,
+  parts: `"parts": the 2 to 5 parts it breaks into, each with a short name and a one-line note, and what they add up to. JSON: {"label": "Has N parts", "parts": [{"name": "...", "note": "..."}], "together": "..."}`,
+  split: `"split": exactly 2 branches: two ways, two cases, or two sides of it, each with a 1 to 4 word heading and 1 to 3 lines. JSON: {"label": "Two ways" or "Two cases" or similar, "branches": [{"label": "...", "items": [...]}, {"label": "...", "items": [...]}]}`,
+  example: `"example": one concrete example of the piece, worked through plainly in 1 to 3 lines, with real numbers, names or cases. JSON: {"items": [...]}`,
+};
+
+/** The shape that gives "more of the same" for each part of a diagram. */
+const SAME_KIND: Record<string, ExtensionShape> = {
+  why: "why",
+  what: "aside",
+  part: "parts",
+  together: "aside",
+  here: "then",
+  aside: "aside",
+};
+
+function sameKind(at: string): ExtensionShape | undefined {
+  const section = /^cat-(\w+)$/.exec(at)?.[1];
+  if (section) return section === "why" ? "why" : section === "here" ? "then" : section === "parts" ? "parts" : "aside";
+  return SAME_KIND[at.split("-")[0]];
+}
+
+const EXTEND = `You are a research librarian with unlimited time, helping a curious, intelligent reader who is not a specialist.
+An explanation of theirs is drawn as a diagram of short pieces. They pointed at one piece and asked for more right there.
+Write only the new pieces, in the shape asked for, growing from that piece. They join the diagram; don't repeat what it already says.
+Rules:
+- Descend, never climb: use ideas more familiar than the piece; gloss any technical term in plain words.
+- Be faithful. Don't invent facts. Where a numbered source supports a claim, cite it as [n].
+- Every piece is short: one sentence, at most about 20 words. Plain text. Math as LaTeX between \\( and \\).
+Return JSON only, no prose.`;
+
+/** The text of a piece by key: a part of the Sem, a whole section, or a piece of an extension. */
+function pieceAt(sem: Sem, ext: Extension[], key: string): string {
+  // Extension pieces: x<id>.<n> a line, .p<n> a part, .t what the parts add up to,
+  // .b<j> a branch's heading, .b<j>.<n> a line in it.
+  const x = /^x([^.]+)\.(?:(\d+)|p(\d+)|(t)|b(\d+)(?:\.(\d+))?)$/.exec(key);
+  if (x) {
+    const e = ext.find((e) => e.id === x[1]);
+    if (!e) return "";
+    if (x[2] !== undefined) return e.items?.[Number(x[2])] ?? "";
+    if (x[3] !== undefined) {
+      const part = e.parts?.[Number(x[3])];
+      return part ? `${part.name}: ${part.note}` : "";
+    }
+    if (x[4]) return e.together ?? "";
+    const branch = e.branches?.[Number(x[5])];
+    return (x[6] !== undefined ? branch?.items[Number(x[6])] : branch?.label) ?? "";
+  }
+  const sections: Record<string, string> = {
+    "cat-why": `Why it exists:\n${sem.why.join("\n")}`,
+    "cat-what": `What it is:\n${[sem.what.gist, ...sem.what.details].join("\n")}`,
+    "cat-parts": `Its parts:\n${sem.parts.map((p) => `${p.symbol}: ${p.meaning}`).join("\n")}`,
+    "cat-here": `How it's used:\n${sem.here.join("\n")}`,
+  };
+  if (sections[key]) return sections[key];
+  return pieces(sem).find(([k]) => k === key)?.[1] ?? (key === "aside" ? sem.name : "");
+}
+
+/** The chain of pieces from the explanation down to `key`, through the extensions it grew from. */
+function lineage(sem: Sem, ext: Extension[], key: string): string[] {
+  const out: string[] = [];
+  let k: string | undefined = key;
+  for (let i = 0; k && i < 20; i++) {
+    out.unshift(pieceAt(sem, ext, k));
+    const x = /^x([^.]+)\./.exec(k);
+    k = x ? ext.find((e) => e.id === x[1])?.at : undefined;
+  }
+  return out.filter(Boolean);
+}
+
+const shortStrs = (v: unknown, max: number) => strs(v, max).map((t) => t.slice(0, 400));
+
+/** Writes one extension: the shape the reader picked (or the one their words call for) at a piece. */
+export async function extendPiece(store: CanvasStore, cardId: string, extId: string) {
+  const card = (await store.findItem(cardId)) as CardItem | undefined;
+  const ext = card?.ext?.find((e) => e.id === extId);
+  if (!card?.sem || !ext) return;
+  const save = (patch: Partial<Extension>) =>
+    store.edit(cardId, (now) => (now?.kind === "card" && now.ext ? { ext: now.ext.map((e) => (e.id === extId ? { ...e, ...patch } : e)) } : null));
+  try {
+    const chain = lineage(card.sem, card.ext ?? [], ext.at);
+    const sources = card.sources ?? [];
+    const told = await readerNotes(store);
+    // "Yo I need more", "expand", "keep going": more of the same kind as what they pointed at,
+    // decided here rather than left to the model, which reads a vague ask too freely.
+    const vague = Boolean(ext.ask && ext.ask.split(/\s+/).length <= 6 && /\b(more|expand|elaborate|continue|keep going|go on|deeper|further|detail)\b/i.test(ext.ask));
+    const same = vague ? sameKind(ext.at) : undefined;
+    const choosing = Boolean(ext.ask) && !same;
+    const target: ExtensionShape = same ?? ext.shape;
+    const shapes = choosing ? EXTENSION_SHAPES.map((k) => `- ${EXTEND_SHAPES[k]}`).join("\n") : `- ${EXTEND_SHAPES[target]}`;
+    const lines = [
+      `Subject of the explanation: ${card.subject ?? card.selection ?? ""}`,
+      `The whole explanation:\n${semText(card.sem)}`,
+      `The piece they pointed at${chain.length > 1 ? " (with the pieces it grew from, top first)" : ""}:\n${chain.join("\n  → ")}`,
+      ext.focus ? `They circled these words in it, and want more about them in particular: "${ext.focus}"` : "",
+      choosing
+        ? `They asked, in their own words: "${ext.ask}"\nChoose the one shape below that best answers that, and write it. Also return "shape": its name.\n${shapes}`
+        : `${ext.ask ? `They asked, in their own words: "${ext.ask}", so: more of the same.\n` : ""}The shape they asked for:\n${shapes}`,
+      told ? `${told}\nPitch it to that.` : "",
+      sources.length ? `Sources found earlier:\n${sources.map((s) => `[${s.n}] ${s.title}: ${s.snippet.slice(0, 300)}`).join("\n")}` : "",
+    ].filter(Boolean);
+    const raw = await chatJson<Record<string, unknown>>((await loadConfig()).llm, [
+      { role: "system", content: EXTEND },
+      { role: "user", content: lines.join("\n\n") },
+    ]);
+    const chosen = str(raw.shape) as ExtensionShape;
+    const shape = choosing && EXTENSION_SHAPES.includes(chosen) ? chosen : target;
+    const patch: Partial<Extension> = { shape, status: "done", label: str(raw.label).slice(0, 40) || undefined };
+    if (shape === "parts") {
+      patch.parts = (Array.isArray(raw.parts) ? raw.parts : [])
+        .map((p) => p as Record<string, unknown>)
+        .map((p) => ({ name: str(p.name ?? p.symbol).slice(0, 120), note: str(p.note ?? p.meaning).slice(0, 300) }))
+        .filter((p) => p.name)
+        .slice(0, 5);
+      patch.together = str(raw.together).slice(0, 400) || undefined;
+      if (!patch.parts.length) throw new Error("The answer had no parts");
+    } else if (shape === "split") {
+      patch.branches = (Array.isArray(raw.branches) ? raw.branches : [])
+        .map((b) => b as Record<string, unknown>)
+        .map((b) => ({ label: str(b.label).slice(0, 60), items: shortStrs(b.items, 4) }))
+        .filter((b) => b.label || b.items.length)
+        .slice(0, 2);
+      if (patch.branches.length < 2) throw new Error("The answer didn't split into two");
+    } else {
+      patch.items = shortStrs(raw.items, shape === "steps" ? 6 : 4);
+      if (!patch.items.length) throw new Error("The answer had nothing in it");
+    }
+    await save(patch);
+  } catch (err) {
+    await save({ status: "failed", error: (err instanceof Error ? err.message : String(err)).slice(0, 200) });
+  }
 }
 
 // ---- Pointing at the page: what each piece refers to, shown beside it ----
