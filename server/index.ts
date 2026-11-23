@@ -3,11 +3,12 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono, type Next } from "hono";
 import { readFile } from "node:fs/promises";
-import { CARD_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { addReaderNote, assetPath, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
+import { around, captions, clock, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, makeObject, mapCourses, pointAt, readSource } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
@@ -407,6 +408,33 @@ app.post("/api/canvases/:cid/sources", async (c) => {
   if (!input) return c.json({ error: "a link or a statement is required" }, 400);
   if (!Number.isFinite(body.x) || !Number.isFinite(body.y)) return c.json({ error: "x and y are required" }, 400);
   const at = { x: Math.round(body.x!), y: Math.round(body.y!) };
+  // A YouTube link is a lecture to watch here, stopping where it loses you.
+  const yt = youtubeId(input);
+  if (yt) {
+    const info = await videoInfo(yt);
+    let asset = "";
+    try {
+      const r = await fetch(`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`, { signal: AbortSignal.timeout(15000) });
+      if (r.ok) asset = await saveAsset(Buffer.from(await r.arrayBuffer()), "image/jpeg");
+    } catch {}
+    const video: ImageItem = {
+      kind: "image",
+      id: newId(),
+      asset,
+      name: info.title,
+      ...at,
+      w: VIDEO_WIDTH,
+      h: Math.round((VIDEO_WIDTH * 9) / 16),
+      naturalW: 1280,
+      naturalH: 720,
+      topic: info.title,
+      pageText: [info.title, info.channel && `by ${info.channel}`, info.description].filter(Boolean).join("\n"),
+      video: { videoId: yt, title: info.title, channel: info.channel, duration: info.duration },
+    };
+    await store.add(video);
+    void captions(yt).catch(() => []); // fetched ahead, so the first moment is quick
+    return c.json({ image: video });
+  }
   if (looksLikeLink(input)) {
     const card: CardItem = { kind: "card", id: newId(), parentId: "", origin: { kind: "page", url: input, title: input }, ...at, w: SOURCE_WIDTH, stage: "reading", subject: input };
     await store.add(card);
@@ -420,6 +448,57 @@ app.post("/api/canvases/:cid/sources", async (c) => {
   await store.add(answer);
   void explainSelection(store, answer.id);
   return c.json({ card: note, answer });
+});
+
+// Stopping a video: the frame at that moment lands on the canvas like a slide, and below it a
+// card with what was said around it. Box the frame or select the words to go further down.
+app.post("/api/canvases/:cid/videos/:id/moments", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const video = await store.findItem(c.req.param("id"));
+  if (video?.kind !== "image" || !video.video) return c.json({ error: "unknown video" }, 404);
+  const body = (await c.req.json()) as { t?: number; x?: number; y?: number };
+  const t = Number(body.t);
+  if (!Number.isFinite(t) || !Number.isFinite(body.x) || !Number.isFinite(body.y)) return c.json({ error: "t, x and y are required" }, 400);
+  const { videoId, title } = video.video;
+  const [frame, caps] = await Promise.all([frameAt(videoId, t), captions(videoId).catch(() => [])]);
+  const asset = await saveAsset(frame.jpeg, "image/jpeg");
+  const transcript = around(caps, t);
+  const w = MOMENT_WIDTH;
+  const h = Math.round((w * frame.h) / frame.w);
+  const image: ImageItem = {
+    kind: "image",
+    id: newId(),
+    asset,
+    name: `${clock(t)} · ${title}`,
+    x: Math.round(body.x!),
+    y: Math.round(body.y!),
+    w,
+    h,
+    naturalW: frame.w,
+    naturalH: frame.h,
+    topic: title,
+    moment: { videoImageId: video.id, videoId, t, title },
+    transcript,
+  };
+  await store.add(image);
+  let card: CardItem | undefined;
+  if (transcript) {
+    card = {
+      kind: "card",
+      id: newId(),
+      parentId: image.id,
+      origin: { kind: "note", title: transcript },
+      x: image.x,
+      y: image.y + h + 48,
+      w: w,
+      stage: "done",
+      subject: `What was said at ${clock(t)}`,
+      pageText: transcript,
+    };
+    await store.add(card);
+  }
+  return c.json({ image, card });
 });
 
 // Removing is a hide event: the log keeps everything, so any removal can be undone.

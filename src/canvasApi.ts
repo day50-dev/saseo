@@ -56,7 +56,11 @@ export function canvasApi(cid: string) {
 
     /** Starts from a link (the page is read) or a statement (explained beside it). */
     addSource: (input: string, x: number, y: number) =>
-      post(`${base}/sources`, { input, x, y }).then((r) => json<{ card: CardItem; answer?: CardItem }>(r)),
+      post(`${base}/sources`, { input, x, y }).then((r) => json<{ card?: CardItem; answer?: CardItem; image?: ImageItem }>(r)),
+
+    /** Stops a video at `t` seconds: the frame and what was said around it land at x, y. */
+    moment: (videoId: string, t: number, x: number, y: number) =>
+      post(`${base}/videos/${videoId}/moments`, { t, x, y }).then((r) => json<{ image: ImageItem; card?: CardItem }>(r)),
 
     /** Asks how two cards are related; the answer is a new card between them. */
     relate: (body: { a: string; b: string; x: number; y: number }) =>

@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CARD_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { Card, type Side } from "./Card.tsx";
+import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
+import { players } from "./youtube.ts";
 import { assetUrl, CanvasNotFound, canvasApi, canvasesApi } from "./canvasApi.ts";
 import { renderPages as renderPaperPages } from "./arxiv.ts";
 import { ArxivPanel } from "./ArxivPanel.tsx";
@@ -63,11 +65,21 @@ interface Pending {
   y: number;
   /** The words being explained; empty for a box drawn on an image. */
   label: string;
+  /** What the placeholder says, when it isn't explaining words. */
+  text?: string;
   parentId?: string;
   box?: { x: number; y: number; w: number; h: number };
 }
 
 const NONE: string[] = [];
+
+function clock(t: number): string {
+  const s = Math.max(0, Math.floor(t));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+}
 
 type Restack = "front" | "back" | "forward" | "backward";
 
@@ -387,10 +399,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     const y = Math.round(toWorld(r.left, r.top + 60).y);
     try {
       const res = await api.addSource(input, x, y);
-      added("start from", [res.card.id]);
+      const id = (res.card ?? res.image)!.id;
+      added("start from", [id]);
       await refresh();
       setView((v) => ({ ...v, x: r.width * 0.06 - x * v.scale, y: 60 - y * v.scale }));
-      setSelected(res.card.id);
+      setSelected(id);
     } catch (e) {
       setError(`Couldn't start from that: ${e}`);
     }
@@ -694,7 +707,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const relBox = (id: string): { x: number; y: number; w: number; h: number } | null => {
     const i = byId.get(id);
     if (i?.kind === "card") return { x: i.x, y: i.y, w: i.w, h: cardHeight(i) };
-    if (i?.kind === "image") return i.collapsed ? { x: i.x, y: i.y - 26, w: i.w, h: 22 } : { x: i.x, y: i.y, w: i.w, h: i.h };
+    if (i?.kind === "image") return i.collapsed ? { x: i.x, y: i.y - 26, w: i.w, h: 22 } : { x: i.x, y: i.y, w: i.w, h: i.h + (i.video ? STOP_BAR : 0) };
     return null;
   };
 
@@ -846,6 +859,40 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   };
 
 
+  // ---- Video moments ----
+
+  /** Stops a video: its frame and what was said land beside it, below earlier moments. */
+  const stopAt = async (video: ImageItem, t: number) => {
+    // Below this video's earlier moments, each a frame with its transcript card under it.
+    const x = video.x + video.w + GAP;
+    let below = video.y;
+    for (const m of images) {
+      if (m.moment?.videoImageId !== video.id) continue;
+      below = Math.max(below, m.y + m.h + STACK_GAP * 2);
+      for (const c of cards) if (c.parentId === m.id) below = Math.max(below, c.y + cardHeight(c) + STACK_GAP * 2);
+    }
+    const y = slotY(x, below);
+    const done = expect({ x, y, label: "", text: `Grabbing the frame at ${clock(t)} and what was said…` });
+    try {
+      const res = await api.moment(video.id, t, x, y);
+      added(`stop at ${clock(t)}`, [res.image.id, ...(res.card ? [res.card.id] : [])]);
+      await refresh();
+    } catch (e) {
+      setError(`Couldn't grab that moment: ${e}`);
+    } finally {
+      done();
+    }
+  };
+
+  /** Takes a moment's video back to it: scrolls to the video and plays from there. */
+  const resume = (m: NonNullable<ImageItem["moment"]>) => {
+    focusOn(m.videoImageId);
+    const p = players.get(m.videoImageId);
+    if (!p) return;
+    p.seekTo(m.t, true);
+    p.playVideo();
+  };
+
   const answer = async (card: CardItem, text: string) => {
     try {
       await api.answer(card.id, text);
@@ -989,7 +1036,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const offscreen = !stageBox
     ? []
     : [
-        ...expected.map((p) => ({ key: p.key, id: null as string | null, x: p.x, y: p.y, label: p.label || "the box you drew" })),
+        ...expected.map((p) => ({ key: p.key, id: null as string | null, x: p.x, y: p.y, label: p.label || (p.text ? "a moment" : "the box you drew") })),
         ...visibleCards.filter(isPending).map((c) => ({ key: c.id, id: c.id as string | null, x: c.x, y: c.y, label: c.selection ?? c.subject ?? "a new card" })),
       ].flatMap((w) => {
         const sx = w.x * view.scale + view.x;
@@ -1227,7 +1274,12 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         >
           <svg className="connectors">{connectors}</svg>
 
-          {images.map((img) => (
+          {images
+            .filter((img) => img.video)
+            .map((img) => (
+              <VideoPlayer key={img.id} item={img} z={rank.get(img.id)} selected={selected === img.id} onStop={(t) => stopAt(img, t)} />
+            ))}
+          {images.filter((img) => !img.video).map((img) => (
             <img
               key={img.id}
               ref={(el) => {
@@ -1284,6 +1336,19 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 <a href={img.source.url} target="_blank" rel="noreferrer" title={img.source.title} onPointerDown={(e) => e.stopPropagation()}>
                   arXiv {img.source.id} · p.{img.source.page} · {img.source.title}
                 </a>
+              ) : img.moment ? (
+                // A moment is also a bookmark: ▶ takes the video back here.
+                <>
+                  <button type="button" className="resume-btn" title="Back to the video, playing from this moment" onClick={() => resume(img.moment!)}>
+                    ▶ {clock(img.moment.t)}
+                  </button>{" "}
+                  {img.moment.title}
+                </>
+              ) : img.video ? (
+                <a href={`https://www.youtube.com/watch?v=${img.video.videoId}`} target="_blank" rel="noreferrer" onPointerDown={(e) => e.stopPropagation()}>
+                  ▶ {img.video.title}
+                  {img.video.channel ? ` · ${img.video.channel}` : ""}
+                </a>
               ) : (
                 (img.topic ?? img.name)
               )}
@@ -1300,7 +1365,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 // Centered on the edge point; drawn after the image at the same level, so on top of it.
                 style={{
                   left: side === "left" ? img.x : side === "right" ? img.x + img.w : img.x + img.w / 2,
-                  top: side === "top" ? img.y : side === "bottom" ? img.y + img.h : img.y + 28,
+                  top: side === "top" ? img.y : side === "bottom" ? img.y + img.h + (img.video ? STOP_BAR : 0) : img.y + 28,
                   zIndex: rank.get(img.id),
                 }}
                 onPointerDown={(e) => startLink(img.id, side, e)}
@@ -1369,7 +1434,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               {p.box && <div className="region sending" style={{ left: p.box.x, top: p.box.y, width: p.box.w, height: p.box.h, zIndex: 99999 }} />}
               <div className="ghost-card" style={{ left: p.x, top: p.y, width: CARD_WIDTH }}>
                 <span className="spinner" />
-                {p.label ? <>Explaining “{p.label.length > 60 ? `${p.label.slice(0, 60)}…` : p.label}”…</> : "Reading the box you drew…"}
+                {p.text ?? (p.label ? <>Explaining “{p.label.length > 60 ? `${p.label.slice(0, 60)}…` : p.label}”…</> : "Reading the box you drew…")}
               </div>
             </Fragment>
           ))}

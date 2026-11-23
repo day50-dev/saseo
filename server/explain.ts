@@ -272,12 +272,37 @@ async function guard(store: CanvasStore, cardId: string, run: () => Promise<void
   }
 }
 
+/**
+ * For a card about a frame of a video: says it's a paused lecture, and what was being said around
+ * that moment, which is often what the frame means ("then we glue along the boundary").
+ */
+async function momentNote(store: CanvasStore, card: CardItem): Promise<string> {
+  const img = await sourceImage(store, card);
+  if (!img?.moment) return "";
+  const video = await store.findItem(img.moment.videoImageId);
+  const by = video?.kind === "image" && video.video?.channel ? ` by ${video.video.channel}` : "";
+  return [
+    `The page is a frame of a video lecture, "${img.moment.title}"${by}, paused at ${clockOf(img.moment.t)} because the reader wanted to understand something in it.`,
+    img.transcript
+      ? `What the lecturer said around that moment (from the captions, which can mishear technical words; lines marked "(after)" come just after the pause):\n${img.transcript}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function clockOf(t: number): string {
+  const s = Math.max(0, Math.floor(t));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 /** For a rectangle on an image: `marked` is the whole page with the rectangle drawn, `crop` the region. */
 export function explainRegion(store: CanvasStore, cardId: string, images: { marked: string; crop: string }) {
   return guard(store, cardId, async () => {
     const config = await loadConfig();
+    const moment = await momentNote(store, (await store.findItem(cardId)) as CardItem);
     const content = [
-      { type: "text" as const, text: "Here is the page and the part I selected." },
+      { type: "text" as const, text: `Here is the page and the part I selected.${moment ? `\n\n${moment}` : ""}` },
       { type: "image_url" as const, image_url: { url: images.marked } },
       { type: "image_url" as const, image_url: { url: images.crop } },
     ];
@@ -316,6 +341,7 @@ async function finishRegion(store: CanvasStore, cardId: string) {
   await store.update(cardId, { stage: "writing", sources });
   card = (await store.findItem(cardId)) as CardItem;
   const context = [
+    await momentNote(store, card),
     pageText ? `The whole page reads:\n${pageText}` : "",
     terms.length
       ? `Register of the words in the selection (strict terms must be explained as strict terms, informal words for what they point at):\n${terms
@@ -540,7 +566,7 @@ async function finishSelection(store: CanvasStore, cardId: string) {
   const card = (await store.findItem(cardId)) as CardItem;
   const selection = card.selection ?? "";
   const { path, topic } = await ancestry(store, card);
-  const context = await trail(store, card);
+  const context = [await momentNote(store, card), await trail(store, card)].filter(Boolean).join("\n\n");
   const quoted = card.context ? `“${selection}” in: ${card.context}` : selection;
   const register = card.register;
   await store.update(cardId, { stage: "searching" });

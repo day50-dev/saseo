@@ -34,6 +34,23 @@ export interface ImageItem extends ItemState {
   /** The whole page read once, when something first needs it (relating two slides). */
   pageText?: string;
   topic?: string;
+  /** A video on the canvas: played in place, and the asset is its thumbnail. */
+  video?: VideoMeta;
+  /** A moment stopped at in a video: this image is the frame, `transcript` what was said around it. */
+  moment?: { videoImageId: string; videoId: string; t: number; title: string };
+  transcript?: string;
+}
+
+/** How wide a video plays on the canvas, and how wide a moment's frame lands. */
+export const VIDEO_WIDTH = 720;
+export const MOMENT_WIDTH = 640;
+
+export interface VideoMeta {
+  videoId: string;
+  title: string;
+  channel: string;
+  /** Seconds. */
+  duration: number;
 }
 
 /** What an update event may change: a card's fields, or what was read off an image. */
