@@ -369,11 +369,12 @@ export function Card(props: {
           extra={(key) => (
             <>
               {!key.startsWith("cat-") && <GrowButton at={key} onGrow={props.onGrow} />}
+              {/* Its own words first, on its line: what grows from it comes after. */}
+              {pageCard && <FromPage card={card} anchorKey={key} onOpenPage={() => setView("page")} />}
               {/* A part's box is narrow: what grows from it is drawn under the row instead (belowParts). */}
               {!key.startsWith("part-") && (
                 <Grown ext={card.ext ?? []} at={key} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} />
               )}
-              {pageCard && <FromPage card={card} anchorKey={key} onOpenPage={() => setView("page")} />}
               {pageCard && <PageFigures card={card} anchorKey={key} />}
               {card.looks?.[key] && props.lookImage && (
                 <Look image={props.lookImage} rect={card.looks[key]} onPeek={(on) => props.onPeek?.(on ? { imageId: props.lookImage!.id, rect: card.looks![key] } : null)} />

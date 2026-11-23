@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type Extension, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { Card, type Side } from "./Card.tsx";
 import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
 import { players } from "./youtube.ts";
@@ -274,6 +274,23 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       },
       redo: () => api.show(hiddenIds),
     });
+  };
+
+  /** Saying more on a card: undo takes it away (with what grew from it), redo puts back what was taken. */
+  const grewStep = (cardId: string, extId: string) => {
+    let taken: Extension[] = [];
+    pushStep({
+      label: "say more",
+      undo: async () => {
+        taken = (await api.unextend(cardId, extId)).taken;
+      },
+      redo: () => api.restoreExt(cardId, taken),
+    });
+  };
+  /** Taking a grown shape away: undo puts it back. */
+  const ungrewStep = (cardId: string, extId: string, taken: Extension[]) => {
+    if (!taken.length) return;
+    pushStep({ label: "take away", undo: () => api.restoreExt(cardId, taken), redo: () => api.unextend(cardId, extId) });
   };
 
   const remove = async (id: string, label: string) => {
@@ -1275,16 +1292,16 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             ↷ Redo
           </button>
         </div>
-        {shown.length > 0 && (
-          <button
-            type="button"
-            className={dockOpen ? "add-btn on" : "secondary add-btn"}
-            title="Add a link, a PDF, a video or a question to the canvas (/)"
-            onClick={() => setDockOpen(!dockOpen)}
-          >
-            + Add <kbd>/</kbd>
-          </button>
-        )}
+        {/* Always in its place: on an empty canvas the start box is already open in the middle, so it's only disabled. */}
+        <button
+          type="button"
+          className={dockOpen && shown.length > 0 ? "add-btn on" : "secondary add-btn"}
+          disabled={shown.length === 0}
+          title={shown.length ? "Add a link, a PDF, a video or a question to the canvas (/)" : "The canvas is empty: start in the box in the middle"}
+          onClick={() => setDockOpen(!dockOpen)}
+        >
+          + Add <kbd>/</kbd>
+        </button>
         <div className="modes" role="radiogroup" aria-label="Canvas tool">
           <button
             type="button"
@@ -1624,8 +1641,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               selected={selected === c.id}
               lookImage={c.lookImage ? (byId.get(c.lookImage) as ImageItem | undefined) : undefined}
               onPeek={setPeek}
-              onGrow={(r) => api.extend(c.id, r).then(refresh, (e) => setError(`Couldn't grow that: ${e}`))}
-              onUngrow={(extId) => api.unextend(c.id, extId).then(refresh, (e) => setError(`Couldn't take that away: ${e}`))}
+              onGrow={(r) => api.extend(c.id, r).then(({ ext }) => (grewStep(c.id, ext.id), refresh()), (e) => setError(`Couldn't grow that: ${e}`))}
+              onUngrow={(extId) => api.unextend(c.id, extId).then(({ taken }) => (ungrewStep(c.id, extId, taken), refresh()), (e) => setError(`Couldn't take that away: ${e}`))}
               explained={explainedIn.get(c.id) ?? NONE}
               explaining={explainingIn.get(c.id) ?? NONE}
               childStages={childStages.get(c.id) ?? NO_STAGES}

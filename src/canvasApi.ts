@@ -89,7 +89,9 @@ export function canvasApi(cid: string) {
     /** Grows a shape from a piece of a card's diagram. */
     extend: (cardId: string, body: { at: string; shape?: string; ask?: string; focus?: string }) =>
       post(`${base}/cards/${cardId}/extend`, body).then((r) => json<{ ext: Extension }>(r)),
-    unextend: (cardId: string, extId: string) => post(`${base}/cards/${cardId}/extend/${extId}/remove`, {}).then((r) => json<{ removed: string[] }>(r)),
+    unextend: (cardId: string, extId: string) => post(`${base}/cards/${cardId}/extend/${extId}/remove`, {}).then((r) => json<{ removed: string[]; taken: Extension[] }>(r)),
+    /** Puts grown shapes back (undoing their removal). */
+    restoreExt: (cardId: string, ext: Extension[]) => post(`${base}/cards/${cardId}/extend/restore`, { ext }).then((r) => json<{ ok: true }>(r)),
     courses: (cardId: string) => post(`${base}/cards/${cardId}/courses`, {}).then((r) => json<{ ok: true }>(r)),
     /** Saves a notebook's cells as you've edited them. */
     saveNotebook: (cardId: string, cells: NotebookCell[]) => send("PUT", `${base}/cards/${cardId}/notebook`, { cells }).then((r) => json<{ ok: true }>(r)),

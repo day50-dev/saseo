@@ -747,8 +747,8 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .grown-arrow, .grown-story, .grown-fork, .grown-y { fill: none; stroke: var(--sem-line); stroke-width: 1.6; }
 .grown-arrow .head, .grown-fork .head { fill: var(--sem-line); stroke: none; }
 
-/* Aside: off to the side of its piece, the aside bend down to each line. */
-.grown-aside-col { margin-left: 36%; display: flex; flex-direction: column; gap: 4px; }
+/* Aside: tucked in just under its piece (a fixed step, not a share of the card, which can be widened), bending down to each line. */
+.grown-aside-col { margin-left: 28px; display: flex; flex-direction: column; gap: 4px; }
 .grown-aside-row { display: flex; align-items: flex-start; gap: 4px; }
 .grown-arrow.aside { width: 24px; height: 20px; flex: none; margin-top: -4px; }
 

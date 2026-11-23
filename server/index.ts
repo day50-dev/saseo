@@ -380,6 +380,7 @@ app.post("/api/canvases/:cid/cards/:id/extend/:extId/remove", async (c) => {
   const card = await store.findItem(c.req.param("id"));
   if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
   const gone = new Set([c.req.param("extId")]);
+  let taken: Extension[] = [];
   await store.edit(card.id, (now) => {
     if (now?.kind !== "card") return null;
     for (let grew = true; grew; ) {
@@ -392,9 +393,29 @@ app.post("/api/canvases/:cid/cards/:id/extend/:extId/remove", async (c) => {
         }
       }
     }
+    taken = (now.ext ?? []).filter((e) => gone.has(e.id));
     return { ext: (now.ext ?? []).filter((e) => !gone.has(e.id)) };
   });
-  return c.json({ removed: [...gone] });
+  return c.json({ removed: [...gone], taken });
+});
+
+// Puts grown shapes back as they were (undoing their removal); any still being grown carry on.
+app.post("/api/canvases/:cid/cards/:id/extend/restore", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const card = await store.findItem(c.req.param("id"));
+  if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
+  const body = (await c.req.json()) as { ext?: Extension[] };
+  const back = (Array.isArray(body.ext) ? body.ext : []).filter((e) => e && typeof e.id === "string" && typeof e.at === "string");
+  let added: Extension[] = [];
+  await store.edit(card.id, (now) => {
+    if (now?.kind !== "card") return null;
+    const have = new Set((now.ext ?? []).map((e) => e.id));
+    added = back.filter((e) => !have.has(e.id));
+    return { ext: [...(now.ext ?? []), ...added] };
+  });
+  for (const e of added) if (e.status === "working") void extendPiece(store, card.id, e.id);
+  return c.json({ ok: true });
 });
 
 // Looks up where a finished card's subject is taught, for cards written before the course map.
