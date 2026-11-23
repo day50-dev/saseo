@@ -322,6 +322,11 @@ app.post("/api/canvases/:cid/call", async (c) => {
       void extendPiece(store, card.id, ext.id);
     },
     find: (near, kind, request, focus) => findFor(store, near, kind, request, focus),
+    remove: async (ids) => {
+      const hidden = await store.withDependents(ids);
+      if (hidden.length) await store.record({ type: "hide", ids: hidden });
+      return hidden;
+    },
     descend: async (card, phrase) => {
       const cards = (await store.getState()).items.filter((i): i is CardItem => i.kind === "card" && !i.hidden);
       const at = besideOf(cards, card, (x) => x.h ?? (x.sem ? 900 : 300));

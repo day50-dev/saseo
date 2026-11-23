@@ -128,7 +128,18 @@ function wav(chunks: Float32Array[], rate: number): Blob {
 type Voice = "server" | "browser";
 const VOICE_KEY = "librarian.callVoice";
 
-export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasId: string; serverVoice: boolean; onChanged: () => void; onClose: () => void }) {
+export function CallBar({
+  canvasId,
+  serverVoice,
+  onChanged,
+  onClose,
+}: {
+  canvasId: string;
+  serverVoice: boolean;
+  /** The canvas changed; `removed` is what the librarian took off it (for Undo). */
+  onChanged: (removed?: string[]) => void;
+  onClose: () => void;
+}) {
   // The librarian's voice: the browser's own (instant) or the server's (Kokoro; nicer, slower).
   const [voice, setVoice] = useState<Voice>(() => {
     let saved: string | null = null;
@@ -264,11 +275,11 @@ export function CallBar({ canvasId, serverVoice, onChanged, onClose }: { canvasI
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ text, pointing, history }),
       });
-      const { say, did } = (await r.json()) as { say: string; did?: string };
+      const { say, did, removed } = (await r.json()) as { say: string; did?: string; removed?: string[] };
       if (!say) return;
       setTurns((t) => [...t, { role: "librarian", text: say }]);
       speaking.current = say;
-      if (did) onChanged();
+      if (did) onChanged(removed);
       await speak(say);
     } catch (e) {
       setError(String(e));

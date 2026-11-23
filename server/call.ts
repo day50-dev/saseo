@@ -65,21 +65,24 @@ Answer the way you'd talk on the phone: warm, plain, short. One to three sentenc
 no LaTeX (say math in words: "A sub j", "the integral of"). Descend: explain with ideas more familiar than what they ask about.
 When they say "this", "this part", "right here", "that bit" or "here", they mean the words they have selected, if any;
 otherwise the piece they are pointing at. Speak to exactly that: say briefly which part you're taking up, then help with it.
-You can also change the canvas while you talk. Choose at most one action:
-- "grow": add a shape to the piece they're pointing at. Shapes: aside (say more), why (reasons leading up to it), then
-  (what follows), steps (how it's done), parts (break it down), split (two ways or cases), example (a worked example),
-  facts (more facts). Use it when they ask for more about something on the canvas, or when a diagram would help more
-  than talk. Then your words briefly say what you're adding ("Let me break that down for you on the card.").
-- "descend": open a new card that explains a phrase (they selected it, or it's in the piece they point at). Use it when
-  they ask what a term means and it deserves a full explanation.
-- "find": put something new on the canvas: "videos" (lectures, explainers), "links" (reading: articles, notes,
-  tutorials), "papers" (research papers on arXiv), "diagram" (draw one) or "notebook" (a runnable example in a
-  Jupyter notebook, found online; it opens beside the canvas). "request" says what, in a few words
-  ("eigenvectors, visual intuition"). Use it whenever they ask you to find, pull up, show or get videos, reading,
-  papers, a picture, code or an example in a notebook. Your words say what you're fetching ("I'll pull up some videos on eigenvectors.").
-- "none": just talk.
-Return JSON only: {"say": "...", "action": {"kind": "none" | "grow" | "descend" | "find", "shape": "...", "phrase": "...",
-  "find": "videos" | "links" | "papers" | "diagram" | "notebook", "request": "..."}}`;
+You can also change the canvas while you talk, with up to three actions:
+- {"kind": "grow", "shape": "..."}: add a shape to the piece they're pointing at. Shapes: aside (say more), why
+  (reasons leading up to it), then (what follows), steps (how it's done), parts (break it down), split (two ways or
+  cases), example (a worked example), facts (more facts). Use it when they ask for more about something on the
+  canvas, or when a diagram would help more than talk.
+- {"kind": "descend", "phrase": "..."}: open a new card that explains a phrase (they selected it, or it's in the piece
+  they point at). Use it when they ask what a term means and it deserves a full explanation.
+- {"kind": "find", "find": "videos" | "links" | "papers" | "diagram" | "notebook", "request": "..."}: put something
+  new on the canvas: videos (lectures, explainers), links (reading), papers (arXiv), diagram (draw one) or notebook
+  (a runnable example in a Jupyter notebook, found online; it opens beside the canvas). "request" says what, in a few
+  words. Use it whenever they ask you to find, pull up, show or get videos, reading, papers, a picture or an example.
+- {"kind": "remove", "ids": ["..."]}: take cards off the canvas (they can undo it). Use the ids from the list of
+  cards on the canvas: the ones they point at, name or describe ("those two diagrams", "the sketches"). Only cards
+  they clearly mean.
+Your words say briefly what you're doing ("Let me break that down on the card.", "I'll take those two off.").
+NEVER say you did, are doing or will do anything to the canvas that isn't one of your actions this turn: if they ask
+for something you can't do (move or resize things, for instance), say so plainly.
+Return JSON only: {"say": "...", "actions": [{"kind": "grow" | "descend" | "find" | "remove", ...}]} (actions may be [])`;
 
 /** One turn of the call: what to say back, and what was done on the canvas. */
 export async function callTurn(
@@ -92,8 +95,10 @@ export async function callTurn(
     descend: (card: CardItem, phrase: string) => Promise<CardItem>;
     /** `focus`: the words on `near` it's about (selected, or the piece pointed at). */
     find: (near: CardItem | undefined, kind: ObjectKind, request: string, focus?: string) => Promise<CardItem>;
+    /** Hides cards (and what hangs from them); returns everything hidden. */
+    remove: (ids: string[]) => Promise<string[]>;
   },
-): Promise<{ say: string; did?: string }> {
+): Promise<{ say: string; did?: string; removed?: string[] }> {
   const { items } = await store.getState();
   const cards = items.filter((i): i is CardItem => i.kind === "card" && !i.hidden);
   const card = pointing.cardId ? cards.find((c) => c.id === pointing.cardId) : undefined;
@@ -111,7 +116,10 @@ export async function callTurn(
           .join("\n")
       : (c.pageText ?? "").slice(0, 2000);
   const lines = [
-    `On the canvas: ${cards.map((c) => c.subject ?? c.selection ?? "a card").slice(0, 30).join("; ")}`,
+    `Cards on the canvas, oldest first (id: what it is):\n${cards
+      .slice(-40)
+      .map((c) => `${c.id}: ${c.objectKind ? `${c.objectKind === "links" ? "reading" : c.objectKind} card, ` : ""}${c.subject ?? c.selection ?? c.request ?? "a card"}${c.id === pointing.cardId ? " (pointed at)" : ""}`)
+      .join("\n")}`,
     notes.length ? `What they've told you about themselves: ${notes.join("; ")}` : "",
     card ? `They are pointing at the card "${card.subject ?? card.selection}":\n${semText(card)}` : "They aren't pointing at anything.",
     pointing.pieceText ? `Specifically this piece of it: "${pointing.pieceText}"` : "",
@@ -121,37 +129,52 @@ export async function callTurn(
     history.length ? `The call so far:\n${history.slice(-8).map((t) => `${t.role === "you" ? "Reader" : "You"}: ${t.text}`).join("\n")}` : "",
     `They just said: "${text}"`,
   ].filter(Boolean);
-  const r = await chatJson<{ say?: string; action?: { kind?: string; shape?: string; phrase?: string; find?: string; request?: string } }>((await loadConfig()).llm, [
+  type Action = { kind?: string; shape?: string; phrase?: string; find?: string; request?: string; ids?: unknown };
+  const r = await chatJson<{ say?: string; action?: Action; actions?: Action[] }>((await loadConfig()).llm, [
     { role: "system", content: CALL },
     { role: "user", content: lines.join("\n\n") },
   ]);
   let spoken = String(r.say ?? "").trim() || "Sorry, I didn't catch that. Could you say it again?";
-  let did: string | undefined;
-  const kind = r.action?.kind;
-  try {
-    if (kind === "grow" && card?.sem && pointing.key) {
-      const shape = (EXTENSION_SHAPES as readonly string[]).includes(r.action?.shape ?? "") ? (r.action!.shape as ExtensionShape) : "aside";
-      const ext: Extension = { id: newId(), at: pointing.key, shape, ask: text.slice(0, 500), status: "working" };
-      await hooks.grow(card, ext);
-      did = `grew ${shape} on ${pointing.key}`;
-    } else if (kind === "find") {
-      const what = (["videos", "links", "papers", "diagram", "notebook"] as const).find((k) => k === r.action?.find) ?? "videos";
-      const request = (r.action?.request || pointing.selection || text).trim().slice(0, 300);
-      // Beside what they're pointing at, else beside the newest card.
-      const focus = card ? pointing.selection || (pointing.pieceText && pointing.pieceText.length <= 240 ? pointing.pieceText : undefined) : undefined;
-      const made = await hooks.find(card ?? cards.at(-1), what, request, focus);
-      did = `finding ${what}: ${request} (${made.id})`;
-    } else if (kind === "descend" && card) {
-      const phrase = (pointing.selection || r.action?.phrase || "").trim().slice(0, 300);
-      if (phrase) {
-        await hooks.descend(card, phrase);
-        did = `opened a card on "${phrase}"`;
+  const actions = (Array.isArray(r.actions) ? r.actions : r.action ? [r.action] : []).slice(0, 3);
+  const done: string[] = [];
+  const removed: string[] = [];
+  let failed = false;
+  for (const a of actions) {
+    try {
+      if (a.kind === "grow" && card?.sem && pointing.key) {
+        const shape = (EXTENSION_SHAPES as readonly string[]).includes(a.shape ?? "") ? (a.shape as ExtensionShape) : "aside";
+        const ext: Extension = { id: newId(), at: pointing.key, shape, ask: text.slice(0, 500), status: "working" };
+        await hooks.grow(card, ext);
+        done.push(`grew ${shape} on ${pointing.key}`);
+      } else if (a.kind === "descend" && card) {
+        const phrase = (pointing.selection || a.phrase || "").trim().slice(0, 300);
+        if (phrase) {
+          await hooks.descend(card, phrase);
+          done.push(`opened a card on "${phrase}"`);
+        }
+      } else if (a.kind === "find") {
+        const what = (["videos", "links", "papers", "diagram", "notebook"] as const).find((k) => k === a.find) ?? "videos";
+        const request = (a.request || pointing.selection || text).trim().slice(0, 300);
+        const focus = card ? pointing.selection || (pointing.pieceText && pointing.pieceText.length <= 240 ? pointing.pieceText : undefined) : undefined;
+        // Beside what they're pointing at, else beside the newest card.
+        const made = await hooks.find(card ?? cards.at(-1), what, request, focus);
+        done.push(`finding ${what}: ${request} (${made.id})`);
+      } else if (a.kind === "remove") {
+        const known = new Set(cards.map((c) => c.id));
+        const ids = (Array.isArray(a.ids) ? a.ids : []).map(String).filter((id) => known.has(id));
+        if (ids.length) {
+          const gone = await hooks.remove(ids);
+          removed.push(...gone);
+          done.push(`removed ${ids.length} card${ids.length > 1 ? "s" : ""}`);
+        } else failed = true;
       }
+    } catch {
+      failed = true;
     }
-  } catch {
-    spoken += " I couldn't change the canvas just now, though.";
   }
-  return { say: spoken, did };
+  if (failed) spoken += " Something I tried on the canvas didn't work, though.";
+  const did = done.length ? done.join("; ") : undefined;
+  return { say: spoken, did, ...(removed.length ? { removed } : {}) };
 }
 
 /** Where a new card for a phrase in `from` goes: to its right, below anything already there. */

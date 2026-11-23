@@ -1663,7 +1663,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           onClose={() => setNotebook(null)}
         />
       )}
-      {calling && <CallBar canvasId={canvasId} serverVoice={!!me.speech?.tts} onChanged={refresh} onClose={() => setCalling(false)} />}
+      {calling && <CallBar canvasId={canvasId} serverVoice={!!me.speech?.tts}
+          onChanged={(removed) => {
+            if (removed?.length) pushStep({ label: "remove (on the call)", undo: () => api.show(removed), redo: () => api.hide(removed) });
+            void refresh();
+          }} onClose={() => setCalling(false)} />}
       {arxivOpen && <ArxivPanel onAdd={(paper, pages) => addPaperPages(paper, pages)} onClose={() => setArxivOpen(false)} />}
     </div>
   );
