@@ -1,10 +1,11 @@
 // Video lectures (docs/BRAINSTORM.md, "Video lectures"): a YouTube video on the canvas, and the
 // moments where it lost you. A moment is the frame at that instant, cut from the stream itself
 // (sharp enough to read a board), plus what was said around it, from the captions.
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import type { CopyProgress } from "../shared/canvas.ts";
 import { DATA_DIR } from "./canvas.ts";
 
 const run = promisify(execFile);
@@ -146,6 +147,61 @@ export const copyPath = (id: string) => path.join(DIR, `${id}.mp4`);
 
 const fetching = new Map<string, Promise<void>>();
 
+const progress = new Map<string, CopyProgress>();
+
+export function copyProgress(id: string): CopyProgress | undefined {
+  return progress.get(id);
+}
+
+const num = (s: string | undefined) => (s && s !== "NA" && Number.isFinite(Number(s)) ? Number(s) : undefined);
+
+/** Runs yt-dlp for the download, reading its progress lines as they come. */
+function download(id: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("yt-dlp", [
+      ...YTDLP,
+      "--newline",
+      "--progress-template",
+      "download:PROGRESS %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s %(progress.eta)s %(info.vcodec)s",
+      ...args,
+    ]);
+    let tail = "";
+    const timer = setTimeout(() => child.kill(), 60 * 60 * 1000);
+    const read = (chunk: Buffer) => {
+      for (const line of chunk.toString().split("\n")) {
+        const m = /^PROGRESS (\S+) (\S+) (\S+) (\S+) (\S+) (\S+)/.exec(line.trim());
+        if (m) {
+          const bytes = num(m[1]);
+          const total = num(m[2]) ?? num(m[3]);
+          progress.set(id, {
+            phase: m[6] === "none" ? "sound" : "video",
+            bytes,
+            total,
+            percent: bytes !== undefined && total ? Math.min(100, (bytes / total) * 100) : undefined,
+            speed: num(m[4]),
+            eta: num(m[5]),
+          });
+        } else if (/\[Merger\]|\[VideoConvertor\]|\[FixupM3u8\]/.test(line)) {
+          progress.set(id, { phase: "joining" });
+        } else if (line.trim()) {
+          tail = line.trim();
+        }
+      }
+    };
+    child.stdout.on("data", read);
+    child.stderr.on("data", read);
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(tail.replace(/^ERROR:\s*/, "") || `yt-dlp exited with ${code}`));
+    });
+  });
+}
+
 /**
  * Fetches the video to play here, one download per video however many ask. 720p at most: enough
  * to read a board, and a lecture stays a few hundred megabytes.
@@ -157,22 +213,26 @@ export function fetchCopy(id: string): Promise<void> {
       await mkdir(DIR, { recursive: true });
       try {
         await stat(copyPath(id));
+        progress.set(id, { phase: "ready" });
         return; // already here
       } catch {}
-      const tmp = path.join(DIR, `${id}.part.%(ext)s`);
-      await ytdlp(
-        [
+      progress.set(id, { phase: "starting" });
+      try {
+        await download(id, [
           "-f",
           "bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/b",
           "--merge-output-format",
           "mp4",
           "-o",
-          tmp,
+          path.join(DIR, `${id}.part.%(ext)s`),
           ytUrl(id),
-        ],
-        60 * 60 * 1000,
-      );
-      await rename(path.join(DIR, `${id}.part.mp4`), copyPath(id));
+        ]);
+        await rename(path.join(DIR, `${id}.part.mp4`), copyPath(id));
+        progress.set(id, { phase: "ready" });
+      } catch (err) {
+        progress.set(id, { phase: "failed", error: err instanceof Error ? err.message : String(err) });
+        throw err;
+      }
     })().finally(() => fetching.delete(id));
     fetching.set(id, p);
   }

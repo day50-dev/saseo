@@ -10,7 +10,7 @@ import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/prov
 import { addReaderNote, assetPath, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
-import { around, captions, clock, copyPath, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
+import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, makeObject, mapCourses, pointAt, readSource } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
@@ -435,7 +435,7 @@ app.post("/api/canvases/:cid/sources", async (c) => {
     };
     await store.add(video);
     // Its uploader doesn't allow playing it elsewhere: fetch our own copy to play here.
-    if (!info.embeddable) void hostVideo(store, video.id);
+    if (!info.embeddable) void hostVideo(store, video.id, "not-embeddable");
     void captions(yt).catch(() => []); // fetched ahead, so the first moment is quick
     return c.json({ image: video });
   }
@@ -455,18 +455,20 @@ app.post("/api/canvases/:cid/sources", async (c) => {
 });
 
 /** Fetches a copy of a video to play here, recording progress on its item so the canvas can show it. */
-async function hostVideo(store: CanvasStore, itemId: string) {
+async function hostVideo(store: CanvasStore, itemId: string, why?: "not-embeddable" | "player-refused") {
   const item = await store.findItem(itemId);
   if (item?.kind !== "image" || !item.video) return;
-  await store.update(itemId, { video: { ...item.video, hosted: "downloading" } });
+  await store.update(itemId, { video: { ...item.video, hosted: "downloading", hostError: undefined, why: why ?? item.video.why } });
   let hosted: "ready" | "failed" = "ready";
+  let hostError: string | undefined;
   try {
     await fetchCopy(item.video.videoId);
-  } catch {
+  } catch (err) {
     hosted = "failed";
+    hostError = (err instanceof Error ? err.message : String(err)).slice(0, 300);
   }
   const now = await store.findItem(itemId);
-  if (now?.kind === "image" && now.video) await store.update(itemId, { video: { ...now.video, hosted } });
+  if (now?.kind === "image" && now.video) await store.update(itemId, { video: { ...now.video, hosted, hostError } });
 }
 
 // The player found it can't be embedded after all, or a fetch failed and is asked for again.
@@ -475,9 +477,13 @@ app.post("/api/canvases/:cid/videos/:id/host", async (c) => {
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const item = await store.findItem(c.req.param("id"));
   if (item?.kind !== "image" || !item.video) return c.json({ error: "unknown video" }, 404);
-  if (item.video.hosted !== "downloading" && item.video.hosted !== "ready") void hostVideo(store, item.id);
+  if (item.video.hosted !== "downloading" && item.video.hosted !== "ready")
+    void hostVideo(store, item.id, item.video.embeddable === false ? "not-embeddable" : "player-refused");
   return c.json({ ok: true });
 });
+
+// How the download of a video's copy is going.
+app.get("/api/video-progress/:id", (c) => c.json(copyProgress(c.req.param("id")) ?? { phase: "starting" }));
 
 // Our copy of a video, with ranges so the player can seek.
 app.get("/api/videos/:file", async (c) => {

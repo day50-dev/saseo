@@ -1,7 +1,7 @@
 // A YouTube video on the canvas, playing in place, with a button to stop where it lost you.
 // When the uploader doesn't allow embedding, it plays our own copy instead (fetched by the server).
 import { useEffect, useRef, useState } from "react";
-import type { ImageItem } from "../shared/canvas.ts";
+import type { CopyProgress, ImageItem } from "../shared/canvas.ts";
 import { assetUrl } from "./canvasApi.ts";
 import { players, type YTPlayer, youtubeApi } from "./youtube.ts";
 
@@ -30,7 +30,8 @@ export function VideoPlayer({
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const own = v.hosted === "ready";
-  const waiting = !own && (v.embeddable === false || blocked);
+  // Not playable here yet: the uploader disallows embedding, the player refused, or the server is fetching a copy for either reason.
+  const waiting = !own && (v.embeddable === false || blocked || (Boolean(v.why) && v.hosted !== undefined));
 
   const stop = async () => {
     const p = players.get(item.id);
@@ -55,20 +56,7 @@ export function VideoPlayer({
           <OwnCopy item={item} onReady={() => setReady(true)} />
         ) : waiting ? (
           <div className="video-wait" style={{ backgroundImage: item.asset ? `url(${assetUrl(item.asset)})` : undefined }}>
-            <div className="video-wait-note">
-              {v.hosted === "failed" ? (
-                <>
-                  Couldn't fetch a copy of this video.{" "}
-                  <button type="button" onClick={onNeedCopy}>
-                    Try again
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="spinner" /> This video can't be played on other sites, so the librarian is fetching a copy to play here…
-                </>
-              )}
-            </div>
+            <CopyStatus item={item} onRetry={onNeedCopy} />
           </div>
         ) : (
           <YouTubeEmbed
@@ -151,4 +139,83 @@ function OwnCopy({ item, onReady }: { item: ImageItem; onReady: () => void }) {
     };
   }, [item.id]);
   return <video ref={ref} className="video-own" src={`/api/videos/${item.video!.videoId}.mp4`} controls preload="metadata" onLoadedMetadata={onReady} />;
+}
+
+const mb = (n: number) => `${(n / 1e6).toFixed(n < 1e7 ? 1 : 0)} MB`;
+
+function duration(s: number): string {
+  if (s < 60) return `${Math.round(s)} s`;
+  const m = Math.round(s / 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+
+/** Why the video isn't playing yet, and how the download of our copy is going. */
+function CopyStatus({ item, onRetry }: { item: ImageItem; onRetry: () => void }) {
+  const v = item.video!;
+  const [p, setP] = useState<CopyProgress | null>(null);
+  const failed = v.hosted === "failed";
+
+  useEffect(() => {
+    if (failed) return;
+    let gone = false;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/video-progress/${v.videoId}`);
+        if (r.ok && !gone) setP((await r.json()) as CopyProgress);
+      } catch {}
+    };
+    void tick();
+    const t = setInterval(tick, 1000);
+    return () => {
+      gone = true;
+      clearInterval(t);
+    };
+  }, [v.videoId, failed]);
+
+  const why =
+    v.why === "player-refused"
+      ? "YouTube refused to play this video on another site,"
+      : "This video's owner doesn't allow it to be played on other sites,";
+  const part = p?.phase === "sound" ? "the sound" : "the picture";
+  let status: React.ReactNode;
+  if (failed) {
+    status = (
+      <>
+        The download failed{v.hostError ? `: ${v.hostError}` : "."}{" "}
+        <button type="button" onClick={onRetry}>
+          Try again
+        </button>
+      </>
+    );
+  } else if (!p || p.phase === "starting") status = "Starting the download…";
+  else if (p.phase === "joining") status = "Putting the picture and sound together…";
+  else if (p.phase === "ready") status = "Downloaded; starting it…";
+  else if (p.phase === "failed") status = `The download failed${p.error ? `: ${p.error}` : "."}`;
+  else
+    status = [
+      `Downloading ${part}`,
+      p.percent !== undefined ? `${Math.floor(p.percent)}%` : "",
+      p.bytes !== undefined && p.total ? `${mb(p.bytes)} of ${mb(p.total)}` : p.bytes !== undefined ? mb(p.bytes) : "",
+      p.speed ? `${mb(p.speed)}/s` : "",
+      p.eta !== undefined ? `about ${duration(p.eta)} left` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+  const showBar = !failed && p && (p.phase === "video" || p.phase === "sound") && p.percent !== undefined;
+  return (
+    <div className={`video-wait-note ${failed ? "failed" : ""}`}>
+      <div className="video-wait-why">
+        {why} so the librarian is downloading a copy to play here instead.
+      </div>
+      <div className="video-wait-status">
+        {!failed && <span className="spinner" />} {status}
+      </div>
+      {showBar && (
+        <div className="video-wait-bar" role="progressbar" aria-valuenow={Math.floor(p!.percent!)} aria-valuemin={0} aria-valuemax={100}>
+          <div style={{ width: `${p!.percent}%` }} />
+        </div>
+      )}
+    </div>
+  );
 }

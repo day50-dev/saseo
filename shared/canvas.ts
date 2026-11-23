@@ -41,6 +41,20 @@ export interface ImageItem extends ItemState {
   transcript?: string;
 }
 
+/** How a copy's download is going, for the canvas to show while it waits. */
+export interface CopyProgress {
+  phase: "starting" | "video" | "sound" | "joining" | "ready" | "failed";
+  /** 0 to 100, for the part being downloaded now. */
+  percent?: number;
+  bytes?: number;
+  total?: number;
+  /** Bytes a second. */
+  speed?: number;
+  /** Seconds left for the part being downloaded now. */
+  eta?: number;
+  error?: string;
+}
+
 /** How wide a video plays on the canvas, and how wide a moment's frame lands. */
 export const VIDEO_WIDTH = 720;
 export const MOMENT_WIDTH = 640;
@@ -55,6 +69,10 @@ export interface VideoMeta {
   embeddable?: boolean;
   /** Our own copy of the video, for when it can't be embedded. */
   hosted?: "downloading" | "ready" | "failed";
+  /** Why fetching the copy failed. */
+  hostError?: string;
+  /** Why we needed our own copy: the uploader disallows embedding, or the player refused it. */
+  why?: "not-embeddable" | "player-refused";
 }
 
 /** What an update event may change: a card's fields, or what was read off an image. */
