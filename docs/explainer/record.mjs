@@ -3,9 +3,10 @@
 import { mkdirSync, readFileSync, renameSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 
-const DIR = process.env.WORK ?? new URL(".", import.meta.url).pathname; // where profiles, clips and shots go
+const DIR = new URL(".", import.meta.url).pathname;
 const SITE = "https://librarian.9ol.es";
-const { talk, lecture } = JSON.parse(readFileSync(`${DIR}canvases.json`, "utf8"));
+const { talk, lecture, page: pageCanvas, pageCard, notebook } = JSON.parse(readFileSync(`${DIR}canvases.json`, "utf8"));
+const CALL = JSON.parse(readFileSync(`${DIR}call.json`, "utf8"));
 const W = 1920;
 const H = 1080;
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -13,12 +14,27 @@ mkdirSync(`${DIR}clips`, { recursive: true });
 
 // Recorded in plain contexts carrying the demo visitor's session (saved from the profile prep used).
 const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true, args: ["--autoplay-policy=no-user-gesture-required"] });
-const newScene = () =>
-  browser.newContext({
+const newScene = async () => {
+  const ctx = await browser.newContext({
     storageState: `${DIR}state.json`,
     viewport: { width: W, height: H },
     recordVideo: { dir: `${DIR}raw`, size: { width: W, height: H } },
   });
+  // Headless Chrome can't reach a speech service: the recognizer is driven by the scene itself,
+  // and the librarian's voice (added in the edit, as narration) is silent here.
+  await ctx.addInitScript(() => {
+    window.webkitSpeechRecognition = window.SpeechRecognition = class {
+      constructor() {
+        window.__rec = this;
+      }
+      start() {}
+      stop() {}
+      abort() {}
+    };
+    if (window.speechSynthesis) speechSynthesis.speak = (u) => setTimeout(() => u.onend?.(), 2500);
+  });
+  return ctx;
+};
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -38,7 +54,6 @@ async function open(page, cid) {
   await page.evaluate(() => {
     const b = [...document.querySelectorAll("button")].find((b) => /^\d+%$/.test(b.textContent.trim()));
     if (b && b.textContent.trim() !== "100%") b.click();
-    document.querySelector(".start-open")?.remove(); // keep the shot clean
   });
   await sleep(500);
   // Closer than 100%, so card text reads at video size.
@@ -51,7 +66,8 @@ async function open(page, cid) {
     await page.keyboard.up("Control");
     await sleep(120);
   }
-  await page.evaluate(() => document.querySelector(".start-open")?.remove());
+  // Keep the shot clean (hidden, not removed: React still owns it).
+  await page.addStyleTag({ content: ".start-open { display: none !important; }" });
 }
 const ZOOM = Number(process.env.ZOOM ?? 140);
 
@@ -245,6 +261,118 @@ const scenes = {
     await sleep(2000);
     await hover(page, ".resume-btn", 800);
     await sleep(2500);
+  },
+
+  // A whole Wikipedia article, drawn as shapes, then section by section.
+  async "10a-pages"(page) {
+    await open(page, pageCanvas);
+    const c = `.card-item[data-card-id="${pageCard}"]`;
+    await bring(page, c, 330, 70, 10);
+    await sleep(600);
+    start();
+    await sleep(1200);
+    const at = async (sel) => page.evaluate((sel) => { const r = document.querySelector(sel)?.getBoundingClientRect(); return r ? { x: r.x, y: r.y } : null; }, sel);
+    const here = await at(`${c} .facet-here`);
+    if (here) await glide(page, here, { x: here.x, y: 160 }, 4000);
+    await sleep(1200);
+    const secs = await at(`${c} .page-sections`);
+    if (secs) await glide(page, secs, { x: secs.x, y: 110 }, 2500);
+    await sleep(1500);
+    const second = await at(`${c} .page-section:nth-of-type(2)`);
+    if (second) await glide(page, second, { x: second.x, y: 110 }, 4000);
+    await sleep(3000);
+  },
+
+  // A call: words selected and said aloud; the answer; the piece grows where they pointed.
+  async "10b-call"(page) {
+    await open(page, pageCanvas);
+    const c = `.card-item[data-card-id="${pageCard}"]`;
+    const piece = `${c} [data-a="why-1"]`;
+    // The call made while preparing grew this shape; its answer is replayed here (calling again
+    // would grow a second one), and the shape shows when the answer lands.
+    await page.addStyleTag({ content: `body:not(.answered) ${c} .grown { display: none !important; }` });
+    await page.route("**/call", async (route) => {
+      await sleep(1600);
+      await route.fulfill({ json: { say: CALL.say, did: CALL.did } });
+      await page.evaluate(() => document.body.classList.add("answered"));
+    });
+    const b = await box(page, piece);
+    await glide(page, { x: b.x, y: b.y }, { x: 520, y: 330 }, 10);
+    await sleep(800);
+    start();
+    await sleep(600);
+    await hover(page, ".call-btn", 700);
+
+    await page.click(".call-btn");
+    await sleep(1200);
+
+    // The words, selected as a person would: drag across them.
+    const r = await page.locator(piece).first().evaluate((el) => {
+      const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = w.nextNode()) && !n.data.includes("without turning"));
+      if (!n) return null;
+      const i = n.data.indexOf("without turning");
+      const range = document.createRange();
+      range.setStart(n, i);
+      range.setEnd(n, i + "without turning".length);
+      const rs = range.getClientRects();
+      const a = rs[0], z = rs[rs.length - 1];
+      return { x0: a.left + 1, y: a.top + a.height / 2, x1: z.right - 1, y1: z.top + z.height / 2 };
+    });
+    if (r) {
+      await page.mouse.move(r.x0 - 40, r.y + 30, { steps: 15 });
+      await page.mouse.move(r.x0, r.y, { steps: 15 });
+      await page.mouse.down();
+      await page.mouse.move(r.x1, r.y1, { steps: 25 });
+      await page.mouse.up();
+    }
+    await sleep(900);
+    // Saying it: the recognizer hears it word by word.
+    const words = CALL.text.split(" ");
+    await page.evaluate(() => window.__rec?.onspeechstart?.());
+    for (let i = 2; i <= words.length; i += 2) {
+      await page.evaluate((t) => window.__rec.onresult({ resultIndex: 0, results: [Object.assign({ 0: { transcript: t } }, { isFinal: false })] }), words.slice(0, i).join(" "));
+      await sleep(260);
+    }
+    await page.evaluate((t) => window.__rec.onresult({ resultIndex: 0, results: [Object.assign({ 0: { transcript: t } }, { isFinal: true })] }), CALL.text);
+    await sleep(4200);
+    const g = await box(page, `${c} .grown`);
+    if (g) await glide(page, { x: g.x, y: g.y }, { x: 520, y: 260 }, 1800);
+    await sleep(4000);
+  },
+
+  // An example notebook opens beside the canvas, credited, and runs.
+  async "10c-notebook"(page) {
+    await open(page, pageCanvas);
+    const nbCard = `.card-item[data-card-id="${notebook}"]`;
+    await bring(page, nbCard, 260, 120, 10);
+    // Python warmed up off camera (it downloads once), then the panel closed again.
+    await page.click(`${nbCard} .object-notebook button`);
+    await page.waitForSelector(".nb-panel");
+    await page.click(".nb-tools button:has-text('Run all')");
+    for (let i = 0; i < 120; i++) {
+      const busy = await page.evaluate(() => !!document.querySelector(".nb-out .spinner, .nb-status"));
+      if (!busy && i > 3) break;
+      await sleep(1000);
+    }
+    await page.click(".nb-tools button:has-text('✕')");
+    await sleep(800);
+    start();
+    await sleep(700);
+    await hover(page, `${nbCard} .object-notebook button`, 800);
+    await sleep(500);
+    await page.click(`${nbCard} .object-notebook button`);
+    await sleep(2500);
+    await hover(page, ".nb-tools button:has-text('Run all')", 600);
+    await page.click(".nb-tools button:has-text('Run all')");
+    await sleep(1500);
+    // Down through the cells as they run.
+    for (let i = 0; i < 9; i++) {
+      await page.evaluate(() => document.querySelector(".nb-cells").scrollBy({ top: 260, behavior: "smooth" }));
+      await sleep(1100);
+    }
+    await sleep(2000);
   },
 
   // Sources found, and where the subject is taught.

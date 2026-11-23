@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 
-const DIR = process.env.WORK ?? new URL(".", import.meta.url).pathname; // where profiles, clips and shots go
+const DIR = new URL(".", import.meta.url).pathname;
 const SITE = "https://librarian.9ol.es";
 const SLIDE = process.env.SLIDE ?? "slide.png";
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -79,6 +79,7 @@ await page.mouse.down();
 await page.mouse.move(img.x + 470 * k, img.y + 126 * k, { steps: 12 });
 await page.mouse.up();
 log("boxed Biot-Savart law");
+for (let i = 0; i < 60 && !(await state(talk.id)).items.some((x) => x.kind === "card"); i++) await page.waitForTimeout(1000);
 let s = await settle(talk.id, "talk box");
 const first = s.items.find((x) => x.kind === "card" && x.sem);
 log("first card", first?.subject, first?.stage);
@@ -133,10 +134,13 @@ await page.mouse.move(fr.x + fr.width * 0.3, fr.y + fr.height * 0.2);
 await page.mouse.down();
 await page.mouse.move(fr.x + fr.width * 0.75, fr.y + fr.height * 0.8, { steps: 12 });
 await page.mouse.up();
+for (let i = 0; i < 60 && !(await state(lec.id)).items.some((x) => x.kind === "card" && x.parentId && x.selection === undefined && x.stage); i++) await page.waitForTimeout(1000);
+await page.waitForTimeout(3000);
 s = await settle(lec.id, "lecture box");
 log("lecture ready", s.items.filter((x) => x.kind === "card").map((c) => `${c.subject}:${c.stage}`));
 
-writeFileSync(`${DIR}canvases.json`, JSON.stringify({ talk: talk.id, lecture: lec.id }, null, 2));
+const before = JSON.parse(readFileSync(`${DIR}canvases.json`, "utf8"));
+writeFileSync(`${DIR}canvases.json`, JSON.stringify({ ...before, talk: talk.id, lecture: lec.id }, null, 2));
 void frame;
 await ctx.close();
 log("done");

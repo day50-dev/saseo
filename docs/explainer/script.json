@@ -53,6 +53,21 @@
       "say": "Every explanation is grounded in sources it went and found. And it notices where an idea is usually taught, an intro course or a graduate seminar, so it can keep things at your level."
     },
     {
+      "id": "10a-pages",
+      "shot": "A Wikipedia article on the canvas, drawn as shapes, then section by section",
+      "say": "Bring a whole page, and it keeps all of it. A long article is redrawn section by section, every fact, date and name carried over. Nothing is summarized away. And a page anyone has read before opens instantly."
+    },
+    {
+      "id": "10b-call",
+      "shot": "On a call: words selected, said aloud; the answer, and a shape grown where they pointed",
+      "say": "Or just talk to it. Start a call, keep your hand on the page, select the words that lost you, and say: this part, right here. It answers out loud, and changes the canvas as it talks. It grows the piece you mean, or goes and finds you videos."
+    },
+    {
+      "id": "10c-notebook",
+      "shot": "A notebook opens beside the canvas, credited to where it was found, and runs",
+      "say": "Want to see it actually work? Ask for an example in a notebook. It finds a real one, written and run by a real person, keeps the cells that matter, and credits where it came from. Then it runs, right there in your browser."
+    },
+    {
       "id": "11-close",
       "shot": "End card",
       "say": "Librarian. Free, open, and no account needed. Bring the thing that stopped you."

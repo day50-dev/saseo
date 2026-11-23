@@ -1,0 +1,11 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { request } from "playwright-core";
+const DIR = new URL(".", import.meta.url).pathname;
+const ids = JSON.parse(readFileSync(`${DIR}canvases.json`, "utf8"));
+const api = await request.newContext({ baseURL: "https://librarian.9ol.es", storageState: `${DIR}state.json` });
+const text = "this part right here, I'm having trouble with it. Can you break it down?";
+const t = Date.now();
+const r = await (await api.post(`/api/canvases/${ids.page}/call`, { data: { text, history: [], pointing: { cardId: ids.pageCard, key: "why-1", pieceText: "Some directions only stretch or shrink, without turning.", selection: "without turning", selectionContext: "Some directions only stretch or shrink, without turning." } } })).json();
+console.log((Date.now() - t) / 1000, "s", r);
+writeFileSync(`${DIR}call.json`, JSON.stringify({ text, ...r }, null, 2));
+await api.dispose();
