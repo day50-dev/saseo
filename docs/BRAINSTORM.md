@@ -16,7 +16,34 @@ Topics:
 
 ## Video lectures: the side quest and the way back
 
-*Status: open. Started 2026-11-21.*
+*Status: first version built (2026-11-22). Open questions below still stand.*
+
+### What's built
+
+- Paste a YouTube link in the start box: the video plays on the canvas (YouTube IFrame Player
+  API, `src/VideoPlayer.tsx`). It's an image item with `video` set, so it moves, folds and undoes
+  like a slide; its asset is the thumbnail.
+- **⏸ Stop here and ask** pauses it and calls `POST /videos/:id/moments`. The server
+  (`server/video.ts`) asks yt-dlp for a 1080p H.264 stream URL (kept for an hour) and has ffmpeg
+  seek into it for that one frame, about 1 s (4 s for a video's first moment). No download.
+- The frame lands beside the video as an image with `moment` set, so boxing works as on any slide.
+  Under it, a card holds what was said from 60 s before to 15 s after, from the captions (human if
+  there are any, else automatic; fetched once per video and cached in `data/videos/`). Select
+  words in it to go down.
+- Explanations of a moment, boxed or selected, are told it's a paused lecture, its title and
+  channel, the time, and the transcript window (`momentNote` in `server/explain.ts`). Tested on
+  3Blue1Brown's "Vectors": boxing the vector sum at 6:40 gave an explanation that used the
+  lecture's own tip-to-tail, steps-right-and-up framing and worked the example on screen.
+- A moment's label has **▶ 6:40**: it brings the video into view and plays from there.
+- yt-dlp needs `--js-runtimes node` for YouTube now, and a recent yt-dlp to solve its URL
+  challenge (an eight-month-old one got 403s).
+
+Answered by this version: pause-then-capture is one button; the window is a fixed 60 s before and
+15 s after (lines after the pause are marked); the transcript is read only around the moment, so
+nothing is spoiled; moments stack beside their video, so the way back is the ▶ on each.
+
+Next: Whisper for videos without captions; letting the model correct caption mishearings
+("Morse" heard as "more"); the whole lecture as shapes with pieces anchored to time ranges.
 
 ### The moment
 
