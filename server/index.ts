@@ -8,13 +8,14 @@ import { Readable } from "node:stream";
 import path from "node:path";
 import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
+import { remember } from "./pagecache.ts";
 import { addReaderNote, assetPath, autoName, DATA_DIR, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
 import { besideOf, callTurn, listen, type Pointing, say, speechOn, type Turn } from "./call.ts";
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
-import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, makeObject, mapCourses, pointAt, readSource, shapeSections } from "./explain.ts";
+import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
@@ -416,7 +417,8 @@ app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
   const parent = await store.findItem(card.parentId);
   if (card.origin?.kind === "page") {
     await store.update(card.id, { stage: "reading", error: "" });
-    void readSource(store, card.id);
+    // "Read again" fetches the page anew; a failed read may just retry from what's stored.
+    void readSource(store, card.id, reread);
   } else if (card.objectKind) {
     await store.update(card.id, { stage: "reading", error: "" });
     void makeObject(store, card.id);
@@ -737,3 +739,20 @@ const port = Number(process.env.PORT ?? 8787);
 serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, () => {
   console.log(`librarian API on http://127.0.0.1:${port} (config: ${CONFIG_PATH}; accounts ${AUTH_ON ? "on" : "off"})`);
 });
+
+// Every page any canvas has read goes into the page store, and then every canvas takes from it
+// the sections it's missing. Loading a canvas also resumes whatever a restart interrupted there.
+void (async () => {
+  const pages: [CanvasStore, string][] = [];
+  for (const info of await listCanvases()) {
+    const store = await canvasStore(info.id).catch(() => undefined);
+    const items = store ? (await store.getState().catch(() => null))?.items ?? [] : [];
+    for (const c of items) {
+      if (c.kind !== "card" || c.origin?.kind !== "page") continue;
+      await remember(c).catch(() => {});
+      pages.push([store!, c.id]);
+    }
+  }
+  for (const [store, id] of pages) await refillSections(store, id).catch(() => {});
+  if (pages.length) console.log(`page store: ${pages.length} linked pages remembered`);
+})();
