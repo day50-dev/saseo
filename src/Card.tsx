@@ -3,6 +3,7 @@ import {
   type CardItem,
   type CardStage,
   type Clarify,
+  type CourseSighting,
   type FoundSource,
   type ImageItem,
   type Paper,
@@ -359,6 +360,8 @@ export function Card(props: {
         )}
       </div>
 
+      {card.taught && card.taught.length > 0 && <Taught sightings={card.taught} />}
+
       {sources.length > 0 && (
         <section className="found">
           <h4>Found by the librarian</h4>
@@ -600,6 +603,47 @@ function FromPage({ card, anchorKey, onOpenPage }: { card: CardItem; anchorKey: 
         </span>
       )}
     </span>
+  );
+}
+
+/** Where the subject is taught, and where it's assumed known, from the course map. */
+function Taught({ sightings }: { sightings: CourseSighting[] }) {
+  // One chip per course: several lectures of the same course are one sighting of where it's taught.
+  const label = (s: CourseSighting) => [s.institution, s.code].filter(Boolean).join(" ");
+  const once = (list: CourseSighting[]) => list.filter((s, i) => list.findIndex((o) => label(o) === label(s)) === i);
+  const teach = once(sightings.filter((s) => s.role !== "uses"));
+  const assume = once(sightings.filter((s) => s.role === "uses"));
+  // The level most of the teaching courses are at.
+  const counts = new Map<string, number>();
+  for (const s of teach) if (s.level !== "unknown") counts.set(s.level, (counts.get(s.level) ?? 0) + 1);
+  const level = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const chip = (s: CourseSighting) => (
+    <a
+      key={s.url}
+      className="course-chip"
+      href={s.url}
+      target="_blank"
+      rel="noreferrer"
+      title={[s.title, s.level !== "unknown" ? s.level : "", s.quote ? `“${s.quote}”` : ""].filter(Boolean).join(" · ")}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {label(s)}
+    </a>
+  );
+  return (
+    <section className="found taught">
+      {teach.length > 0 && (
+        <p>
+          <span className="taught-label">Taught in</span> {teach.slice(0, 6).map(chip)}
+          {level && <span className="muted small"> · usually {level}</span>}
+        </p>
+      )}
+      {assume.length > 0 && (
+        <p>
+          <span className="taught-label">Assumed known in</span> {assume.slice(0, 6).map(chip)}
+        </p>
+      )}
+    </section>
   );
 }
 

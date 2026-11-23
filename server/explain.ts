@@ -5,6 +5,7 @@ import { SEARCHER_IDS } from "../shared/providers.ts";
 import { readFile } from "node:fs/promises";
 import { assetPath, type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
+import { logCourses } from "./curriculum.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { searchArxiv } from "./arxiv.ts";
 import { readPage as readWebPage } from "./pages.ts";
@@ -227,6 +228,25 @@ async function write(
     }
   }
   await store.update(card.id, { stage: "done", sem, sources, climb, rewritten });
+  void mapCourses(store, card.id, subject, sources);
+}
+
+/**
+ * Notes which courses teach (or assume) the subject, from the pages found for it plus a search
+ * aimed at course material, and shows them on the card. Feeds the shared course map.
+ */
+export async function mapCourses(store: CanvasStore, cardId: string, subject: string, sources: FoundSource[]) {
+  try {
+    const more = await search(`${subject} course syllabus lecture notes`).catch(() => []);
+    const seen = new Set(sources.map((s) => s.url));
+    const pages = [...sources, ...more.filter((m) => !seen.has(m.url))].map((p, i) => ({ ...p, n: i + 1 }));
+    const taught = await logCourses(subject, pages);
+    // Saved even when empty, so the card isn't mapped again.
+    await store.update(cardId, { taught: taught.slice(0, 12) });
+  } catch {
+    // The course map is a side benefit; a failure just leaves the card without it.
+    await store.update(cardId, { taught: [] });
+  }
 }
 
 async function search(query: string): Promise<FoundSource[]> {
@@ -1051,6 +1071,10 @@ export async function shapePage(store: CanvasStore, cardId: string) {
       if (/^(why|what|part|here)-\d+$|^together$/.test(key) && ok.length) anchors[key] = ok.slice(0, 4);
     }
     await store.update(cardId, { sem, anchors, shaping: "done" });
+    // The page itself may be course material (lecture notes, a syllabus).
+    const url = card.origin?.kind === "page" ? card.origin.url : "";
+    const title = card.origin?.title ?? card.subject ?? "";
+    if (url) void mapCourses(store, cardId, card.subject ?? title, [{ n: 1, url, title, snippet: card.pageText.slice(0, 600), searcher: "page" }]);
   } catch {
     await store.update(cardId, { shaping: "failed" });
   }

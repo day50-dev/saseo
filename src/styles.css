@@ -643,3 +643,12 @@ kbd {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.8), 0 0 18px 4px var(--accent);
 }
+
+/* Where the subject is taught, from the course map. */
+.taught p { margin: 4px 0; display: flex; flex-wrap: wrap; gap: 5px; align-items: baseline; font-size: 13px; }
+.taught-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-right: 2px; }
+.course-chip {
+  padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); text-decoration: none; color: var(--text);
+  background: color-mix(in srgb, var(--accent) 7%, transparent); white-space: nowrap;
+}
+.course-chip:hover { border-color: var(--accent); }

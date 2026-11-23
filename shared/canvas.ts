@@ -103,6 +103,27 @@ export interface FoundSource {
   searcher: string;
 }
 
+/** How far along a course sits; course codes aren't comparable across institutions, so this is the common scale. */
+export const COURSE_LEVELS = ["intro undergraduate", "upper undergraduate", "graduate", "unknown"] as const;
+export type CourseLevel = (typeof COURSE_LEVELS)[number];
+
+/** One sighting of a concept in a course, found while explaining it (see docs/BRAINSTORM.md, "Course level"). */
+export interface CourseSighting {
+  /** The concept's lookup key; `name` is how it was written. */
+  concept: string;
+  name: string;
+  institution: string;
+  /** The course code as the institution writes it: "MATH 54", "18.06", "Math 44A". */
+  code: string;
+  title: string;
+  level: CourseLevel;
+  /** Whether the course teaches the concept or assumes it. */
+  role: "introduces" | "uses" | "unclear";
+  url: string;
+  quote: string;
+  at: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
@@ -221,6 +242,8 @@ export interface CardItem extends ItemState {
    * or "the second equation" is there to see.
    */
   looks?: Record<string, Rect>;
+  /** Where the card's subject has been seen taught (or assumed), from the course map. */
+  taught?: CourseSighting[];
   lookImage?: string;
   looking?: "working" | "failed" | "done";
   /** The beginner search the explanation will use, kept so it can resume after a question. */

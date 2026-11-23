@@ -175,7 +175,14 @@ export function Canvas({ canvasId }: { canvasId: string }) {
 
   // Poll only while some card is still being written.
   const pending = items.some(
-    (i) => i.kind === "card" && (isPending(i) || i.chatPending || i.shaping === "working" || i.looking === "working"),
+    (i) =>
+      i.kind === "card" &&
+      (isPending(i) ||
+        i.chatPending ||
+        i.shaping === "working" ||
+        i.looking === "working" ||
+        // Still waiting to hear where its subject is taught.
+        (i.stage === "done" && Boolean(i.sem) && !i.taught && !i.relates && !i.objectKind)),
   );
   // While a diagram is being drawn, poll fast enough to watch it appear.
   const drawing = items.some((i) => i.kind === "card" && i.objectKind === "diagram" && isPending(i));
@@ -948,7 +955,14 @@ export function Canvas({ canvasId }: { canvasId: string }) {
 
   // Cards about an image written before pieces pointed into their page: find those places once.
   const looked = useRef(new Set<string>());
+  const mapped = useRef(new Set<string>());
   useEffect(() => {
+    // Cards written before the course map: look up where their subject is taught, once.
+    for (const c of cards) {
+      if (c.stage !== "done" || !c.sem || c.taught || c.relates || c.objectKind || mapped.current.has(c.id)) continue;
+      mapped.current.add(c.id);
+      api.courses(c.id).then(refresh, () => {});
+    }
     for (const c of cards) {
       if (c.stage !== "done" || !c.sem || c.looking || c.origin || looked.current.has(c.id)) continue;
       let p = byId.get(c.parentId);

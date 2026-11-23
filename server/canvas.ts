@@ -16,7 +16,7 @@ import {
   type ReaderNote,
 } from "../shared/canvas.ts";
 
-const DATA_DIR = process.env.LIBRARIAN_DATA ?? path.resolve("data");
+export const DATA_DIR = process.env.LIBRARIAN_DATA ?? path.resolve("data");
 const CANVAS_DIR = path.join(DATA_DIR, "canvases");
 const INDEX_PATH = path.join(CANVAS_DIR, "index.json");
 /** Where the single canvas lived before there were several. Copied once, then left as a backup. */

@@ -7,8 +7,9 @@ import { CARD_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type Car
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { addReaderNote, assetPath, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
+import { allSightings } from "./curriculum.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
-import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, makeObject, pointAt, readSource } from "./explain.ts";
+import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, makeObject, mapCourses, pointAt, readSource } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
@@ -243,6 +244,22 @@ app.post("/api/canvases/:cid/descend", async (c) => {
 
 // Runs a failed card again in place. A card from a box needs the images re-sent, since
 // only the box's position is stored, not the pixels sent to the model.
+// The course map gathered so far: every sighting of a concept in a course.
+app.get("/api/curriculum", async (c) => c.json({ sightings: await allSightings() }));
+
+// Looks up where a finished card's subject is taught, for cards written before the course map.
+app.post("/api/canvases/:cid/cards/:id/courses", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const card = await store.findItem(c.req.param("id"));
+  if (card?.kind !== "card" || card.stage !== "done" || !card.sem) return c.json({ error: "not a finished card" }, 409);
+  const subject = card.subject ?? card.origin?.title ?? "";
+  const page = card.origin?.kind === "page" ? [{ n: 1, url: card.origin.url, title: card.origin.title, snippet: (card.pageText ?? "").slice(0, 600), searcher: "page" }] : [];
+  if (subject) void mapCourses(store, card.id, subject, [...(card.sources ?? []), ...page]);
+  else await store.update(card.id, { taught: [] });
+  return c.json({ ok: true });
+});
+
 // Finds where on its page each piece of a finished card points, for cards written before that existed.
 app.post("/api/canvases/:cid/cards/:id/look", async (c) => {
   const store = await canvasFor(c);
