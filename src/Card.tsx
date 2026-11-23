@@ -364,7 +364,7 @@ export function Card(props: {
           labels={pageCard ? { here: "Where the page goes" } : card.flow ? { here: "How it unfolds" } : undefined}
           head={(key) => <GrowButton at={key} onGrow={props.onGrow} title="Grow more here" />}
           belowParts={(key, name) => (
-            <Grown ext={card.ext ?? []} at={key} from={name} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} />
+            <Grown ext={card.ext ?? []} at={key} from={name} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} onShow={props.onFocus} />
           )}
           extra={(key) => (
             <>
@@ -373,7 +373,7 @@ export function Card(props: {
               {pageCard && <FromPage card={card} anchorKey={key} onOpenPage={() => setView("page")} />}
               {/* A part's box is narrow: what grows from it is drawn under the row instead (belowParts). */}
               {!key.startsWith("part-") && (
-                <Grown ext={card.ext ?? []} at={key} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} />
+                <Grown ext={card.ext ?? []} at={key} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} onShow={props.onFocus} />
               )}
               {pageCard && <PageFigures card={card} anchorKey={key} />}
               {card.looks?.[key] && props.lookImage && (
@@ -384,7 +384,7 @@ export function Card(props: {
         />
       )}
       {showShapes && pageCard && card.sections && card.sections.length > 0 && (
-        <PageSections card={card} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} onOpenPage={() => setView("page")} />
+        <PageSections card={card} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} onShow={props.onFocus} onOpenPage={() => setView("page")} />
       )}
 
       {!card.sem &&
@@ -750,12 +750,14 @@ function PageSections({
   render,
   onGrow,
   onRemove,
+  onShow,
   onOpenPage,
 }: {
   card: CardItem;
   render: (t: string) => ReactNode;
   onGrow: (r: GrowRequest) => void;
   onRemove: (id: string) => void;
+  onShow?: (cardId: string) => void;
   onOpenPage: () => void;
 }) {
   const sections = card.sections ?? [];
@@ -809,6 +811,7 @@ function PageSections({
                   render={render}
                   onGrow={onGrow}
                   onRemove={onRemove}
+                  onShow={onShow}
                   extra={b.from?.length ? <BlockSource paras={paras} from={b.from} onOpenPage={onOpenPage} /> : null}
                 />
                 {take(b.from).map(figure)}

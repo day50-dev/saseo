@@ -148,6 +148,8 @@ export interface Extension {
   label?: string;
   /** For a block of a restructured page: the paragraphs (in pageText) it carries. */
   from?: number[];
+  /** When the ask was for a thing (videos, reading, a diagram…), not words: the card made for it. */
+  made?: string;
 }
 
 /**

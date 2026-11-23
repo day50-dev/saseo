@@ -396,6 +396,9 @@ app.post("/api/canvases/:cid/cards/:id/extend/:extId/remove", async (c) => {
     taken = (now.ext ?? []).filter((e) => gone.has(e.id));
     return { ext: (now.ext ?? []).filter((e) => !gone.has(e.id)) };
   });
+  // A card found for one of them (its videos) goes with it.
+  const made = await store.withDependents(taken.flatMap((e) => (e.made ? [e.made] : [])));
+  if (made.length) await store.record({ type: "hide", ids: made });
   return c.json({ removed: [...gone], taken });
 });
 
@@ -415,6 +418,8 @@ app.post("/api/canvases/:cid/cards/:id/extend/restore", async (c) => {
     return { ext: [...(now.ext ?? []), ...added] };
   });
   for (const e of added) if (e.status === "working") void extendPiece(store, card.id, e.id);
+  const made = added.flatMap((e) => (e.made ? [e.made] : []));
+  if (made.length) await store.record({ type: "show", ids: made });
   return c.json({ ok: true });
 });
 

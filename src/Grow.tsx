@@ -96,6 +96,7 @@ export function Grown({
   render,
   onGrow,
   onRemove,
+  onShow,
 }: {
   ext: Extension[];
   at: string;
@@ -104,6 +105,8 @@ export function Grown({
   render: Render;
   onGrow: (r: GrowRequest) => void;
   onRemove: (id: string) => void;
+  /** Goes to a card made for an ask (the videos it found). */
+  onShow?: (cardId: string) => void;
 }) {
   const here = ext.filter((e) => e.at === at);
   if (!here.length) return null;
@@ -113,10 +116,10 @@ export function Grown({
     <div className={`grown-piece ${className}`} data-x={key}>
       {render(text)}
       <GrowButton at={key} onGrow={onGrow} />
-      {grownHere && <Grown ext={ext} at={key} render={render} onGrow={onGrow} onRemove={onRemove} />}
+      {grownHere && <Grown ext={ext} at={key} render={render} onGrow={onGrow} onRemove={onRemove} onShow={onShow} />}
     </div>
   );
-  const below = (key: string, name: string) => <Grown ext={ext} at={key} from={name} render={render} onGrow={onGrow} onRemove={onRemove} />;
+  const below = (key: string, name: string) => <Grown ext={ext} at={key} from={name} render={render} onGrow={onGrow} onRemove={onRemove} onShow={onShow} />;
   return (
     <>
       {here.map((e) => (
@@ -153,6 +156,16 @@ export function Grown({
                 Try again
               </button>
             </div>
+          ) : e.made ? (
+            // Asked for a thing, not words: it's on its own card, hung from this piece.
+            <div className="grown-made">
+              <span>{e.items?.[0]}</span>
+              {onShow && (
+                <button type="button" className="link" onPointerDown={(ev) => ev.stopPropagation()} onClick={() => onShow(e.made!)}>
+                  Show ↗
+                </button>
+              )}
+            </div>
           ) : (
             <Shape e={e} piece={piece} below={below} render={render} />
           )}
@@ -169,6 +182,7 @@ export function ShapeBlock({
   render,
   onGrow,
   onRemove,
+  onShow,
   extra,
 }: {
   block: Extension;
@@ -176,6 +190,7 @@ export function ShapeBlock({
   render: Render;
   onGrow: (r: GrowRequest) => void;
   onRemove: (id: string) => void;
+  onShow?: (cardId: string) => void;
   /** Shown beside the block's label: where on the page it came from. */
   extra?: ReactNode;
 }) {
@@ -183,10 +198,10 @@ export function ShapeBlock({
     <div className={`grown-piece ${className}`} data-x={key}>
       {render(text)}
       <GrowButton at={key} onGrow={onGrow} />
-      {grownHere && <Grown ext={ext} at={key} render={render} onGrow={onGrow} onRemove={onRemove} />}
+      {grownHere && <Grown ext={ext} at={key} render={render} onGrow={onGrow} onRemove={onRemove} onShow={onShow} />}
     </div>
   );
-  const below = (key: string, name: string) => <Grown ext={ext} at={key} from={name} render={render} onGrow={onGrow} onRemove={onRemove} />;
+  const below = (key: string, name: string) => <Grown ext={ext} at={key} from={name} render={render} onGrow={onGrow} onRemove={onRemove} onShow={onShow} />;
   return (
     <div className={`grown grown-${block.shape} page-block`}>
       {extra}

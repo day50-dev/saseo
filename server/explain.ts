@@ -519,6 +519,17 @@ export async function extendPiece(store: CanvasStore, cardId: string, extId: str
     const vague = Boolean(ext.ask && ext.ask.split(/\s+/).length <= 6 && /\b(more|expand|elaborate|continue|keep going|go on|deeper|further|detail)\b/i.test(ext.ask));
     const same = vague ? sameKind(ext.at) : undefined;
     const choosing = Boolean(ext.ask) && !same;
+    // Asked for a thing rather than more words ("can you find a youtube video on this?"): it's found
+    // (or drawn) on its own card, hung from this piece, and the piece points to it.
+    if (choosing) {
+      const piece = chain[chain.length - 1] ?? "";
+      const { kind, request } = await decideIntent(ext.ask!, `${card.subject ?? ""}: ${ext.focus || piece}`);
+      if (kind !== "answer") {
+        const made = await findFor(store, card, kind, request, ext.focus || piece);
+        await save({ status: "done", made: made.id, items: [request.trim().toLowerCase() === ext.ask!.trim().toLowerCase() ? MADE[kind] : `${MADE[kind]}: ${request}`] });
+        return;
+      }
+    }
     const target: ExtensionShape = same ?? ext.shape;
     const shapes = choosing ? EXTENSION_SHAPES.map((k) => `- ${EXTEND_SHAPES[k]}`).join("\n") : `- ${EXTEND_SHAPES[target]}`;
     const lines = [
