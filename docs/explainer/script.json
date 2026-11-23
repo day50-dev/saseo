@@ -1,0 +1,61 @@
+{
+  "voice": "af_heart",
+  "speed": 1.0,
+  "scenes": [
+    {
+      "id": "01-hook",
+      "shot": "Title card over a dense research slide",
+      "say": "Some of the most interesting ideas in the world are explained in rooms most of us can't follow. A research talk. A paper. A lecture. One unfamiliar word goes by, and you're lost."
+    },
+    {
+      "id": "02-climb",
+      "shot": "Title card: looking it up makes it worse",
+      "say": "Looking it up usually makes it worse. The definition is written in words even more specialized than the one you didn't know. You climb, when you needed to descend. And ten tabs later, you've lost your place."
+    },
+    {
+      "id": "03-idea",
+      "shot": "A slide on the canvas; a box is drawn around a phrase; a card appears",
+      "say": "Librarian is a research librarian on an infinite canvas. Put the thing that stopped you on the canvas, a slide, a page, a paper, and draw a box around the part you don't understand."
+    },
+    {
+      "id": "04-descend",
+      "shot": "The explanation card, scrolled section by section",
+      "say": "It explains downward, toward what you already know. First why the idea exists, then what it is, then its parts, then how it's used right here. It's drawn as a diagram, not a wall of text, so you can see how the pieces connect."
+    },
+    {
+      "id": "05-register",
+      "shot": "Close on the marked terms and stand-ins",
+      "say": "It's honest about language. Strict technical terms are marked as strict. Everyday words standing in for a technical one say which one they mean. You always know which words are loose."
+    },
+    {
+      "id": "06-deeper",
+      "shot": "Words selected in the card; a new card opens to the right",
+      "say": "Still stuck? Select any words in the explanation and go one level further down. Each detour becomes a new card, right beside the one it came from."
+    },
+    {
+      "id": "07-grow",
+      "shot": "The plus on a piece opens the palette; a shape grows",
+      "say": "Or grow the diagram itself. Ask why. Ask for the steps. Break a piece into its parts, or see it two ways. Each new piece can grow again, as deep as you want to go."
+    },
+    {
+      "id": "08-place",
+      "shot": "Zooming out over a whole canvas",
+      "say": "Nothing ever moves on its own. Every question you asked stays where you asked it, so the way back is always one look away."
+    },
+    {
+      "id": "09-video",
+      "shot": "A lecture plays on the canvas; Stop; the frame and transcript land beside it",
+      "say": "It works with lectures too. Watching a video and something loses you? Stop it. The exact frame, and what the lecturer was saying, land on the canvas, ready to ask about. Then jump straight back to where you were."
+    },
+    {
+      "id": "10-sources",
+      "shot": "Found sources and the course chips on a card",
+      "say": "Every explanation is grounded in sources it went and found. And it notices where an idea is usually taught, an intro course or a graduate seminar, so it can keep things at your level."
+    },
+    {
+      "id": "11-close",
+      "shot": "End card",
+      "say": "Librarian. Free, open, and no account needed. Bring the thing that stopped you."
+    }
+  ]
+}

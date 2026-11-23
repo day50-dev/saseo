@@ -5,9 +5,10 @@ import { type Context, Hono, type Next } from "hono";
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
+import path from "node:path";
 import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
-import { addReaderNote, assetPath, autoName, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
+import { addReaderNote, assetPath, autoName, DATA_DIR, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
@@ -547,7 +548,15 @@ app.get("/api/video-progress/:id", (c) => c.json(copyProgress(c.req.param("id"))
 app.get("/api/videos/:file", async (c) => {
   const m = /^([A-Za-z0-9_-]{11})\.mp4$/.exec(c.req.param("file"));
   if (!m) return c.notFound();
-  const file = copyPath(m[1]);
+  return sendRanged(c, copyPath(m[1]), "video/mp4");
+});
+
+// The explainer video about Librarian itself (made with docs/explainer/), if this server has one.
+app.get("/explainer.mp4", (c) => sendRanged(c, path.join(DATA_DIR, "explainer.mp4"), "video/mp4"));
+app.get("/explainer.jpg", (c) => sendRanged(c, path.join(DATA_DIR, "explainer.jpg"), "image/jpeg"));
+
+/** Serves a file with byte ranges, so a player can seek. */
+async function sendRanged(c: Context, file: string, type: string): Promise<Response> {
   let size: number;
   try {
     size = (await stat(file)).size;
@@ -555,7 +564,7 @@ app.get("/api/videos/:file", async (c) => {
     return c.notFound();
   }
   const range = /bytes=(\d*)-(\d*)/.exec(c.req.header("range") ?? "");
-  const headers: Record<string, string> = { "Content-Type": "video/mp4", "Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400" };
+  const headers: Record<string, string> = { "Content-Type": type, "Accept-Ranges": "bytes", "Cache-Control": "public, max-age=3600" };
   if (!range) {
     return new Response(Readable.toWeb(createReadStream(file)) as ReadableStream, { status: 200, headers: { ...headers, "Content-Length": String(size) } });
   }
@@ -566,7 +575,7 @@ app.get("/api/videos/:file", async (c) => {
     status: 206,
     headers: { ...headers, "Content-Length": String(end - start + 1), "Content-Range": `bytes ${start}-${end}/${size}` },
   });
-});
+}
 
 // Stopping a video: the frame at that moment lands on the canvas like a slide, and below it a
 // card with what was said around it. Box the frame or select the words to go further down.

@@ -82,6 +82,7 @@ export function Home() {
           Free, unlimited, no account needed. Your canvases are kept in this browser; sign in if you want to keep them for good.
         </p>
       )}
+      <Explainer />
       {error && (
         <p className="error" onClick={() => setError(null)}>
           {error}
@@ -198,5 +199,20 @@ function CanvasRow(props: {
         </button>
       </div>
     </li>
+  );
+}
+
+/** The two-minute explainer of what Librarian is for, when this server has one. */
+function Explainer() {
+  const [has, setHas] = useState(false);
+  useEffect(() => {
+    fetch("/explainer.mp4", { method: "HEAD" }).then((r) => setHas(r.ok && (r.headers.get("content-type") ?? "").startsWith("video/")), () => {});
+  }, []);
+  if (!has) return null;
+  return (
+    <details className="explainer">
+      <summary>What is this? Watch the 2½-minute explainer</summary>
+      <video src="/explainer.mp4" poster="/explainer.jpg" controls preload="none" playsInline />
+    </details>
   );
 }

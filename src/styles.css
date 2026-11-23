@@ -770,3 +770,8 @@ kbd {
 /* While a palette is open, its card comes to the front so nothing covers the palette. */
 .card-item:has(.grow.open) { z-index: 999999 !important; }
 .grown-from { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+
+/* The explainer video on the home page. */
+.explainer { margin: 4px 0 16px; }
+.explainer summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.explainer video { display: block; width: 100%; max-width: 860px; margin-top: 10px; border-radius: 8px; background: #000; }
