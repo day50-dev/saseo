@@ -9,7 +9,8 @@ import { ArxivPanel } from "./ArxivPanel.tsx";
 import { EXAMPLES, type Example, exampleByKey, runExample } from "./examples.ts";
 import { ago } from "./Home.tsx";
 import { linkTo, navigate } from "./router.ts";
-import { useIsAdmin, useIsAnonymous } from "./session.ts";
+import { useIsAdmin, useIsAnonymous, useMe } from "./session.ts";
+import { CallBar } from "./Call.tsx";
 
 interface View {
   x: number;
@@ -97,6 +98,8 @@ const isTyping = (t: EventTarget | null) =>
 export function Canvas({ canvasId }: { canvasId: string }) {
   const admin = useIsAdmin();
   const anonymous = useIsAnonymous();
+  const canCall = useMe().speech ?? false;
+  const [calling, setCalling] = useState(false);
   const api = useMemo(() => canvasApi(canvasId), [canvasId]);
   const [name, setName] = useState("");
   const [trashedAt, setTrashedAt] = useState<string | undefined>();
@@ -1148,6 +1151,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         >
           Untangle
         </button>
+        {canCall && (
+          <button type="button" className={calling ? "on call-btn" : "secondary call-btn"} title="Talk with the librarian while you point at things" onClick={() => setCalling(!calling)}>
+            {calling ? "On a call" : "Call"}
+          </button>
+        )}
         <button type="button" className="secondary untangle" title="Search arXiv and add pages of a paper" onClick={() => setArxivOpen(true)}>
           arXiv
         </button>
@@ -1261,7 +1269,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         )}
         {/* On a canvas with things on it, starting something new is a button at the bottom that
             opens into the box, and closes again once it's used or left. */}
-        {loaded && shown.length > 0 &&
+        {loaded && shown.length > 0 && !calling &&
           (dockOpen ? (
             <div className="start-dock">
               <StartBox onStart={startFrom} onClose={() => setDockOpen(false)} />
@@ -1517,6 +1525,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           ))}
         </div>
       </div>
+      {calling && <CallBar canvasId={canvasId} onChanged={refresh} onClose={() => setCalling(false)} />}
       {arxivOpen && <ArxivPanel onAdd={(paper, pages) => addPaperPages(paper, pages)} onClose={() => setArxivOpen(false)} />}
     </div>
   );

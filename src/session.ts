@@ -8,6 +8,8 @@ export interface Me {
   providers: string[];
   /** anonymous: not signed in; their canvases last as long as this browser's cookie. */
   user: { id: string; email: string; name: string; admin: boolean; anonymous: boolean } | null;
+  /** The server can listen and speak, so calls with the librarian are possible. */
+  speech?: boolean;
 }
 
 export const authClient = createAuthClient({ baseURL: location.origin, plugins: [anonymousClient()] });

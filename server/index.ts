@@ -11,6 +11,7 @@ import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/prov
 import { addReaderNote, assetPath, autoName, DATA_DIR, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
+import { besideOf, callTurn, listen, type Pointing, say, speechOn, type Turn } from "./call.ts";
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, makeObject, mapCourses, pointAt, readSource, shapeSections } from "./explain.ts";
@@ -26,7 +27,7 @@ const app = new Hono<{ Variables: { user: User } }>();
 const authHandler = auth;
 if (authHandler) app.on(["GET", "POST"], "/api/auth/*", (c) => authHandler.handler(c.req.raw));
 
-app.get("/api/me", async (c) => c.json({ accounts: AUTH_ON, providers: PROVIDERS, user: await currentUser(c.req.raw) }));
+app.get("/api/me", async (c) => c.json({ accounts: AUTH_ON, providers: PROVIDERS, user: await currentUser(c.req.raw), speech: speechOn() }));
 
 // Everything else under /api needs someone signed in, except images, which are named by their
 // content hash and carry nothing private.
@@ -260,6 +261,62 @@ app.post("/api/canvases/:cid/descend", async (c) => {
 // only the box's position is stored, not the pixels sent to the model.
 // The course map gathered so far: every sighting of a concept in a course.
 app.get("/api/curriculum", async (c) => c.json({ sightings: await allSightings() }));
+
+// ---- A call with the librarian ----
+
+// Audio in, words out. The canvas's subjects prime the recogniser with its vocabulary.
+app.post("/api/speech/listen", async (c) => {
+  if (!speechOn()) return c.json({ error: "speech isn't set up on this server" }, 404);
+  const cid = c.req.query("cid");
+  const store = cid ? await canvasStore(cid) : undefined;
+  const hint = store
+    ? (await store.getState()).items
+        .flatMap((i) => (i.kind === "card" && !i.hidden ? [i.subject ?? "", ...(i.sem?.terms ?? [])] : []))
+        .filter(Boolean)
+        .join(", ")
+    : "";
+  try {
+    return c.json({ text: await listen(await c.req.arrayBuffer(), hint) });
+  } catch (err) {
+    return c.json({ error: String(err) }, 502);
+  }
+});
+
+// Words in, speech out.
+app.post("/api/speech/say", async (c) => {
+  if (!speechOn()) return c.json({ error: "speech isn't set up on this server" }, 404);
+  const { text } = (await c.req.json()) as { text?: string };
+  if (!text?.trim()) return c.json({ error: "text is required" }, 400);
+  try {
+    return c.body(await say(text.trim().slice(0, 2000)), 200, { "Content-Type": "audio/wav" });
+  } catch (err) {
+    return c.json({ error: String(err) }, 502);
+  }
+});
+
+// One turn of a call: what they said, what they're pointing at; the librarian answers and may act.
+app.post("/api/canvases/:cid/call", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const body = (await c.req.json()) as { text?: string; pointing?: Pointing; history?: Turn[] };
+  const text = body.text?.trim().slice(0, 2000);
+  if (!text) return c.json({ error: "text is required" }, 400);
+  const turn = await callTurn(store, text, body.pointing ?? {}, Array.isArray(body.history) ? body.history.slice(-12) : [], {
+    grow: async (card, ext) => {
+      await store.edit(card.id, (now) => (now?.kind === "card" ? { ext: [...(now.ext ?? []), ext] } : null));
+      void extendPiece(store, card.id, ext.id);
+    },
+    descend: async (card, phrase) => {
+      const cards = (await store.getState()).items.filter((i): i is CardItem => i.kind === "card" && !i.hidden);
+      const at = besideOf(cards, card, (x) => x.h ?? (x.sem ? 900 : 300));
+      const child: CardItem = { kind: "card", id: newId(), parentId: card.id, selection: phrase, ...at, w: CARD_WIDTH, stage: "reading", subject: phrase };
+      await store.add(child);
+      void explainSelection(store, child.id);
+      return child;
+    },
+  }).catch((err) => ({ say: `Sorry, something went wrong on my end: ${err instanceof Error ? err.message : err}.`, did: undefined }));
+  return c.json(turn);
+});
 
 // Restructures the whole of a linked page section by section, for page cards read before that existed.
 app.post("/api/canvases/:cid/cards/:id/sections", async (c) => {
