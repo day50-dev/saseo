@@ -232,7 +232,7 @@ function CanvasRow(props: {
   );
 }
 
-/** The two-minute explainer of what Librarian is for, when this server has one. */
+/** The short video explainer of what Librarian is for, when this server has one. */
 function Explainer() {
   const [has, setHas] = useState(false);
   useEffect(() => {
@@ -241,7 +241,7 @@ function Explainer() {
   if (!has) return null;
   return (
     <details className="explainer">
-      <summary>What is this? Watch the 2½-minute explainer</summary>
+      <summary>What is this? Watch this short video</summary>
       <video src="/explainer.mp4" poster="/explainer.jpg" controls preload="none" playsInline />
     </details>
   );

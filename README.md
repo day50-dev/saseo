@@ -157,7 +157,7 @@ npm start
 
 ## The explainer video
 
-A two-and-a-half-minute video of what Librarian is for and how it works, made from the real app with Kokoro narration, is on the home page. How it was made, and the tools to remake it, are in [docs/explainer/](docs/explainer/README.md).
+A short video of what Librarian is for and how it works, made from the real app with Kokoro narration, is on the home page. How it was made, and the tools to remake it, are in [docs/explainer/](docs/explainer/README.md).
 
 ## Design
 

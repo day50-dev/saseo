@@ -1,6 +1,6 @@
 # The explainer video
 
-A three-minute video about what Librarian is for: why it exists, the problem it takes on, and how it
+A short video about what Librarian is for: why it exists, the problem it takes on, and how it
 works: boxes and descents, growing shapes, lectures, whole pages kept whole, hands-free calls, and
 example notebooks. Its footage is the real app, recorded on the live site; its narration is
 [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) text-to-speech. The home page shows it when
