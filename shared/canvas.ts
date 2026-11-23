@@ -336,6 +336,8 @@ export interface CardItem extends ItemState {
   objectKind?: ObjectKind;
   request?: string;
   object?: CardObject;
+  /** What it held before a message asked for something else (and what it was asked for), to bring back. */
+  replaced?: { object: CardObject; request?: string; subject?: string };
   x: number;
   y: number;
   w: number;

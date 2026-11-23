@@ -1621,6 +1621,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               onRetry={() => retry(c)}
               onAnswer={(text) => answer(c, text)}
               onFocus={focusOn}
+              onObjectBack={() => api.objectBack(c.id).then(refresh, (e) => setError(`Couldn't bring that back: ${e}`))}
               onAddPaper={(paper) => addPaperPages(paper, "1-2", { x: c.x + c.w + GAP, y: c.y })}
               onOpenNotebook={() => setNotebook({ id: c.id, autoRun: false })}
               onAsk={async (text) => {

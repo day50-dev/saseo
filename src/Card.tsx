@@ -120,6 +120,8 @@ export function Card(props: {
   onFocus: (id: string) => void;
   /** Adds the first pages of a paper from a papers card to the canvas. */
   onAddPaper: (paper: Paper) => Promise<void>;
+  /** Brings back what an object card held before a message redid it. */
+  onObjectBack: () => void;
   /** Opens this card's notebook in the panel beside the canvas. */
   onOpenNotebook: () => void;
   /** Pointer down on the header: start moving this card and the cards below it. */
@@ -354,6 +356,11 @@ export function Card(props: {
         <NotebookCard card={card} onOpen={props.onOpenNotebook} />
       ) : (
         card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} />
+      )}
+      {card.replaced && card.stage === "done" && (
+        <button type="button" className="link small object-back" onPointerDown={(e) => e.stopPropagation()} onClick={props.onObjectBack}>
+          ↶ Bring back the earlier {card.objectKind === "diagram" ? "drawing" : card.objectKind === "notebook" ? "notebook" : card.objectKind === "links" ? "reading" : card.objectKind}
+        </button>
       )}
       {showShapes && card.sem && (
         <SemShapes

@@ -1199,6 +1199,37 @@ const MADE: Record<ObjectKind, string> = {
   notebook: "Finding an example notebook",
 };
 
+const REDOING: Record<ObjectKind, string> = {
+  videos: "Finding other videos",
+  links: "Finding other reading",
+  diagram: "Drawing it again",
+  papers: "Searching arXiv again",
+  notebook: "Finding another notebook",
+};
+
+const REFINE = `A card on a reader's study canvas holds something found or made for them: videos, reading, research
+papers, a diagram or a notebook. They wrote a message on that card.
+Decide whether the message asks to change what the card holds: different, better, more academic, shorter, newer,
+in another language, from other sources, drawn differently, and so on. A question about the content itself
+("what does the second video cover?", "why is this arrow here?") is NOT a change.
+If it asks for a change, rewrite what to find or make, as one request that keeps the original subject and adds
+what they now want.
+Return JSON only: {"change": true | false, "request": "the new request, a short phrase"}`;
+
+/** The card's request, rewritten by a message asking for something other than what it holds; or null. */
+async function refineRequest(card: CardItem, message: string): Promise<string | null> {
+  try {
+    const r = await chatJson<{ change?: boolean; request?: string }>((await loadConfig()).llm, [
+      { role: "system", content: REFINE },
+      { role: "user", content: `The card holds ${card.objectKind}, found for: ${card.request ?? card.subject ?? ""}\n${card.selection ? `About these words: "${card.selection}"\n` : ""}\nTheir message: ${message}` },
+    ]);
+    const request = str(r.request).trim();
+    return r.change === true && request ? request.slice(0, 200) : null;
+  } catch {
+    return null;
+  }
+}
+
 const PAPER_QUERY = `Write an arXiv search for research papers on what the reader asked for, given the card it was asked about.
 Use 2-5 precise technical keywords that would appear in paper titles or abstracts (names of equations, objects, methods).
 Return JSON only: {"query": "..."}`;
@@ -1208,6 +1239,17 @@ export async function handleChat(store: CanvasStore, cardId: string) {
   const card = (await store.findItem(cardId)) as CardItem;
   const last = [...(card.chat ?? [])].reverse().find((m) => m.role === "user");
   if (!last) return store.update(cardId, { chatPending: false });
+  // On a card that holds something found (videos, reading, papers, a diagram, a notebook), a message
+  // about what's there ("more academic ones, by universities") redoes it in place, not beside it.
+  if (card.objectKind && card.stage === "done") {
+    const redo = await refineRequest(card, last.text);
+    if (redo) {
+      await store.record({ type: "chat", id: cardId, message: { role: "assistant", text: `${REDOING[card.objectKind]}: ${redo}`, at: new Date().toISOString() } });
+      await store.update(cardId, { chatPending: false, request: redo, object: undefined, stage: "reading", ...(card.object ? { replaced: { object: card.object, request: card.request, subject: card.subject } } : {}) });
+      await makeObject(store, cardId);
+      return;
+    }
+  }
   const { kind, request } = await decideIntent(last.text, card.subject ?? card.selection ?? "this");
   if (kind === "answer") return chatAbout(store, cardId);
 

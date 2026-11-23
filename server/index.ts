@@ -402,6 +402,17 @@ app.post("/api/canvases/:cid/cards/:id/extend/:extId/remove", async (c) => {
   return c.json({ removed: [...gone], taken });
 });
 
+// Brings back what an object card held before a message asked for something else (and swaps, so it can go again).
+app.post("/api/canvases/:cid/cards/:id/object/back", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const card = await store.findItem(c.req.param("id"));
+  if (card?.kind !== "card" || !card.replaced) return c.json({ error: "nothing to bring back" }, 409);
+  const now = card.object ? { object: card.object, request: card.request, subject: card.subject } : undefined;
+  await store.update(card.id, { object: card.replaced.object, request: card.replaced.request, subject: card.replaced.subject, stage: "done", replaced: now });
+  return c.json({ ok: true });
+});
+
 // Puts grown shapes back as they were (undoing their removal); any still being grown carry on.
 app.post("/api/canvases/:cid/cards/:id/extend/restore", async (c) => {
   const store = await canvasFor(c);

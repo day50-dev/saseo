@@ -90,6 +90,8 @@ export function canvasApi(cid: string) {
     extend: (cardId: string, body: { at: string; shape?: string; ask?: string; focus?: string }) =>
       post(`${base}/cards/${cardId}/extend`, body).then((r) => json<{ ext: Extension }>(r)),
     unextend: (cardId: string, extId: string) => post(`${base}/cards/${cardId}/extend/${extId}/remove`, {}).then((r) => json<{ removed: string[]; taken: Extension[] }>(r)),
+    /** Brings back what an object card held before it was redone (swapping, so it can go again). */
+    objectBack: (cardId: string) => post(`${base}/cards/${cardId}/object/back`, {}).then((r) => json<{ ok: true }>(r)),
     /** Puts grown shapes back (undoing their removal). */
     restoreExt: (cardId: string, ext: Extension[]) => post(`${base}/cards/${cardId}/extend/restore`, { ext }).then((r) => json<{ ok: true }>(r)),
     courses: (cardId: string) => post(`${base}/cards/${cardId}/courses`, {}).then((r) => json<{ ok: true }>(r)),
