@@ -74,11 +74,48 @@ function changeIndex<T>(fn: (list: CanvasInfo[]) => T): Promise<T> {
 
 const cleanName = (name: unknown) => (typeof name === "string" ? name.trim().replace(/\s+/g, " ").slice(0, 120) : "");
 
+/** What a canvas is called until it's named, by its owner or by what's on it. */
+export const DEFAULT_NAME = "Untitled canvas";
+
+/** A name for a canvas from what's on it: its first video, paper, page, slide or question. */
+export function nameFromItems(items: Item[]): string {
+  const shown = items.filter((i) => !i.hidden);
+  const usable = (t: string | undefined) => {
+    const s = (t ?? "").replace(/\s+/g, " ").trim();
+    // Not a bare link (a page not read yet), a file name, or a placeholder.
+    if (!s || /^https?:\/\//.test(s) || /\.(png|jpe?g|webp|gif|pdf)$/i.test(s) || s === "…" || s === "this") return "";
+    if (s.length <= 80) return s;
+    const cut = s.slice(0, 80);
+    return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 40))}…`;
+  };
+  for (const i of shown) {
+    let name = "";
+    if (i.kind === "image") name = usable(i.video?.title) || usable(i.source?.title) || usable(i.moment?.title) || usable(i.topic);
+    else if (i.kind === "card" && !i.parentId) name = usable(i.origin?.title) || usable(i.subject);
+    else if (i.kind === "card") {
+      // A box on a slide nobody has read whole yet: what the box was about.
+      const parent = shown.find((p) => p.id === i.parentId);
+      if (parent?.kind === "region") name = usable(i.topic) || usable(i.subject);
+    }
+    if (name) return name;
+  }
+  return "";
+}
+
+/** Names a canvas that still has the default name; a name someone chose is never replaced. */
+export const autoName = (id: string, name: string) =>
+  changeIndex((list) => {
+    const info = list.find((c) => c.id === id);
+    const clean = cleanName(name);
+    if (info && clean && info.name === DEFAULT_NAME) info.name = clean;
+    return info;
+  });
+
 export const createCanvas = (name: string, owner?: string) =>
   changeIndex((list) => {
     const info: CanvasInfo = {
       id: newId(),
-      name: cleanName(name) || "Untitled canvas",
+      name: cleanName(name) || DEFAULT_NAME,
       createdAt: new Date().toISOString(),
       ...(owner ? { owner } : {}),
     };

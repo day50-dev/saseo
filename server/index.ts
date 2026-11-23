@@ -7,7 +7,7 @@ import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { CARD_WIDTH, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
-import { addReaderNote, assetPath, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
+import { addReaderNote, assetPath, autoName, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
@@ -124,6 +124,9 @@ app.get("/api/canvases", async (c) => {
     mine.map(async (info) => {
       const state = await (await canvasStore(info.id))!.getState();
       const visible = state.items.filter((i) => !i.hidden);
+      // Untitled ones are named after what's on them here too, not only when opened.
+      const name = info.name === DEFAULT_NAME ? nameFromItems(state.items) : "";
+      if (name) info = (await autoName(info.id, name)) ?? info;
       return {
         ...info,
         updatedAt: state.updatedAt ?? info.createdAt,
@@ -157,7 +160,14 @@ app.post("/api/canvases/:cid/duplicate", async (c) => {
 app.get("/api/canvases/:cid", async (c) => {
   const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
-  return c.json({ ...(await getCanvasInfo(store.id)), ...(await store.view()) });
+  const view = await store.view();
+  let info = await getCanvasInfo(store.id);
+  // Still "Untitled canvas": name it after what it was started from, once that has a title.
+  if (info?.name === DEFAULT_NAME) {
+    const name = nameFromItems(view.items);
+    if (name) info = (await autoName(store.id, name)) ?? info;
+  }
+  return c.json({ ...info, ...view });
 });
 
 app.get("/api/assets/:name", async (c) => {
