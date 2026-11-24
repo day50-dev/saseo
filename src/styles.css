@@ -883,6 +883,32 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
   border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
 }
 .nb-code:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* The colored copy sets the height; the textarea sits exactly over it, its letters transparent. */
+.nb-code-wrap { position: relative; }
+.nb-code-colors { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nb-code-input {
+  position: absolute; inset: 0; height: 100%; white-space: pre-wrap; overflow-wrap: anywhere;
+  background: transparent; color: transparent; caret-color: var(--text); -webkit-text-fill-color: transparent;
+}
+.nb-code-input::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); -webkit-text-fill-color: transparent; }
+.nb-code-colors .token.comment, .nb-code-colors .token.prolog { color: #6a737d; font-style: italic; }
+.nb-code-colors .token.string, .nb-code-colors .token.triple-quoted-string, .nb-code-colors .token.char { color: #22863a; }
+.nb-code-colors .token.keyword, .nb-code-colors .token.builtin { color: #8250df; }
+.nb-code-colors .token.function, .nb-code-colors .token.class-name { color: #0550ae; }
+.nb-code-colors .token.number, .nb-code-colors .token.boolean, .nb-code-colors .token.constant { color: #b35900; }
+.nb-code-colors .token.operator { color: #0a6e8a; }
+.nb-code-colors .token.decorator, .nb-code-colors .token.annotation { color: #9a6700; }
+.nb-code-colors .token.punctuation { color: color-mix(in srgb, var(--text) 70%, transparent); }
+@media (prefers-color-scheme: dark) {
+  .nb-code-colors .token.comment, .nb-code-colors .token.prolog { color: #8b98a5; }
+  .nb-code-colors .token.string, .nb-code-colors .token.triple-quoted-string, .nb-code-colors .token.char { color: #a5d6a7; }
+  .nb-code-colors .token.keyword, .nb-code-colors .token.builtin { color: #c792ea; }
+  .nb-code-colors .token.function, .nb-code-colors .token.class-name { color: #82aaff; }
+  .nb-code-colors .token.number, .nb-code-colors .token.boolean, .nb-code-colors .token.constant { color: #f78c6c; }
+  .nb-code-colors .token.operator { color: #89ddff; }
+  .nb-code-colors .token.decorator, .nb-code-colors .token.annotation { color: #ffcb6b; }
+}
+
 .nb-md { font-size: 14px; line-height: 1.5; padding: 2px 2px; }
 .nb-md h3, .nb-md h4, .nb-md h5, .nb-md h6 { margin: 10px 0 4px; }
 .nb-md p, .nb-md ul { margin: 4px 0; }

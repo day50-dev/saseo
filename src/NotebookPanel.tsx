@@ -1,6 +1,10 @@
 // A notebook beside the canvas: an example to run and play with, found online (credited) or, when
 // none could be found, written by the librarian (and saying so). Python runs in the browser.
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import Prism from "prismjs";
+import "prismjs/components/prism-python";
+import "prismjs/components/prism-julia";
+import "prismjs/components/prism-r";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { CardItem, NotebookCell } from "../shared/canvas.ts";
 import { withMath } from "./MathText.tsx";
 import { type CellOutput, onPythonStatus, restartPython, runPython, warmPython } from "./python.ts";
@@ -115,18 +119,23 @@ function Output({ out }: { out: CellOutput | "running" | undefined }) {
   );
 }
 
-function CodeCell({ cell, onChange, onRun }: { cell: NotebookCell; onChange: (s: string) => void; onRun: () => void }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const t = ref.current;
-    if (!t) return;
-    t.style.height = "0";
-    t.style.height = `${t.scrollHeight + 2}px`;
-  });
+/** The code, colored (HTML): Prism's grammar for the language, or plain text escaped. */
+function colored(source: string, language: string): string {
+  const grammar = Prism.languages[language];
+  // A trailing newline needs something after it, or the copy underneath ends a line short.
+  const text = `${source}\n`;
+  return grammar ? Prism.highlight(text, grammar, language) : text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
+}
+
+// The code is edited in a textarea whose own letters are transparent, over a colored copy laid out
+// the same way: highlighting without giving up plain, native editing.
+function CodeCell({ cell, language, onChange, onRun }: { cell: NotebookCell; language: string; onChange: (s: string) => void; onRun: () => void }) {
+  const html = useMemo(() => colored(cell.source, language), [cell.source, language]);
   return (
-    <textarea
-      ref={ref}
-      className="nb-code"
+    <div className="nb-code-wrap">
+      <pre className="nb-code nb-code-colors" aria-hidden dangerouslySetInnerHTML={{ __html: html }} />
+      <textarea
+      className="nb-code nb-code-input"
       value={cell.source}
       spellCheck={false}
       onChange={(e) => onChange(e.target.value)}
@@ -142,7 +151,8 @@ function CodeCell({ cell, onChange, onRun }: { cell: NotebookCell; onChange: (s:
           requestAnimationFrame(() => t.setSelectionRange(a + 4, a + 4));
         }
       }}
-    />
+      />
+    </div>
   );
 }
 
@@ -339,7 +349,7 @@ export function NotebookPanel(props: {
             </div>
             <div className="nb-body">
               {cell.kind === "code" ? (
-                <CodeCell cell={cell} onChange={(s) => edit(cell.id, s)} onRun={() => void runCell(cell)} />
+                <CodeCell cell={cell} language={language} onChange={(s) => edit(cell.id, s)} onRun={() => void runCell(cell)} />
               ) : editing === cell.id ? (
                 <textarea className="nb-code nb-md-edit" autoFocus value={cell.source} onChange={(e) => edit(cell.id, e.target.value)} onBlur={() => setEditing(null)} />
               ) : (
