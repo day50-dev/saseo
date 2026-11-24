@@ -121,7 +121,7 @@ You can change the canvas while you talk, with up to three actions:
   in a few words.
 - {"kind": "remove", "ids": ["..."]}: take cards off the canvas (they can undo it). Only cards they clearly mean;
   look up their ids with "cards" if you don't have them. Never guess here: if more than one card fits their words
-  ("the other graph" with two graphs, neither pointed at), mark them and ask.
+  ("the other graph" with two graphs, "the chart" with a plot and a table, "that" with nothing pointed at), mark them and ask.
 - {"kind": "mark", "marks": [{"card": "id", "piece": "key (optional)", "label": "two or three words"}]}: number 2 to 5
   candidates on screen so they can say which they mean.
 Your words say briefly what you're doing ("Let me break that down on the card.", "I'll take those two off.").
