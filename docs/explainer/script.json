@@ -68,6 +68,26 @@
       "say": "Want to see it actually work? Ask for an example in a notebook. It finds a real one, written and run by a real person, keeps the cells that matter, and credits where it came from. Then it runs, right there in your browser."
     },
     {
+      "id": "10d-ask",
+      "shot": "A card's chat asks for university lectures; the gallery, each video with its channel",
+      "say": "Ask a card for whatever you need, in your own words. Videos, reading, papers. It doesn't just take the top search results. It checks who made each one, so asking for university lectures gets you lectures from universities."
+    },
+    {
+      "id": "10e-figures",
+      "shot": "A plot read with the cursor, a graph rearranged by hand, a table charting itself, a map going to a place",
+      "say": "Or ask for a figure. Equations get plotted. How the ideas connect becomes a graph you can rearrange. Data comes back as a table, read off real pages and credited, and it charts itself. And places land on a real map, placed by a real map service, not by guesswork."
+    },
+    {
+      "id": "10f-goals",
+      "shot": "The Goals panel opens; a goal lights its cards; a subgoal walks to its card",
+      "say": "As you go, it keeps track of what you're after. Each card is filed under your goal, under something that goal turned out to need, or as a side trip. So three detours deep, the way back to what you wanted is right there."
+    },
+    {
+      "id": "10g-which",
+      "shot": "On a call: pointing at Berlin on the map; then 'the chart' is numbered three ways, and one is picked",
+      "say": "On a call, it knows what you're pointing at, even a city on a map. And when it isn't sure what you mean, it doesn't guess. It numbers the choices, and you just say which."
+    },
+    {
       "id": "11-close",
       "shot": "End card",
       "say": "Librarian. Free, open, and no account needed. Bring the thing that stopped you."

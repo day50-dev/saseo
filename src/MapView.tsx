@@ -107,6 +107,8 @@ export default function MapView({ map }: { map: PlaceMap }) {
     for (const g of map.places.length ? placeAt : mainPieces) extend(ext, g.getExtent());
     if (!isEmpty(ext)) ol.getView().fit(ext, { padding: [50, 60, 40, 60], maxZoom: 9 });
     olRef.current = ol;
+    // Reachable from the page, so scripts (the explainer's recorder) can find a place on screen.
+    (el.current as HTMLDivElement & { __ol?: OlMap }).__ol = ol;
     // For a call: the place or area under the pointer, in the map's terms.
     ol.on("pointermove", (e) => {
       const box = el.current;
