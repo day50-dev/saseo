@@ -285,7 +285,8 @@ export type CardObject =
   | { type: "papers"; papers: Paper[] }
   | ({ type: "table" } & DataTable)
   | { type: "plot"; title: string; caption?: string; plot: Plot }
-  | ({ type: "graph" } & NodeGraph);
+  | ({ type: "graph" } & NodeGraph)
+  | ({ type: "map" } & PlaceMap);
 
 // ---- Figures: data in a table, curves and points on axes, nodes and edges ----
 
@@ -331,6 +332,30 @@ export interface Plot {
   marks?: { x: number; y: number; label: string }[];
   /** Keep x and y at the same scale (circles look round). */
   equal?: boolean;
+}
+
+/**
+ * Places on a map. The model only names them; OpenStreetMap's geocoder says where they are, and
+ * outlines come from its boundaries, so nothing on the map is the model's drawing.
+ */
+export interface PlaceMap {
+  title: string;
+  caption?: string;
+  places: {
+    name: string;
+    lat: number;
+    lon: number;
+    note?: string;
+    group?: string;
+    /** The geocoder couldn't find it: placed where the model thought, to be checked. */
+    approximate?: boolean;
+  }[];
+  /** Join the places in order: a route, a journey, a front line's advance. */
+  route?: boolean;
+  /** Countries or regions outlined, as GeoJSON geometry (today's borders). */
+  areas?: { name: string; group?: string; geometry: unknown }[];
+  /** Names the geocoder couldn't find at all. */
+  missing?: string[];
 }
 
 /** Nodes and edges: a graph in the mathematical sense, or a network of how things connect. */

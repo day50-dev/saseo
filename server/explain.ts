@@ -15,6 +15,7 @@ import { readPage as readWebPage } from "./pages.ts";
 import { runSearch } from "./providers.ts";
 import { partialSvg, sanitizeSvg, svgLabels } from "./svg.ts";
 import { makeGraph, makePlot, makeTable } from "./figures.ts";
+import { makeMap } from "./maps.ts";
 
 const IDENTIFY = `You help a curious, intelligent reader who is not a specialist. They selected part of an image because they don't understand it.
 The first image is the whole page with a red rectangle around their selection. The second image is the selection enlarged.
@@ -1011,12 +1012,13 @@ const INTENT_CRITERIA: Record<Intent, string> = {
   table: "A request for data, figures, statistics or numbers, as a table or to compare.",
   plot: "A request to plot or graph a function, equation or curve, or data points, on axes.",
   graph: "A request for a network of nodes and edges: a graph in graph theory, a tree, a map of how things connect.",
+  map: "A request for a geographic map: where places are, a route, countries or regions.",
 };
 const isIntent = (v: unknown): v is Intent => typeof v === "string" && v in INTENT_CRITERIA;
 
 const INTENT = `A reader typed a message in the conversation box on a card about a topic they are studying.
 Decide what they want: an answer in words, or an object made for them.
-Return JSON only: {"kind": "answer" | "videos" | "links" | "diagram" | "papers" | "notebook" | "table" | "plot" | "graph", "request": "what they asked for, restated in a few words"}
+Return JSON only: {"kind": "answer" | "videos" | "links" | "diagram" | "papers" | "notebook" | "table" | "plot" | "graph" | "map", "request": "what they asked for, restated in a few words"}
 - "videos": they ask for videos, lectures or talks to watch.
 - "links": they ask for things to read: articles, notes, papers, textbook chapters.
 - "diagram": they ask you to draw, sketch, picture or diagram something.
@@ -1025,6 +1027,7 @@ Return JSON only: {"kind": "answer" | "videos" | "links" | "diagram" | "papers" 
 - "table": they ask for data, figures, statistics, numbers over time, or a comparison in numbers.
 - "plot": they ask to plot or graph a function, an equation, a curve, or data on x and y axes.
 - "graph": they ask for nodes and edges: a graph in graph theory, a tree, a network, a map of how things connect.
+- "map": they ask for a geographic map, or where places are on the earth: cities, battles, routes, countries.
   ("graph y = x^2" is a plot; "draw K4" or "how are these ideas connected" is a graph; a picture or sketch is a diagram.)
 - "answer": anything else.`;
 
@@ -1059,7 +1062,7 @@ function expectedHeight(c: CardItem): number {
   if (c.objectKind === "videos") return 1150;
   if (c.objectKind === "diagram") return 1100;
   if (c.objectKind === "links") return 900;
-  if (c.objectKind === "table" || c.objectKind === "plot" || c.objectKind === "graph") return 800;
+  if (c.objectKind === "table" || c.objectKind === "plot" || c.objectKind === "graph" || c.objectKind === "map") return 800;
   return 1000;
 }
 
@@ -1262,6 +1265,11 @@ export function makeObject(store: CanvasStore, cardId: string) {
       const before = card.replaced?.object.type === "graph" ? card.replaced.object : undefined;
       const g = await makeGraph(request, about.text, before);
       await store.update(cardId, { stage: "done", subject: g.title, object: { type: "graph", ...g } });
+    } else if (card.objectKind === "map") {
+      await store.update(cardId, { stage: "writing" });
+      const before = card.replaced?.object.type === "map" ? card.replaced.object : undefined;
+      const m = await makeMap(request, about.text, before, (stage) => void store.update(cardId, { stage }));
+      await store.update(cardId, { stage: "done", subject: m.title, object: { type: "map", ...m } });
     }
   });
 }
@@ -1275,6 +1283,7 @@ const MADE: Record<ObjectKind, string> = {
   table: "Gathering the figures",
   plot: "Plotting",
   graph: "Drawing the graph",
+  map: "Making a map",
 };
 
 const REDOING: Record<ObjectKind, string> = {
@@ -1286,10 +1295,11 @@ const REDOING: Record<ObjectKind, string> = {
   table: "Gathering the figures again",
   plot: "Plotting it again",
   graph: "Drawing the graph again",
+  map: "Making the map again",
 };
 
 const REFINE = `A card on a reader's study canvas holds something found or made for them: videos, reading, research
-papers, a diagram, a notebook, a table of data, a plot or a graph. They wrote a message on that card.
+papers, a diagram, a notebook, a table of data, a plot, a graph or a map. They wrote a message on that card.
 Decide whether the message asks to change what the card holds: different, better, more academic, shorter, newer,
 in another language, from other sources, drawn differently, on another scale or range, with something added or taken out, and so on. A question about the content itself
 ("what does the second video cover?", "why is this arrow here?") is NOT a change.

@@ -1,5 +1,7 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { GraphView, PlotView, TableView } from "./Figures.tsx";
+// OpenLayers is large: loaded only when a map is on the canvas.
+const MapView = lazy(() => import("./MapView.tsx"));
 import {
   type CardItem,
   type CardStage,
@@ -569,7 +571,7 @@ function ChatBox({
         className="chat-input"
         rows={1}
         value={draft}
-        placeholder={messages.length ? "Ask a follow-up, or ask for videos, reading, a diagram, data, a plot…" : "Ask about this, or ask for videos, reading, a diagram, data, a plot…"}
+        placeholder={messages.length ? "Ask a follow-up, or ask for videos, reading, a diagram, data, a plot, a map…" : "Ask about this, or ask for videos, reading, a diagram, data, a plot, a map…"}
         disabled={card.chatPending}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
@@ -622,6 +624,12 @@ function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: 
   if (o.type === "table") return <TableView table={o} />;
   if (o.type === "plot") return <PlotView title={o.title} caption={o.caption} plot={o.plot} />;
   if (o.type === "graph") return <GraphView graph={o} />;
+  if (o.type === "map")
+    return (
+      <Suspense fallback={<p className="muted small">Loading the map…</p>}>
+        <MapView map={o} />
+      </Suspense>
+    );
   if (o.type === "diagram")
     return (
       <figure className="object-diagram">
