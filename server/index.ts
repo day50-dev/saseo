@@ -6,7 +6,7 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
-import { CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type Goal, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { remember } from "./pagecache.ts";
 import { pdfLink, servesPdf, slicePdf } from "./pdf.ts";
@@ -16,6 +16,7 @@ import { allSightings } from "./curriculum.ts";
 import { besideOf, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, diagramEndpoint, loadConfig, toPublic, updateConfig } from "./config.ts";
+import { saveGoal } from "./goals.ts";
 import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, findFor, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
@@ -404,6 +405,59 @@ app.post("/api/canvases/:cid/cards/:id/extend/:extId/remove", async (c) => {
   const made = await store.withDependents(taken.flatMap((e) => (e.made ? [e.made] : [])));
   if (made.length) await store.record({ type: "hide", ids: made });
   return c.json({ removed: [...gone], taken });
+});
+
+// Goals: the learner adds one of their own, or changes one (reword, finish, clear, reopen, move,
+// or give it a card). Rewording keeps what it was; a whole goal sent back (undo) is put as it was.
+app.post("/api/canvases/:cid/goals", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const body = (await c.req.json()) as { text?: string; parentId?: string };
+  const text = String(body.text ?? "").trim().slice(0, 200);
+  if (!text) return c.json({ error: "text is required" }, 400);
+  const goals = (await store.getState()).goals ?? [];
+  const parentId = goals.find((g) => g.id === body.parentId)?.id;
+  const goal: Goal = { id: newId(), text, ...(parentId ? { parentId } : {}), kind: parentId ? "subgoal" : "goal", status: "open", cards: [], by: "you", at: new Date().toISOString() };
+  await saveGoal(store, goal);
+  return c.json({ goal });
+});
+
+app.patch("/api/canvases/:cid/goals/:gid", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const goals = (await store.getState()).goals ?? [];
+  const goal = goals.find((g) => g.id === c.req.param("gid"));
+  if (!goal) return c.json({ error: "unknown goal" }, 404);
+  const body = (await c.req.json()) as Partial<Goal> & { restore?: Goal; addCard?: string; removeCard?: string };
+  if (body.restore?.id === goal.id) {
+    await saveGoal(store, body.restore);
+    return c.json({ goal: body.restore });
+  }
+  const next: Goal = { ...goal };
+  const text = typeof body.text === "string" ? body.text.trim().slice(0, 200) : "";
+  if (text && text !== goal.text) {
+    next.was = [...(goal.was ?? []), goal.text];
+    next.text = text;
+    next.by = "you";
+  }
+  if (body.status === "open" || body.status === "done" || body.status === "dropped") next.status = body.status;
+  if (body.kind === "goal" || body.kind === "subgoal" || body.kind === "detour") next.kind = body.kind;
+  if ("parentId" in body) {
+    // Never under itself or one of its own.
+    const below = (id: string | undefined): boolean => !!id && (id === goal.id || below(goals.find((g) => g.id === id)?.parentId));
+    if (!body.parentId) delete next.parentId;
+    else if (!below(body.parentId) && goals.some((g) => g.id === body.parentId)) next.parentId = body.parentId;
+    if (!next.parentId) next.kind = "goal";
+    else if (next.kind === "goal") next.kind = "subgoal";
+  }
+  if (body.addCard) {
+    // A card works toward one goal: it moves here from wherever it was.
+    for (const g of goals) if (g.id !== goal.id && g.cards.includes(body.addCard)) await saveGoal(store, { ...g, cards: g.cards.filter((x) => x !== body.addCard) });
+    if (!next.cards.includes(body.addCard)) next.cards = [...next.cards, body.addCard];
+  }
+  if (body.removeCard) next.cards = next.cards.filter((x) => x !== body.removeCard);
+  await saveGoal(store, next);
+  return c.json({ goal: next });
 });
 
 // Brings back what an object card held before a message asked for something else (and swaps, so it can go again).

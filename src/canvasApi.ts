@@ -1,5 +1,5 @@
 import { unreachable } from "./api.ts";
-import type { CanvasInfo, CanvasState, CanvasSummary, CardItem, Extension, ImageItem, NotebookCell, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
+import type { CanvasInfo, CanvasState, CanvasSummary, CardItem, Extension, Goal, ImageItem, NotebookCell, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
 
 async function json<T>(res: Response): Promise<T> {
   if (res.status === 401) location.reload();
@@ -92,6 +92,10 @@ export function canvasApi(cid: string) {
     unextend: (cardId: string, extId: string) => post(`${base}/cards/${cardId}/extend/${extId}/remove`, {}).then((r) => json<{ removed: string[]; taken: Extension[] }>(r)),
     /** Brings back what an object card held before it was redone (swapping, so it can go again). */
     objectBack: (cardId: string) => post(`${base}/cards/${cardId}/object/back`, {}).then((r) => json<{ ok: true }>(r)),
+    /** A goal of your own, or one that something needs. */
+    addGoal: (text: string, parentId?: string) => post(`${base}/goals`, { text, parentId }).then((r) => json<{ goal: Goal }>(r)),
+    /** Rewords, finishes, clears, reopens or moves a goal; `restore` puts one back exactly as it was. */
+    changeGoal: (id: string, change: Partial<Goal> & { restore?: Goal }) => send("PATCH", `${base}/goals/${id}`, change).then((r) => json<{ goal: Goal }>(r)),
     /** Puts grown shapes back (undoing their removal). */
     restoreExt: (cardId: string, ext: Extension[]) => post(`${base}/cards/${cardId}/extend/restore`, { ext }).then((r) => json<{ ok: true }>(r)),
     courses: (cardId: string) => post(`${base}/cards/${cardId}/courses`, {}).then((r) => json<{ ok: true }>(r)),

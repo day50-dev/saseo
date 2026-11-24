@@ -398,7 +398,31 @@ export type CanvasEvent =
   | { type: "collapse"; ids: string[]; collapsed: boolean }
   | { type: "chat"; id: string; message: ChatMessage }
   /** The learner restacked things: front, back, forward, backward. */
-  | { type: "z"; order: { id: string; z: number }[] };
+  | { type: "z"; order: { id: string; z: number }[] }
+  /** A goal, as it now is (added, reworded, finished, cleared, or given another card). */
+  | { type: "goal"; goal: Goal };
+
+/**
+ * What the learner is after, and what they had to go and find out on the way. Goals form a tree
+ * over the cards: a card serves a goal; a subgoal is something a goal turned out to need; a
+ * detour is curiosity off to the side. Goals change as the learner learns: rewording one keeps
+ * what it was.
+ */
+export interface Goal {
+  id: string;
+  text: string;
+  /** The goal this one serves; none for a goal of its own. */
+  parentId?: string;
+  kind: "goal" | "subgoal" | "detour";
+  status: "open" | "done" | "dropped";
+  /** The cards that work toward it, in the order they came. */
+  cards: string[];
+  /** Its earlier wordings, oldest first. */
+  was?: string[];
+  /** Who set it: the librarian's guess, or the learner. */
+  by: "librarian" | "you";
+  at: string;
+}
 
 export interface Move {
   id: string;
@@ -453,6 +477,7 @@ export interface LoggedEvent {
 export interface CanvasState {
   seq: number;
   items: Item[];
+  goals?: Goal[];
   /** When the last event was recorded. */
   updatedAt?: string;
 }

@@ -180,6 +180,11 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
     if (item?.kind === "card") Object.assign(item, e.patch);
     else if (item?.kind === "image")
       Object.assign(item, { pageText: e.patch.pageText ?? item.pageText, topic: e.patch.topic ?? item.topic, video: e.patch.video ?? item.video });
+  } else if (e.type === "goal") {
+    const goals = (s.goals ??= []);
+    const at = goals.findIndex((g) => g.id === e.goal.id);
+    if (at >= 0) goals[at] = e.goal;
+    else goals.push(e.goal);
   } else if (e.type === "z") {
     for (const o of e.order) {
       const item = s.items.find((i) => i.id === o.id);
@@ -322,7 +327,11 @@ export class CanvasStore {
   }
 
   add = (item: Item) => this.record({ type: "add", item });
-  update = (id: string, patch: ItemPatch) => this.record({ type: "update", id, patch });
+  update = async (id: string, patch: ItemPatch) => {
+    const logged = await this.record({ type: "update", id, patch });
+    if ((patch.stage === "done" || patch.stage === "asking") && cardDone) cardDone(this, id);
+    return logged;
+  };
 
   private editing: Promise<unknown> = Promise.resolve();
 
@@ -413,6 +422,11 @@ export class CanvasStore {
 const stores = new Map<string, CanvasStore>();
 
 let resumeWork: ((store: CanvasStore, items: Item[]) => void) | null = null;
+let cardDone: ((store: CanvasStore, id: string) => void) | null = null;
+/** Called each time a card is ready to read, or stops to ask something first (goals.ts places it under a goal). */
+export function onCardDone(fn: (store: CanvasStore, id: string) => void) {
+  cardDone = fn;
+}
 
 /** Registers what to do with interrupted background work when a canvas is first loaded. */
 export function onResume(fn: (store: CanvasStore, items: Item[]) => void) {

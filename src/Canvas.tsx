@@ -1,5 +1,6 @@
+import { GoalsPanel } from "./GoalsPanel.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type Extension, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { Card, type Side } from "./Card.tsx";
 import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
 import { players } from "./youtube.ts";
@@ -141,6 +142,15 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const [hover, setHover] = useState<string | null>(null);
   // The image or card the stacking buttons act on.
   const [selected, setSelected] = useState<string | null>(null);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [goalsOpen, setGoalsOpen] = useState(() => {
+    try {
+      return localStorage.getItem("librarian.goalsOpen") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [goalLit, setGoalLit] = useState<Set<string>>(new Set());
   const [dockOpen, setDockOpen] = useState(false);
   // A piece's picture is hovered: outline where it is on its image.
   const [peek, setPeek] = useState<{ imageId: string; rect: Rect } | null>(null);
@@ -194,6 +204,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       setTrashedAt(s.trashedAt);
       // Hidden items stay in the log (undo can bring them back) but aren't drawn or laid out around.
       setItems(s.items.filter((i) => !i.hidden));
+      setGoals(s.goals ?? []);
       setLoaded(true);
     } catch (e) {
       if (e instanceof CanvasNotFound) setNotFound(true);
@@ -1093,6 +1104,16 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   };
 
   /** Brings an item into the middle of the view and selects it. */
+  // Goals: the cards they can point at, how many are still open, and the one you're in now (the
+  // selected card's, or else the newest card's).
+  const cardsById = new Map(cards.map((c) => [c.id, c] as const));
+  const openGoals = goals.filter((g) => g.status === "open").length;
+  const currentGoal = (() => {
+    const of = (id: string | null | undefined) => (id ? goals.find((g) => g.cards.includes(id))?.id : undefined);
+    const newest = [...cards].reverse().find((c) => of(c.id));
+    return of(selected) ?? of(newest?.id);
+  })();
+
   const focusOn = (id: string) => {
     const item = byId.get(id);
     const el = stageRef.current;
@@ -1270,6 +1291,19 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             {calling ? "On a call" : "Call"}
           </button>
         )}
+        <button
+          type="button"
+          className={goalsOpen ? "on goals-btn" : "secondary goals-btn"}
+          title="What you're after, and what it took to get there"
+          onClick={() => {
+            setGoalsOpen(!goalsOpen);
+            try {
+              localStorage.setItem("librarian.goalsOpen", goalsOpen ? "0" : "1");
+            } catch {}
+          }}
+        >
+          Goals{openGoals ? ` · ${openGoals}` : ""}
+        </button>
         <button type="button" className="secondary untangle" title="Search arXiv and add pages of a paper" onClick={() => setArxivOpen(true)}>
           arXiv
         </button>
@@ -1614,7 +1648,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               card={c}
               foldedCount={c.collapsed ? cardsBelow(c.id) : 0}
               onToggleCollapse={() => toggleCollapse(c.id)}
-              lit={hover === c.id || hover === c.parentId}
+              lit={hover === c.id || hover === c.parentId || goalLit.has(c.id)}
               onHover={(on) => setHover(on ? c.id : null)}
               onHeight={(h) => setHeights((all) => (all[c.id] === h ? all : { ...all, [c.id]: h }))}
               onDescend={(text, context, clientY) => descend(c, text, context, toWorld(0, clientY).y)}
@@ -1689,6 +1723,34 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             if (removed?.length) pushStep({ label: "remove (on the call)", undo: () => api.show(removed), redo: () => api.hide(removed) });
             void refresh();
           }} onClose={() => setCalling(false)} />}
+      {goalsOpen && (
+        <GoalsPanel
+          goals={goals}
+          cards={cardsById}
+          current={currentGoal}
+          onAdd={(text, parentId) =>
+            api.addGoal(text, parentId).then(({ goal }) => {
+              pushStep({ label: "add a goal", undo: () => api.changeGoal(goal.id, { status: "dropped" }), redo: () => api.changeGoal(goal.id, { status: "open" }) });
+              return refresh();
+            }, (e) => setError(`Couldn't add that goal: ${e}`))
+          }
+          onChange={(goal, change) =>
+            api.changeGoal(goal.id, change).then(({ goal: now }) => {
+              pushStep({ label: change.text ? "reword a goal" : change.status ? `mark a goal ${change.status}` : "move a goal", undo: () => api.changeGoal(goal.id, { restore: goal }), redo: () => api.changeGoal(goal.id, { restore: now }) });
+              return refresh();
+            }, (e) => setError(`Couldn't change that goal: ${e}`))
+          }
+          onFocus={focusOn}
+          onLight={(ids) => setGoalLit(new Set(ids))}
+          onClose={() => {
+            setGoalsOpen(false);
+            setGoalLit(new Set());
+            try {
+              localStorage.setItem("librarian.goalsOpen", "0");
+            } catch {}
+          }}
+        />
+      )}
       {arxivOpen && <ArxivPanel onAdd={(paper, pages) => addPaperPages(paper, pages)} onClose={() => setArxivOpen(false)} />}
     </div>
   );

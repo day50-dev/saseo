@@ -98,6 +98,7 @@ Every card has an "Ask about this" box. The conversation stays on that card, and
 
 - **Nothing moves unless you move it.** The canvas never reshuffles. Drag cards and images anywhere, and everything hanging off them comes along. An explanation can sit on any side of what it explains, just not on top of it.
 - **Nothing is lost.** Every change is an event in an append-only log. Undo and Redo cover adding, moving, removing, collapsing and restacking. Removing hides; it never deletes.
+- **Goals (experimental).** What you're after, kept as a tree beside the canvas: each card the librarian makes is placed under the goal it serves, under a subgoal (something that goal turned out to need), or under a detour (curiosity off to the side). Click a goal to walk through its cards; reword one (what it was is kept), mark it done, or clear it.
 - **Walk the tree.** Collapse any card or image to fold away everything below it. Untangle pushes overlapping cards apart. Bring to front and send to back work as you'd expect.
 - **Named canvases with stable URLs** at `/c/<id>`, so you can bookmark a line of inquiry and come back to it. A canvas you don't name is named after what you started it with.
 - **You can see it working.** A selection being explained is highlighted where you made it, a placeholder shows where its card will land, and work happening out of view gets a pointer at the edge of the screen.
