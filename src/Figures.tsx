@@ -607,9 +607,20 @@ function wrap(label: string, w = 14): string[] {
 }
 
 export function GraphView({ graph }: { graph: NodeGraph }) {
-  const W = 480;
   const H = Math.min(520, Math.max(300, graph.nodes.length * 14));
-  const start = useMemo(() => given(graph, W, H) ?? layered(graph, W, H) ?? springs(graph, W, H), [graph, H]);
+  // A hierarchy with a wide layer gets a wider drawing (it scales down to the card), so its nodes
+  // sit side by side instead of on top of each other.
+  const { start, W } = useMemo(() => {
+    const given0 = given(graph, 480, H);
+    if (given0) return { start: given0, W: 480 };
+    const first = layered(graph, 480, H);
+    if (!first) return { start: springs(graph, 480, H), W: 480 };
+    const perRow = new Map<number, number>();
+    for (const p of Object.values(first)) perRow.set(Math.round(p.y), (perRow.get(Math.round(p.y)) ?? 0) + 1);
+    const widest = Math.max(...perRow.values());
+    const W = Math.max(480, Math.min(1000, widest * 118));
+    return { start: W > 480 ? layered(graph, W, H)! : first, W };
+  }, [graph, H]);
   const [moved, setMoved] = useState<Pos>({});
   const [hover, setHover] = useState<string | null>(null);
   const drag = useRef<{ id: string; dx: number; dy: number } | null>(null);

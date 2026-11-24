@@ -4,23 +4,27 @@
   "scenes": [
     {
       "id": "01-hook",
-      "shot": "Title card over a dense research slide",
-      "say": "Some of the most interesting ideas in the world are explained in rooms most of us can't follow. A research talk. A paper. A lecture. One unfamiliar word goes by, and you're lost."
+      "shot": "The slide on the canvas, the pointer reading down it; 'One unfamiliar word goes by, and you're lost.' beside it",
+      "say": "Some of the most interesting ideas in the world are explained in rooms most of us can't follow. A research talk. A paper. A lecture. One unfamiliar word goes by, and you're lost.",
+      "clip": "00-open"
     },
     {
       "id": "02-climb",
-      "shot": "Title card: looking it up makes it worse",
-      "say": "Looking it up usually makes it worse. The definition is written in words even more specialized than the one you didn't know. You climb, when you needed to descend. And ten tabs later, you've lost your place."
+      "shot": "The climb card fades in over the canvas, then away",
+      "say": "Looking it up usually makes it worse. The definition is written in words even more specialized than the one you didn't know. You climb, when you needed to descend. And ten tabs later, you've lost your place.",
+      "clip": "00-open"
     },
     {
       "id": "03-idea",
-      "shot": "A slide on the canvas; a box is drawn around a phrase; a card appears",
-      "say": "Librarian is a research librarian on an infinite canvas. Put the thing that stopped you on the canvas, a slide, a page, a paper, and draw a box around the part you don't understand."
+      "shot": "A box is drawn around 'Biot–Savart law'; the card lands beside it",
+      "say": "Librarian is a research librarian on an infinite canvas. Put the thing that stopped you on the canvas, a slide, a page, a paper, and draw a box around the part you don't understand.",
+      "clip": "00-open"
     },
     {
       "id": "04-descend",
-      "shot": "The explanation card, scrolled section by section",
-      "say": "It explains downward, toward what you already know. First why the idea exists, then what it is, then its parts, then how it's used right here. It's drawn as a diagram, not a wall of text, so you can see how the pieces connect."
+      "shot": "The card builds section by section as each is named, gliding to the middle",
+      "say": "It explains downward, toward what you already know. First why the idea exists, then what it is, then its parts, then how it's used right here. It's drawn as a diagram, not a wall of text, so you can see how the pieces connect.",
+      "clip": "00-open"
     },
     {
       "id": "05-register",
