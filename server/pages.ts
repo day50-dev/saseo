@@ -237,3 +237,27 @@ export async function readPage(link: string): Promise<ReadPage> {
 export function looksLikeLink(input: string): boolean {
   return /^https?:\/\/\S+$/i.test(input.trim());
 }
+
+/**
+ * A page's tables, kept as tables (rows of cells joined with " | ", each under its caption), with
+ * some of its prose for context. The readable text above flattens tables; figures need their rows.
+ */
+export async function readTables(link: string): Promise<{ url: string; title: string; tables: string[]; prose: string }> {
+  const page = await fetchPublic(new URL(link.trim()).toString());
+  if (!/html/i.test(page.type)) throw new Error("Not an HTML page.");
+  const { document } = parseHTML(page.body);
+  const cell = (el: Element) => (el.textContent ?? "").replace(/\[\d+\]|\[[a-z]\]/g, "").replace(/\s+/g, " ").trim();
+  const tables: string[] = [];
+  for (const t of [...document.querySelectorAll("table")] as unknown as Element[]) {
+    if (t.closest(".navbox, .vertical-navbox, .sidebar, .metadata, .ambox, .sistersitebox")) continue;
+    const rows = ([...t.querySelectorAll("tr")] as unknown as Element[])
+      .map((tr) => ([...tr.querySelectorAll("th, td")] as unknown as Element[]).map(cell).join(" | "))
+      .filter((r) => r.replace(/[ |]/g, ""));
+    if (rows.length < 2) continue;
+    const caption = cell((t.querySelector("caption") as unknown as Element) ?? t.ownerDocument.createElement("x"));
+    tables.push([caption && `Table: ${caption}`, ...rows.slice(0, 80)].filter(Boolean).join("\n"));
+  }
+  for (const el of [...document.querySelectorAll(`${SKIP}, table, script, style, nav, header, footer, #toc`)]) el.remove();
+  const prose = ((document.body?.textContent as string) ?? "").replace(/\s+/g, " ").trim().slice(0, 2500);
+  return { url: page.url.toString(), title: (document.querySelector("title")?.textContent ?? page.url.hostname).trim(), tables, prose };
+}

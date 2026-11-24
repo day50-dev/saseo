@@ -14,6 +14,12 @@
   --sem-what: #5d4a8a;
   --sem-parts: #2f7d78;
   --sem-here: #5a6b85;
+  --fig-1: #2f6fbf;
+  --fig-2: #d0702a;
+  --fig-3: #2f8f5b;
+  --fig-4: #b03a6e;
+  --fig-5: #7a5cc0;
+  --fig-6: #8a7a2a;
   color-scheme: light;
 }
 
@@ -34,6 +40,12 @@
     --sem-what: #6a5799;
     --sem-parts: #2b7470;
     --sem-here: #55657e;
+    --fig-1: #6fa8f0;
+    --fig-2: #f0a060;
+    --fig-3: #6cc890;
+    --fig-4: #ee7fae;
+    --fig-5: #b49af0;
+    --fig-6: #d8c66a;
     color-scheme: dark;
   }
 }
@@ -999,3 +1011,38 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .goal-cleared { align-self: flex-start; margin: 0 12px; }
 .goal-empty, .goal-legend { padding: 0 12px; margin: 0; }
 .goal-legend { margin-top: auto; padding-top: 10px; }
+
+/* ---- Figures: tables, plots, graphs ---- */
+.figure { margin-top: 10px; }
+.figure-caption { margin: 6px 0 0; color: var(--muted); }
+.figure-warn { margin: 6px 0; padding: 6px 8px; border-left: 3px solid var(--fail); background: color-mix(in srgb, var(--fail) 8%, transparent); }
+.figure-tools { display: flex; gap: 6px; margin: 6px 0; }
+.figure-tools button { font-size: 12px; padding: 3px 9px; }
+.figure-tools button.on { background: var(--on); }
+.figure-table-wrap { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.figure-table table { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.figure-table th, .figure-table td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.figure-table th { position: sticky; top: 0; background: var(--card); font-weight: 600; box-shadow: 0 1px 0 var(--line); }
+.figure-table .num { text-align: right; white-space: nowrap; }
+.figure-table tbody tr:hover { background: var(--on); }
+.figure-sources { margin: 6px 0 0; }
+.figure-svg { display: block; width: 100%; height: auto; user-select: none; touch-action: none; }
+.figure-svg text { font-family: inherit; fill: var(--text); }
+.fig-grid { stroke: var(--line); stroke-width: 0.6; }
+.fig-frame { fill: none; stroke: var(--line); }
+.fig-axis { stroke: var(--muted); stroke-width: 1.1; }
+.fig-cursor { stroke: var(--muted); stroke-dasharray: 3 3; }
+.figure-svg .fig-tick { font-size: 10.5px; fill: var(--muted); }
+.figure-svg .fig-label { font-size: 12px; fill: var(--muted); }
+.fig-mark circle { fill: var(--card); stroke: var(--text); stroke-width: 1.5; }
+.figure-svg .fig-mark text { font-size: 11px; paint-order: stroke; stroke: var(--card); stroke-width: 3px; }
+.figure-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin-top: 4px; min-height: 1.4em; color: var(--muted); }
+.figure-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.figure-readout { color: var(--text); font-variant-numeric: tabular-nums; }
+.fig-edge line, .fig-edge circle { stroke: var(--muted); stroke-width: 1.3; }
+.fig-arrowhead { fill: var(--muted); }
+.figure-svg .fig-edge-label { font-size: 10px; fill: var(--muted); paint-order: stroke; stroke: var(--card); stroke-width: 3px; }
+.fig-edge.dim, .fig-node.dim { opacity: 0.25; }
+.fig-node { cursor: grab; }
+.fig-node rect { fill: var(--card); stroke-width: 2; }
+.figure-svg .fig-node text { font-size: 11px; }

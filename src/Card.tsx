@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { GraphView, PlotView, TableView } from "./Figures.tsx";
 import {
   type CardItem,
   type CardStage,
@@ -360,7 +361,7 @@ export function Card(props: {
       )}
       {card.replaced && card.stage === "done" && (
         <button type="button" className="link small object-back" onPointerDown={(e) => e.stopPropagation()} onClick={props.onObjectBack}>
-          ↶ Bring back the earlier {card.objectKind === "diagram" ? "drawing" : card.objectKind === "notebook" ? "notebook" : card.objectKind === "links" ? "reading" : card.objectKind}
+          ↶ Bring back the earlier {card.objectKind === "diagram" ? "drawing" : card.objectKind === "links" ? "reading" : card.objectKind}
         </button>
       )}
       {showShapes && card.sem && (
@@ -568,7 +569,7 @@ function ChatBox({
         className="chat-input"
         rows={1}
         value={draft}
-        placeholder={messages.length ? "Ask a follow-up, or ask for videos, reading, a diagram…" : "Ask about this, or ask for videos, reading, a diagram…"}
+        placeholder={messages.length ? "Ask a follow-up, or ask for videos, reading, a diagram, data, a plot…" : "Ask about this, or ask for videos, reading, a diagram, data, a plot…"}
         disabled={card.chatPending}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
@@ -618,6 +619,9 @@ function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: 
   const [playing, setPlaying] = useState<string | null>(null);
   const o = card.object!;
   if (o.type === "notebook") return null;
+  if (o.type === "table") return <TableView table={o} />;
+  if (o.type === "plot") return <PlotView title={o.title} caption={o.caption} plot={o.plot} />;
+  if (o.type === "graph") return <GraphView graph={o} />;
   if (o.type === "diagram")
     return (
       <figure className="object-diagram">

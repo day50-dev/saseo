@@ -282,7 +282,66 @@ export type CardObject =
   | { type: "videos"; videos: Video[] }
   | { type: "links"; links: FoundSource[] }
   | { type: "diagram"; svg: string; caption: string }
-  | { type: "papers"; papers: Paper[] };
+  | { type: "papers"; papers: Paper[] }
+  | ({ type: "table" } & DataTable)
+  | { type: "plot"; title: string; caption?: string; plot: Plot }
+  | ({ type: "graph" } & NodeGraph);
+
+// ---- Figures: data in a table, curves and points on axes, nodes and edges ----
+
+/** A table of figures: empirical data, found on pages (credited), or from the model's memory (flagged). */
+export interface DataTable {
+  title: string;
+  caption?: string;
+  columns: string[];
+  rows: (string | number | null)[][];
+  sources: { title: string; url: string }[];
+  /** No page held the figures: they're the model's recollection, to be checked. */
+  fromMemory?: boolean;
+  /** How it charts: the column along the bottom, the columns plotted, and how. */
+  chart?: { x: number; y: number[]; kind: "line" | "bar" | "scatter" };
+}
+
+export interface PlotAxis {
+  label?: string;
+  min?: number;
+  max?: number;
+  log?: boolean;
+}
+
+/** One thing drawn on a plot: a function y = f(x), a curve (x(t), y(t)), or points. */
+export interface PlotSeries {
+  label?: string;
+  /** y in terms of x, in plain math: "sin(x)/x", "x^2 - 3x + 1". */
+  fn?: string;
+  /** A curve in t, with t's range. */
+  xt?: string;
+  yt?: string;
+  t?: [number, number];
+  points?: [number, number][];
+  /** Join the points with a line. */
+  line?: boolean;
+}
+
+export interface Plot {
+  x: PlotAxis;
+  y: PlotAxis;
+  series: PlotSeries[];
+  /** Points called out with a label: a root, a maximum, an intersection. */
+  marks?: { x: number; y: number; label: string }[];
+  /** Keep x and y at the same scale (circles look round). */
+  equal?: boolean;
+}
+
+/** Nodes and edges: a graph in the mathematical sense, or a network of how things connect. */
+export interface NodeGraph {
+  title: string;
+  caption?: string;
+  directed?: boolean;
+  /** x and y (0 to 1, y down) give a standard drawing (the Petersen graph's star in a pentagon); else it's laid out. */
+  nodes: { id: string; label: string; group?: string; note?: string; x?: number; y?: number }[];
+  edges: { from: string; to: string; label?: string }[];
+}
 
 export type ObjectKind = CardObject["type"];
 
