@@ -5,7 +5,7 @@
 import { CARD_WIDTH, type CardItem, EXTENSION_SHAPES, type Extension, type ExtensionShape, type ObjectKind } from "../shared/canvas.ts";
 import { type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
-import { chat } from "./llm.ts";
+import { chat, type Message } from "./llm.ts";
 
 export const SPEECH = {
   tts: process.env.LIBRARIAN_TTS_URL ?? "",
@@ -52,6 +52,8 @@ export interface Pointing {
   selection?: string;
   /** The sentence or line those words sit in. */
   selectionContext?: string;
+  /** A thing inside a figure, in the figure's own terms: "Berlin (place 2 of 4)", "x = 1.5 on the plot". */
+  figure?: string;
 }
 
 export interface Turn {
@@ -59,31 +61,148 @@ export interface Turn {
   text: string;
 }
 
+/** A thing numbered on screen for the reader to pick: a card, or a piece of one. */
+export interface Mark {
+  n: number;
+  cardId: string;
+  key?: string;
+  label: string;
+}
+
+/**
+ * What the page knows besides the words, sent with each turn but shown to the model only when it
+ * asks (or, for the pointer at the moment of "this", when it decides what "this" means).
+ */
+export interface CallContext {
+  /** Where the pointer was while they spoke: ms from the start of speaking. */
+  timeline?: { at: number; p: Pointing }[];
+  /** How long they spoke, ms. */
+  spoke?: number;
+  /** Cards at least partly on screen. */
+  visible?: string[];
+  /** What they did lately, in the canvas's terms, newest last. */
+  recent?: { ago: number; what: string }[];
+  /** Numbered on screen last turn, still showing. */
+  marks?: Mark[];
+  /** The number they picked, by clicking it or saying it. */
+  picked?: number;
+}
+
 const CALL = `You are a research librarian on a voice call with a curious, intelligent reader who is not a specialist.
-They are looking at a canvas of explanations drawn as diagrams, and they can point at a piece of one while they talk.
+They are looking at a canvas of explanations, figures and finds, and they point at things while they talk.
 Answer the way you'd talk on the phone: warm, plain, short. One to three sentences, no lists, no markdown, no citations,
 no LaTeX (say math in words: "A sub j", "the integral of"). Descend: explain with ideas more familiar than what they ask about.
-When they say "this", "this part", "right here", "that bit" or "here", they mean the words they have selected, if any;
-otherwise the piece they are pointing at. Speak to exactly that: say briefly which part you're taking up, then help with it.
-You can also change the canvas while you talk, with up to three actions:
+
+Be simple and direct. You are told only what they are pointing at or have selected, and what was said. That is almost always
+enough: answer about that thing. Don't speculate about the rest of the canvas.
+"This", "that", "here", "this part" mean what they selected, else what they were pointing at when they said it (you're told).
+
+Only when their words refer to something you can't identify from that ("the other one", "the map from before", "what I was
+just looking at", "those two"), or you need a card's content to answer, look it up first: reply
+{"look": [{"tool": "...", ...}]} and you'll get the answers. Tools:
+- {"tool": "card", "id": "..."}: what a card holds, with its pieces' keys (or the pointed card, without an id).
+- {"tool": "cards"}: every card on the canvas: id, kind, title, and which are on screen.
+- {"tool": "recent"}: what they did lately: what they looked at and clicked, newest last.
+- {"tool": "goals"}: what they're after on this canvas.
+If, even so, it could be more than one thing, don't guess: number the candidates on screen and ask, with the "mark" action,
+saying something like "Which one? I've numbered them: just say the number."
+
+You can change the canvas while you talk, with up to three actions:
 - {"kind": "grow", "shape": "..."}: add a shape to the piece they're pointing at. Shapes: aside (say more), why
   (reasons leading up to it), then (what follows), steps (how it's done), parts (break it down), split (two ways or
   cases), example (a worked example), facts (more facts). Use it when they ask for more about something on the
   canvas, or when a diagram would help more than talk.
 - {"kind": "descend", "phrase": "..."}: open a new card that explains a phrase (they selected it, or it's in the piece
   they point at). Use it when they ask what a term means and it deserves a full explanation.
-- {"kind": "find", "find": "videos" | "links" | "papers" | "diagram" | "notebook" | "table" | "plot" | "graph" | "map", "request": "..."}: put something
-  new on the canvas: videos (lectures, explainers), links (reading), papers (arXiv), diagram (draw one), notebook
-  (a runnable example in a Jupyter notebook, found online; it opens beside the canvas), table (figures and data, read
-  off real pages), plot (functions, curves or data on x-y axes) graph (nodes and edges: graph theory, a network) or map (places, routes, countries). "request" says what, in a few
-  words. Use it whenever they ask you to find, pull up, show or get videos, reading, papers, a picture, an example, data, a plot, a graph or a map.
-- {"kind": "remove", "ids": ["..."]}: take cards off the canvas (they can undo it). Use the ids from the list of
-  cards on the canvas: the ones they point at, name or describe ("those two diagrams", "the sketches"). Only cards
-  they clearly mean.
+- {"kind": "find", "find": "videos" | "links" | "papers" | "diagram" | "notebook" | "table" | "plot" | "graph" | "map", "request": "..."}:
+  put something new on the canvas: videos (lectures, explainers), links (reading), papers (arXiv), diagram (draw one),
+  notebook (a runnable example), table (figures and data, read off real pages), plot (functions, curves or data on
+  x-y axes), graph (nodes and edges: graph theory, a network) or map (places, routes, countries). "request" says what,
+  in a few words.
+- {"kind": "remove", "ids": ["..."]}: take cards off the canvas (they can undo it). Only cards they clearly mean;
+  look up their ids with "cards" if you don't have them. Never guess here: if more than one card fits their words
+  ("the other graph" with two graphs, neither pointed at), mark them and ask.
+- {"kind": "mark", "marks": [{"card": "id", "piece": "key (optional)", "label": "two or three words"}]}: number 2 to 5
+  candidates on screen so they can say which they mean.
 Your words say briefly what you're doing ("Let me break that down on the card.", "I'll take those two off.").
 NEVER say you did, are doing or will do anything to the canvas that isn't one of your actions this turn: if they ask
 for something you can't do (move or resize things, for instance), say so plainly.
-Return JSON only: {"say": "...", "actions": [{"kind": "grow" | "descend" | "find" | "remove", ...}]} (actions may be [])`;
+Reply with JSON only: {"look": [...]} to look something up, or {"say": "...", "actions": [...]} (actions may be []).`;
+
+const DEICTIC = /^(this|that|these|those|here|there)$/i;
+
+/** One line for a thing pointed at: its card's title, and the piece or figure part. */
+function describePointing(p: Pointing, cards: CardItem[]): string {
+  const card = p.cardId ? cards.find((c) => c.id === p.cardId) : undefined;
+  if (!card) return "";
+  const title = `"${card.subject ?? card.selection ?? card.request ?? "a card"}"${card.objectKind ? ` (${card.objectKind === "links" ? "reading" : card.objectKind} card)` : ""}`;
+  if (p.figure) return `${p.figure}, on ${title}`;
+  if (p.pieceText) return `"${p.pieceText}", on the card ${title}`;
+  return `the card ${title}`;
+}
+
+/**
+ * What each "this" or "that" pointed at: the pointer at about the moment the word was said,
+ * from where it falls in what they said. Different from the last thing pointed at, when the hand
+ * moved on while they talked ("compare this … with that").
+ */
+function deixis(text: string, ctx: CallContext): { word: string; p: Pointing }[] {
+  const tl = ctx.timeline ?? [];
+  if (!tl.length || !ctx.spoke) return [];
+  const words = text.split(/\s+/).filter(Boolean);
+  const out: { word: string; p: Pointing }[] = [];
+  words.forEach((w, i) => {
+    const bare = w.replace(/[^\w']/g, "");
+    if (!DEICTIC.test(bare)) return;
+    const t = ((i + 0.5) / words.length) * ctx.spoke!;
+    const at = [...tl].reverse().find((e) => e.at <= t) ?? tl[0];
+    if (at.p.cardId) out.push({ word: bare.toLowerCase(), p: at.p });
+  });
+  return out;
+}
+
+const objectSummary = (c: CardItem): string => {
+  const o = c.object;
+  if (!o) return "";
+  switch (o.type) {
+    case "map":
+      return `A map${o.route ? " of a route, in order" : ""}. Places: ${o.places.map((p, i) => `${i + 1}. ${p.name}${p.note ? ` (${p.note})` : ""}`).join("; ")}${o.areas?.length ? `. Outlined: ${o.areas.map((a) => a.name).join(", ")}` : ""}`;
+    case "graph":
+      return `A graph of ${o.nodes.length} nodes. Nodes: ${o.nodes.map((n) => n.label).join(", ")}. Edges: ${o.edges.slice(0, 40).map((e) => `${e.from}→${e.to}${e.label ? ` (${e.label})` : ""}`).join(", ")}`;
+    case "plot":
+      return `A plot. x: ${o.plot.x.label ?? "x"}; y: ${o.plot.y.label ?? "y"}. ${o.plot.series.map((s) => s.label ?? s.fn ?? "points").join("; ")}${o.caption ? `. ${o.caption}` : ""}`;
+    case "table":
+      return `A table: ${o.columns.join(" | ")}\n${o.rows.slice(0, 15).map((r) => r.map((v) => v ?? "").join(" | ")).join("\n")}`;
+    case "videos":
+      return `Videos: ${o.videos.map((v) => v.title).join("; ")}`;
+    case "links":
+      return `Reading: ${o.links.map((l) => l.title).join("; ")}`;
+    case "papers":
+      return `Papers: ${o.papers.map((p) => p.title).join("; ")}`;
+    case "diagram":
+      return `A diagram. ${o.caption}`;
+    case "notebook":
+      return `A notebook: ${o.title}`;
+  }
+};
+
+function cardContent(c: CardItem): string {
+  const head = `${c.id}: "${c.subject ?? c.selection ?? c.request ?? "a card"}"`;
+  if (c.sem) {
+    const s = c.sem;
+    const pieces = [
+      ...s.why.map((t, i) => `[why-${i}] ${t}`),
+      `[what-0] ${s.what.gist}`,
+      ...s.what.details.map((t, i) => `[what-${i + 1}] ${t}`),
+      ...s.parts.map((p, i) => `[part-${i}] ${p.symbol} = ${p.meaning}`),
+      ...s.here.map((t, i) => `[here-${i}] ${t}`),
+      ...(c.ext ?? []).flatMap((e) => (e.items ?? []).slice(0, 4).map((t) => `[${e.id}] ${t}`)),
+    ];
+    return `${head}\n${pieces.join("\n").slice(0, 4000)}`;
+  }
+  if (c.object) return `${head}\n${objectSummary(c).slice(0, 3000)}`;
+  return `${head}\n${(c.pageText ?? "").slice(0, 2000)}`;
+}
 
 /** One turn of the call: what to say back, and what was done on the canvas. */
 export async function callTurn(
@@ -99,50 +218,95 @@ export async function callTurn(
     /** Hides cards (and what hangs from them); returns everything hidden. */
     remove: (ids: string[]) => Promise<string[]>;
   },
-): Promise<{ say: string; did?: string; removed?: string[] }> {
-  const { items } = await store.getState();
-  const cards = items.filter((i): i is CardItem => i.kind === "card" && !i.hidden);
+  ctx: CallContext = {},
+): Promise<{ say: string; did?: string; removed?: string[]; marks?: Mark[]; looked?: string[] }> {
+  const state = await store.getState();
+  const cards = state.items.filter((i): i is CardItem => i.kind === "card" && !i.hidden);
+  // A number picked from the marks is what they mean now.
+  const pick = ctx.picked !== undefined ? ctx.marks?.find((m) => m.n === ctx.picked) : undefined;
+  if (pick) {
+    pointing = { cardId: pick.cardId, ...(pick.key ? { key: pick.key } : {}) };
+  }
+  // "This" is what was under the pointer as it was said, unless words are selected.
+  const said = pointing.selection ? [] : deixis(text, ctx);
+  if (said.length && !pick) pointing = said[0].p;
   const card = pointing.cardId ? cards.find((c) => c.id === pointing.cardId) : undefined;
   const info = await getCanvasInfo(store.id);
   const notes = (info?.reader ?? []).map((n) => n.a).filter(Boolean);
-  const semText = (c: CardItem) =>
-    c.sem
-      ? [
-          `Why: ${c.sem.why.join(" ")}`,
-          `What: ${[c.sem.what.gist, ...c.sem.what.details].join(" ")}`,
-          c.sem.parts.length ? `Parts: ${c.sem.parts.map((p) => `${p.symbol} = ${p.meaning}`).join("; ")}` : "",
-          c.sem.here.length ? `Then: ${c.sem.here.join(" ")}` : "",
-        ]
-          .filter(Boolean)
-          .join("\n")
-      : (c.pageText ?? "").slice(0, 2000);
+
+  // The glance: only what nearly every turn needs.
+  const distinct = said.filter((d, i) => said.findIndex((e) => e.p.cardId === d.p.cardId && e.p.key === d.p.key && e.p.figure === d.p.figure) === i);
   const lines = [
-    `Cards on the canvas, oldest first (id: what it is):\n${cards
-      .slice(-40)
-      .map((c) => `${c.id}: ${c.objectKind ? `${c.objectKind === "links" ? "reading" : c.objectKind} card, ` : ""}${c.subject ?? c.selection ?? c.request ?? "a card"}${c.id === pointing.cardId ? " (pointed at)" : ""}`)
-      .join("\n")}`,
-    notes.length ? `What they've told you about themselves: ${notes.join("; ")}` : "",
-    card ? `They are pointing at the card "${card.subject ?? card.selection}":\n${semText(card)}` : "They aren't pointing at anything.",
-    pointing.pieceText ? `Specifically this piece of it: "${pointing.pieceText}"` : "",
+    notes.length ? `About them: ${notes.join("; ")}` : "",
     pointing.selection
-      ? `They have SELECTED these words (this is what "this" means): "${pointing.selection}"${pointing.selectionContext ? `\nThey sit in: "${pointing.selectionContext}"` : ""}`
+      ? `They have SELECTED: "${pointing.selection}"${pointing.selectionContext ? ` (in: "${pointing.selectionContext}")` : ""}${card ? `, on "${card.subject ?? card.selection}"` : ""}`
       : "",
+    pick
+      ? `You asked them which one they meant and numbered the candidates. They picked number ${pick.n}: ${describePointing(pointing, cards)} (card id ${pick.cardId}). That is the thing their earlier request was about: do it to this one.`
+      : "",
+    !pick && distinct.length > 1
+      ? `As they spoke they pointed at, in order: ${distinct.map((d) => `"${d.word}" = ${describePointing(d.p, cards)}`).join("; ")}`
+      : !pick && !pointing.selection && card
+        ? `Pointing at: ${describePointing(pointing, cards)}`
+        : !pick && !pointing.selection
+          ? "Not pointing at anything."
+          : "",
+    ctx.marks?.length && !pick ? `Numbered on screen from your last turn: ${ctx.marks.map((m) => `${m.n} = ${m.label}`).join("; ")}` : "",
     history.length ? `The call so far:\n${history.slice(-8).map((t) => `${t.role === "you" ? "Reader" : "You"}: ${t.text}`).join("\n")}` : "",
     `They just said: "${text}"`,
   ].filter(Boolean);
-  type Action = { kind?: string; shape?: string; phrase?: string; find?: string; request?: string; ids?: unknown };
-  // A reply that isn't JSON is still a reply: it's said as it is (never an error read aloud, which
-  // the microphone would hear and answer, round and round).
-  const raw = await chat((await loadConfig()).llm, [
+
+  // Look-ups, on request: at most two rounds, then it answers with what it has.
+  const tool = (t: Record<string, unknown>): string => {
+    switch (t.tool) {
+      case "card": {
+        const c = cards.find((x) => x.id === String(t.id ?? "")) ?? card;
+        return c ? cardContent(c) : "No such card.";
+      }
+      case "cards": {
+        const vis = new Set(ctx.visible ?? []);
+        return cards
+          .slice(-60)
+          .map((c) => `${c.id}: ${c.objectKind ? `${c.objectKind === "links" ? "reading" : c.objectKind} card, ` : ""}"${c.subject ?? c.selection ?? c.request ?? "a card"}"${vis.has(c.id) ? " (on screen)" : ""}${c.id === pointing.cardId ? (pick ? " (the one they picked)" : " (pointed at)") : ""}`)
+          .join("\n");
+      }
+      case "recent":
+        return ctx.recent?.length ? ctx.recent.map((r) => `${Math.round(r.ago / 1000)}s ago: ${r.what}`).join("\n") : "Nothing recorded.";
+      case "goals": {
+        const goals = (state.goals ?? []).filter((g) => g.status === "open");
+        return goals.length ? goals.map((g) => `${g.kind}: ${g.text}${g.cards.includes(pointing.cardId ?? "") ? " (the pointed card is under this)" : ""}`).join("\n") : "No goals yet.";
+      }
+      default:
+        return `Unknown tool ${String(t.tool)}.`;
+    }
+  };
+  type Action = { kind?: string; shape?: string; phrase?: string; find?: string; request?: string; ids?: unknown; marks?: unknown };
+  const llm = (await loadConfig()).llm;
+  const convo: Message[] = [
     { role: "system", content: CALL },
     { role: "user", content: lines.join("\n\n") },
-  ]);
-  let r: { say?: string; action?: Action; actions?: Action[] } = {};
-  const j0 = raw.indexOf("{");
-  const j1 = raw.lastIndexOf("}");
-  try {
-    if (j0 >= 0 && j1 > j0) r = JSON.parse(raw.slice(j0, j1 + 1));
-  } catch {}
+  ];
+  const looked: string[] = [];
+  let r: { say?: string; action?: Action; actions?: Action[]; look?: unknown } = {};
+  let raw = "";
+  for (let round = 0; round < 3; round++) {
+    raw = await chat(llm, convo);
+    r = {};
+    const j0 = raw.indexOf("{");
+    const j1 = raw.lastIndexOf("}");
+    try {
+      if (j0 >= 0 && j1 > j0) r = JSON.parse(raw.slice(j0, j1 + 1));
+    } catch {}
+    const looks = Array.isArray(r.look) ? (r.look as Record<string, unknown>[]).slice(0, 4) : [];
+    if (!looks.length || r.say) break;
+    const answers = looks.map((t) => {
+      looked.push(`${t.tool}${t.id ? `(${t.id})` : ""}`);
+      return `${t.tool}${t.id ? ` ${t.id}` : ""}:\n${tool(t)}`;
+    });
+    convo.push({ role: "assistant", content: raw });
+    convo.push({ role: "user", content: `${answers.join("\n\n")}\n\n${round === 1 ? "Now answer: no more look-ups." : "Answer now, or look up something else if you must."}` });
+  }
+  if (looked.length) console.log(`call looked up: ${looked.join(", ")}`);
   if (!r.say && !r.actions && !r.action) {
     // Plain words, minus a template's brackets or a stray code fence.
     const plain = raw.replace(/```\w*|```/g, "").replace(/^\s*\[|\]\s*$/g, "").trim();
@@ -152,6 +316,7 @@ export async function callTurn(
   const actions = (Array.isArray(r.actions) ? r.actions : r.action ? [r.action] : []).slice(0, 3);
   const done: string[] = [];
   const removed: string[] = [];
+  let marks: Mark[] = [];
   let failed = false;
   for (const a of actions) {
     try {
@@ -173,6 +338,14 @@ export async function callTurn(
         // Beside what they're pointing at, else beside the newest card.
         const made = await hooks.find(card ?? cards.at(-1), what, request, focus);
         done.push(`finding ${what}: ${request} (${made.id})`);
+      } else if (a.kind === "mark") {
+        const known = new Set(cards.map((c) => c.id));
+        const list = (Array.isArray(a.marks) ? a.marks : []) as Record<string, unknown>[];
+        marks = list
+          .filter((m) => known.has(String(m.card ?? "")))
+          .slice(0, 5)
+          .map((m, i) => ({ n: i + 1, cardId: String(m.card), ...(m.piece ? { key: String(m.piece) } : {}), label: String(m.label ?? "").slice(0, 40) || `option ${i + 1}` }));
+        if (marks.length) done.push(`numbered ${marks.length} on screen`);
       } else if (a.kind === "remove") {
         const known = new Set(cards.map((c) => c.id));
         const ids = (Array.isArray(a.ids) ? a.ids : []).map(String).filter((id) => known.has(id));
@@ -188,7 +361,7 @@ export async function callTurn(
   }
   if (failed) spoken += " Something I tried on the canvas didn't work, though.";
   const did = done.length ? done.join("; ") : undefined;
-  return { say: spoken, did, ...(removed.length ? { removed } : {}) };
+  return { say: spoken, did, ...(removed.length ? { removed } : {}), ...(marks.length ? { marks } : {}), ...(looked.length ? { looked } : {}) };
 }
 
 /** Where a new card for a phrase in `from` goes: to its right, below anything already there. */

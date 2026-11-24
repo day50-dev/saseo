@@ -82,7 +82,7 @@ export function TableView({ table }: { table: DataTable }) {
             <thead>
               <tr>
                 {table.columns.map((c, i) => (
-                  <th key={i} className={numeric[i] ? "num" : ""}>
+                  <th key={i} className={numeric[i] ? "num" : ""} data-f={`the column "${c}" of the table`}>
                     {c}
                   </th>
                 ))}
@@ -90,7 +90,7 @@ export function TableView({ table }: { table: DataTable }) {
             </thead>
             <tbody>
               {table.rows.map((r, i) => (
-                <tr key={i}>
+                <tr key={i} data-f={`row ${i + 1} of the table: ${r.map((v, j) => `${table.columns[j]} ${v ?? "–"}`).join(", ")}`}>
                   {r.map((v, j) => (
                     <td key={j} className={typeof v === "number" ? "num" : ""}>
                       {v == null ? <span className="muted">–</span> : typeof v === "number" ? cellNumber(v) : v}
@@ -191,6 +191,7 @@ function Bars({ cats, series, xLabel }: { cats: string[]; series: { label: strin
                     y={Math.min(Y(v), Y(0))}
                     height={Math.abs(Y(v) - Y(0))}
                     fill={color(k)}
+                    data-f={`the bar for ${c}: ${s.label} ${cellNumber(v)}`}
                     onMouseEnter={() => setHover(`${c}: ${s.label} ${cellNumber(v)}`)}
                     onMouseLeave={() => setHover(null)}
                   />
@@ -399,11 +400,13 @@ function PlotSvg({ plot, title }: { plot: Plot; title?: string }) {
       }
     });
     setHover({ x: px, text: parts.join("   ") });
+    // For a call: what's under the pointer, in the plot's terms.
+    svgRef.current!.dataset.f = `the plot at ${parts.join(", ")}`;
   };
 
   return (
     <>
-      <svg ref={svgRef} className="figure-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title} onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
+      <svg ref={svgRef} className="figure-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title} onPointerMove={onMove} onPointerLeave={() => (setHover(null), delete svgRef.current?.dataset.f)}>
         <defs>
           <clipPath id={`clip-${H}`}>
             <rect x={m.l} y={m.t} width={W - m.l - m.r} height={H - m.t - m.b} />
@@ -670,7 +673,7 @@ export function GraphView({ graph }: { graph: NodeGraph }) {
           const end = rim(a, b, box(e.to));
           const begin = rim(b, a, box(e.from));
           return (
-            <g key={i} className={`fig-edge${dim ? " dim" : ""}`}>
+            <g key={i} className={`fig-edge${dim ? " dim" : ""}`} data-f={`the edge from "${graph.nodes.find((n) => n.id === e.from)?.label}" to "${graph.nodes.find((n) => n.id === e.to)?.label}"${e.label ? ` (${e.label})` : ""}`}>
               <line x1={begin.x} y1={begin.y} x2={end.x} y2={end.y} markerEnd={graph.directed ? "url(#fig-arrow)" : undefined} />
               {e.label && (
                 // Nearer the source than the middle: edges that meet at one node keep their labels apart.
@@ -688,6 +691,7 @@ export function GraphView({ graph }: { graph: NodeGraph }) {
             <g
               key={n.id}
               className={`fig-node${hover && !near.has(n.id) ? " dim" : ""}`}
+              data-f={`the node "${n.label}"${n.group ? ` (${n.group})` : ""}, linked to ${graph.edges.filter((e) => e.from === n.id || e.to === n.id).map((e) => graph.nodes.find((x) => x.id === (e.from === n.id ? e.to : e.from))?.label).filter(Boolean).join(", ") || "nothing"}`}
               transform={`translate(${p.x} ${p.y})`}
               onPointerEnter={() => setHover(n.id)}
               onPointerLeave={() => !drag.current && setHover(null)}

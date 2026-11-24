@@ -1057,3 +1057,11 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 @media (prefers-color-scheme: dark) {
   .map-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9); }
 }
+
+/* Numbers the librarian puts on screen during a call, for "which one?" */
+.call-mark { position: fixed; z-index: 2000001; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid var(--card);
+  background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 15px; box-shadow: 0 2px 8px rgba(0,0,0,.3); cursor: pointer; }
+.call-mark.off { width: auto; padding: 0 8px; border-radius: 15px; opacity: 0.85; }
+.call-choices { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.call-choices button { font-size: 13px; padding: 3px 10px; }
+.call-marked { outline: 2px dashed var(--accent); outline-offset: 3px; border-radius: 6px; }

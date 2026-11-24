@@ -3,6 +3,7 @@
 // you start and stop speaking, so your hand stays on the document. It answers aloud, and grows
 // or opens cards as it goes.
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { substantive } from "../shared/canvas.ts";
 import { withoutEcho } from "./echo.ts";
 import { selectedText, textWithTex } from "./MathText.tsx";
@@ -17,7 +18,32 @@ export interface Pointing {
   selection?: string;
   /** The sentence or line the selection sits in, so "this part" can be read in place. */
   selectionContext?: string;
+  /** A thing inside a figure, as the figure names it (its data-f): "place 2 of 4: Berlin". */
+  figure?: string;
 }
+
+/** A thing the librarian numbered on screen for you to pick. */
+type Mark = { n: number; cardId: string; key?: string; label: string };
+
+/** What a number said on its own picks: "two", "number 2", "the second one". */
+const NUMBER: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, first: 1, second: 2, third: 3, fourth: 4, fifth: 5, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5 };
+function pickedNumber(text: string): number | undefined {
+  const m = text
+    .toLowerCase()
+    .replace(/[.!?,]/g, "")
+    .trim()
+    .match(/^(?:the\s+)?(?:number\s+)?(one|two|three|four|five|first|second|third|fourth|fifth|[1-5])(?:\s+one)?(?:\s+please)?$/);
+  return m ? NUMBER[m[1]] : undefined;
+}
+
+/** A pointing in a few words, for what you did lately ("looked at …", "clicked …"). */
+function describe(p: Pointing): string {
+  const card = p.cardId ? document.querySelector<HTMLElement>(`.card-item[data-card-id="${p.cardId}"]`) : null;
+  const title = card?.querySelector(".sem-title, .card-head h3")?.textContent?.replace(/^[▾▸]\s*/, "").trim().slice(0, 80) || "a card";
+  const what = p.figure ?? (p.pieceText ? `"${p.pieceText.slice(0, 80)}"` : "");
+  return what ? `${what} on "${title}"` : `the card "${title}"`;
+}
+const sameSpot = (a?: Pointing, b?: Pointing) => a?.cardId === b?.cardId && a?.key === b?.key && a?.figure === b?.figure;
 
 const PIECE = "[data-a], [data-x]";
 
@@ -41,6 +67,7 @@ function pointingAt(hovered: Element | null): Pointing {
   const card = el?.closest<HTMLElement>(".card-item");
   const selected = text ? { selection: text, ...(context && context !== text ? { selectionContext: context } : {}) } : {};
   if (!card) return selected;
+  const figure = el?.closest<HTMLElement>("[data-f]")?.dataset.f;
   const piece = el?.closest<HTMLElement>(PIECE);
   const key = piece?.dataset.a ?? piece?.dataset.x;
   // Section headings ("cat-why") count as pieces; the title and decorations don't.
@@ -48,6 +75,7 @@ function pointingAt(hovered: Element | null): Pointing {
   return {
     cardId: card.dataset.cardId,
     ...(usable ? { key: usable, pieceText: plain(piece!).slice(0, 500) } : {}),
+    ...(figure ? { figure: figure.slice(0, 300) } : {}),
     ...selected,
   };
 }
@@ -174,6 +202,37 @@ export function CallBar({
     if (last && last.at >= startedAt.current - 15_000) return last.p;
     return pointer ?? now;
   };
+  // Where the pointer has been (each change, with when), for what "this" meant as it was said;
+  // and what you did lately, for when the librarian asks.
+  const timeline = useRef<{ t: number; p: Pointing }[]>([]);
+  const recent = useRef<{ t: number; what: string }[]>([]);
+  const note = (what: string, t = Date.now()) => {
+    recent.current = [...recent.current, { t, what }].slice(-12);
+  };
+  const [marks, setMarks] = useState<Mark[]>([]);
+  const marksRef = useRef<Mark[]>([]);
+  marksRef.current = marks;
+  /** What the page knows besides the words, for an utterance from `start` to `end`. */
+  const contextFor = (start: number, end: number) => {
+    const tl = timeline.current;
+    // The spot under the pointer as they began, then every change while they spoke.
+    const before = [...tl].reverse().find((e) => e.t <= start);
+    const during = tl.filter((e) => e.t > start && e.t <= end);
+    const visible = [...document.querySelectorAll<HTMLElement>(".card-item")]
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
+      })
+      .map((el) => el.dataset.cardId!)
+      .filter(Boolean);
+    return {
+      timeline: [...(before ? [{ at: 0, p: before.p }] : []), ...during.map((e) => ({ at: e.t - start, p: e.p }))].slice(-12),
+      spoke: Math.max(1, end - start),
+      visible,
+      recent: recent.current.map((r) => ({ ago: end - r.t, what: r.what })),
+      ...(marksRef.current.length ? { marks: marksRef.current } : {}),
+    };
+  };
   // Utterances are answered one at a time, in order.
   const queue = useRef<Promise<void>>(Promise.resolve());
 
@@ -192,19 +251,42 @@ export function CallBar({
       const p = pointingAt(hovered.current);
       setPointed(p);
       if (during.current && p.cardId) during.current = p;
+      const last = timeline.current.at(-1);
+      if (!sameSpot(last?.p, p)) {
+        const now = Date.now();
+        // Rested there a while: that counts as looking at it.
+        if (last?.p.cardId && now - last.t >= 1200) note(`looked at ${describe(last.p)}`, last.t);
+        timeline.current = [...timeline.current.filter((e) => e.t > now - 30_000), { t: now, p }].slice(-40);
+      }
+    };
+    // Clicks anywhere on a card, even where the card keeps the click to itself.
+    const down = (e: PointerEvent) => {
+      const el = e.target as Element | null;
+      if (!el?.closest?.(".card-item") || el.closest(".call-bar")) return;
+      const p = pointingAt(el);
+      const what = (el.closest("button, a") as HTMLElement | null)?.innerText?.trim().slice(0, 60);
+      note(`clicked ${what ? `"${what}" on ` : ""}${describe(p)}`);
     };
     // Selecting words shows at once what "this" now means.
     const selected = () => {
       const p = pointingAt(hovered.current);
       if (p.selection) {
+        if (lastSel.current?.p.selection !== p.selection) {
+          // Dragging out a selection is one action, not one per word.
+          const prev = recent.current.at(-1);
+          if (prev?.what.startsWith("selected ") && Date.now() - prev.t < 3000) recent.current = recent.current.slice(0, -1);
+          note(`selected "${p.selection.slice(0, 120)}"`);
+        }
         lastSel.current = { p, at: Date.now() };
         setPointed(p);
       }
     };
     document.addEventListener("pointermove", move);
+    document.addEventListener("pointerdown", down, true);
     document.addEventListener("selectionchange", selected);
     return () => {
       document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerdown", down, true);
       document.removeEventListener("selectionchange", selected);
       lit?.classList.remove("call-pointed");
     };
@@ -260,7 +342,8 @@ export function CallBar({
     }
   };
 
-  const heard = async (said: Blob | string, pointing: Pointing) => {
+  type Ctx = ReturnType<typeof contextFor> & { picked?: number };
+  const heard = async (said: Blob | string, pointing: Pointing, context?: Ctx) => {
     setState("hearing");
     try {
       let text = typeof said === "string" ? said : "";
@@ -270,16 +353,20 @@ export function CallBar({
         if (r.error) throw new Error(r.error);
         text = yours(r.text ?? "");
       }
-      if (!substantive(text)) return;
+      // A number while things are numbered on screen picks one.
+      const picked = marksRef.current.length ? (context?.picked ?? pickedNumber(text)) : undefined;
+      if (!substantive(text) && picked === undefined) return;
       const history = turnsRef.current;
       setTurns([...history, { role: "you", text }]);
       setState("thinking");
       const r = await fetch(`/api/canvases/${encodeURIComponent(canvasId)}/call`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text, pointing, history }),
+        body: JSON.stringify({ text, pointing, history, context: { ...context, ...(picked !== undefined ? { picked } : {}) } }),
       });
-      const { say, did, removed } = (await r.json()) as { say: string; did?: string; removed?: string[] };
+      const { say, did, removed, marks: numbered } = (await r.json()) as { say: string; did?: string; removed?: string[]; marks?: Mark[] };
+      // Numbers last one turn: they're new, or gone.
+      setMarks(numbered ?? []);
       if (!say) return;
       setTurns((t) => [...t, { role: "librarian", text: say }]);
       // Its words count as echo while it speaks, and for a few seconds after (the recognizer is late).
@@ -359,7 +446,8 @@ export function CallBar({
       setInterim("");
       const pointing = about(during.current);
       during.current = null;
-      queue.current = queue.current.then(() => heard(text, pointing));
+      const context = contextFor(startedAt.current, Date.now());
+      queue.current = queue.current.then(() => heard(text, pointing, context));
     };
     rec.onerror = (e) => {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
@@ -454,7 +542,8 @@ export function CallBar({
             return;
           }
           const blob = wav(said, rate);
-          queue.current = queue.current.then(() => heard(blob, pointing));
+          const context = contextFor(startedAt.current, Date.now() - quiet);
+          queue.current = queue.current.then(() => heard(blob, pointing, context));
         }
       };
       src.connect(proc);
@@ -497,8 +586,15 @@ export function CallBar({
     muted: "Muted (M to unmute)",
   }[state];
 
+  /** Picks a numbered thing by clicking its number: a turn of its own, as if they'd said it. */
+  const pick = (m: Mark) => {
+    const context = { ...contextFor(Date.now(), Date.now() + 1), picked: m.n };
+    queue.current = queue.current.then(() => heard(`Number ${m.n}`, { cardId: m.cardId, ...(m.key ? { key: m.key } : {}) }, context));
+  };
+
   return (
     <div className="call-bar" onPointerDown={(e) => e.stopPropagation()}>
+      {marks.length > 0 && <Marks marks={marks} onPick={pick} />}
       <div className="call-log">
         {turns.slice(-4).map((t, i) => (
           <div key={i} className={`call-turn ${t.role}`}>
@@ -519,6 +615,16 @@ export function CallBar({
         </span>
         {error && <span className="call-error">{error}</span>}
       </div>
+      {marks.length > 0 && (
+        <div className="call-choices">
+          <span className="muted small">Say or click one:</span>
+          {marks.map((m) => (
+            <button key={m.n} type="button" className="secondary" onClick={() => pick(m)}>
+              <b>{m.n}</b> {m.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="call-controls">
         <span className={`call-mic ${state}`} title={state === "muted" ? "Muted" : "The microphone is open"}>
           <span className="call-level" style={{ transform: `scaleY(${state === "muted" || state === "speaking" ? 0.08 : Math.max(0.08, level)})` }} />
@@ -550,5 +656,61 @@ export function CallBar({
         </button>
       </div>
     </div>
+  );
+}
+
+/** The numbers the librarian put on screen, each on its card or piece, kept in place as the canvas moves. */
+function Marks({ marks, onPick }: { marks: Mark[]; onPick: (m: Mark) => void }) {
+  const [at, setAt] = useState<Record<number, { x: number; y: number; w: number; h: number } | null>>({});
+  useEffect(() => {
+    let raf = 0;
+    const outlined: Element[] = [];
+    const find = (m: Mark) => {
+      const card = document.querySelector<HTMLElement>(`.card-item[data-card-id="${m.cardId}"]`);
+      if (!card) return null;
+      return (m.key && card.querySelector(`[data-a="${m.key}"], [data-x="${m.key}"]`)) || card;
+    };
+    for (const m of marks) {
+      const el = find(m);
+      if (el) {
+        el.classList.add("call-marked");
+        outlined.push(el);
+      }
+    }
+    const tick = () => {
+      const next: Record<number, { x: number; y: number; w: number; h: number } | null> = {};
+      for (const m of marks) {
+        const r = find(m)?.getBoundingClientRect();
+        next[m.n] = r ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
+      }
+      setAt(next);
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => {
+      cancelAnimationFrame(raf);
+      outlined.forEach((el) => el.classList.remove("call-marked"));
+    };
+  }, [marks]);
+  // On the page itself: the call bar is transformed, which would pin these to it.
+  return createPortal(
+    <>
+      {marks.map((m) => {
+        const r = at[m.n];
+        if (!r) return null;
+        // Off screen: held at the edge, with an arrow pointing the way to it.
+        const left = Math.min(innerWidth - 40, Math.max(4, r.x - 14));
+        const top = Math.min(innerHeight - 40, Math.max(56, r.y - 14));
+        const off = r.x + r.w < 0 ? "←" : r.x > innerWidth ? "→" : r.y + r.h < 56 ? "↑" : r.y > innerHeight ? "↓" : "";
+        return (
+          <button key={m.n} type="button" className={`call-mark${off ? " off" : ""}`} style={{ left, top }} title={`${m.label}: click, or say "${m.n}"`} onClick={() => onPick(m)}>
+            {off === "←" || off === "↑" ? off : ""}
+            {m.n}
+            {off === "→" || off === "↓" ? off : ""}
+          </button>
+        );
+      })}
+    </>,
+    document.body,
   );
 }

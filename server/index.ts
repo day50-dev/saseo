@@ -13,7 +13,7 @@ import { pdfLink, servesPdf, slicePdf } from "./pdf.ts";
 import { addReaderNote, assetPath, autoName, DATA_DIR, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
-import { besideOf, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
+import { besideOf, type CallContext, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, diagramEndpoint, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { saveGoal } from "./goals.ts";
@@ -312,11 +312,11 @@ app.post("/api/speech/say", async (c) => {
 app.post("/api/canvases/:cid/call", async (c) => {
   const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
-  const body = (await c.req.json()) as { text?: string; pointing?: Pointing; history?: Turn[] };
+  const body = (await c.req.json()) as { text?: string; pointing?: Pointing; history?: Turn[]; context?: CallContext };
   const text = body.text?.trim().slice(0, 2000);
   if (!text) return c.json({ error: "text is required" }, 400);
   // A stray syllable or noise gets no answer at all (the call goes on listening).
-  if (!substantive(text)) return c.json({ say: "" });
+  if (!substantive(text) && body.context?.picked === undefined) return c.json({ say: "" });
   const turn = await callTurn(store, text, body.pointing ?? {}, Array.isArray(body.history) ? body.history.slice(-12) : [], {
     grow: async (card, ext) => {
       await store.edit(card.id, (now) => (now?.kind === "card" ? { ext: [...(now.ext ?? []), ext] } : null));
@@ -336,7 +336,7 @@ app.post("/api/canvases/:cid/call", async (c) => {
       void explainSelection(store, child.id);
       return child;
     },
-  }).catch((err) => {
+  }, body.context ?? {}).catch((err) => {
     // Said briefly: the details go to the log, not out loud.
     console.warn("call turn failed:", err);
     return { say: "Sorry, I lost that one. Could you say it again?", did: undefined };

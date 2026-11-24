@@ -14,7 +14,7 @@ import LineString from "ol/geom/LineString";
 import MultiPolygon from "ol/geom/MultiPolygon";
 import Polygon from "ol/geom/Polygon";
 import GeoJSON from "ol/format/GeoJSON";
-import { fromLonLat } from "ol/proj";
+import { fromLonLat, toLonLat } from "ol/proj";
 import { defaults as defaultInteractions } from "ol/interaction/defaults";
 import { Circle, Fill, Stroke, Style, Text } from "ol/style";
 import { createEmpty, extend, isEmpty } from "ol/extent";
@@ -47,7 +47,7 @@ export default function MapView({ map }: { map: PlaceMap }) {
     for (const a of map.areas ?? []) {
       try {
         const geometry = geo.readGeometry(a.geometry, { dataProjection: "EPSG:4326", featureProjection: "EPSG:3857" });
-        const f = new Feature({ geometry: geometry ?? undefined });
+        const f = new Feature({ geometry: geometry ?? undefined, about: `the outlined area ${a.name}${a.group ? ` (${a.group})` : ""}` });
         const c = colorOf(a.group);
         f.setStyle(
           new Style({
@@ -77,7 +77,7 @@ export default function MapView({ map }: { map: PlaceMap }) {
     map.places.forEach((p, i) => {
       const at = new Point(fromLonLat([p.lon, p.lat]));
       placeAt.push(at);
-      const f = new Feature({ geometry: at });
+      const f = new Feature({ geometry: at, about: `place ${i + 1} of ${map.places.length} on the map: ${p.name}${p.note ? ` (${p.note})` : ""}` });
       const c = colorOf(p.group);
       f.setStyle(
         new Style({
@@ -107,6 +107,21 @@ export default function MapView({ map }: { map: PlaceMap }) {
     for (const g of map.places.length ? placeAt : mainPieces) extend(ext, g.getExtent());
     if (!isEmpty(ext)) ol.getView().fit(ext, { padding: [50, 60, 40, 60], maxZoom: 9 });
     olRef.current = ol;
+    // For a call: the place or area under the pointer, in the map's terms.
+    ol.on("pointermove", (e) => {
+      const box = el.current;
+      if (!box) return;
+      let what = "";
+      ol.forEachFeatureAtPixel(e.pixel, (f) => {
+        what = (f.get("about") as string) ?? "";
+        return Boolean(what);
+      });
+      if (what) box.dataset.f = what;
+      else {
+        const [lon, lat] = toLonLat(e.coordinate);
+        box.dataset.f = `a spot on the map near ${lat.toFixed(2)}, ${lon.toFixed(2)} (no place there)`;
+      }
+    });
     return () => {
       ol.setTarget(undefined);
       olRef.current = null;
@@ -137,7 +152,7 @@ export default function MapView({ map }: { map: PlaceMap }) {
       {map.caption && <p className="small figure-caption">{map.caption}</p>}
       <ol className={`map-places small${map.route ? "" : " unordered"}`}>
         {map.places.map((p, i) => (
-          <li key={i} className={picked === i ? "on" : ""}>
+          <li key={i} className={picked === i ? "on" : ""} data-f={`place ${i + 1} of ${map.places.length} in the map's list: ${p.name}`}>
             <button type="button" className="link" onClick={() => go(i)} title="Show it on the map">
               {p.name}
             </button>
