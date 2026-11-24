@@ -27,8 +27,8 @@ function lex(src: string): Tok[] {
       const m = s.slice(i).match(/^(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i)!;
       out.push({ k: "num", v: Number(m[0]) });
       i += m[0].length;
-    } else if (/[a-zA-Zπ_]/.test(c)) {
-      const m = s.slice(i).match(/^[a-zA-Zπ_][a-zA-Z0-9_]*/)!;
+    } else if (/[a-zA-Zπθφαβ_]/.test(c)) {
+      const m = s.slice(i).match(/^[a-zA-Zπθφαβ_][a-zA-Z0-9_]*/)!;
       out.push({ k: "id", v: m[0] });
       i += m[0].length;
     } else if ("+-*/^(),!".includes(c)) {
@@ -169,12 +169,18 @@ export function compile(src: string, vars: string[] = ["x"]): (...v: number[]) =
 
 /** A function of one variable, or null when the expression can't be read. */
 export function fnOf(src: string, v = "x"): Fn | null {
-  try {
-    const f = compile(src, [v]);
-    return (x) => f(x);
-  } catch {
-    return null;
+  // A function written in another single variable ("cos(t)", "sin(θ)") is read in that one.
+  for (let tries = 0, name = v; tries < 2; tries++) {
+    try {
+      const f = compile(src, [name]);
+      return (x) => f(x);
+    } catch (err) {
+      const other = err instanceof Error ? err.message.match(/^Unknown name "([a-zA-Zθφαβ]\w{0,5})"/)?.[1] : undefined;
+      if (!other || other === name) return null;
+      name = other;
+    }
   }
+  return null;
 }
 
 function gammaFn(z: number): number {

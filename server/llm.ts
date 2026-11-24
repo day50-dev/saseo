@@ -116,14 +116,27 @@ export function repairTexEscapes(json: string): string {
 
 /** Asks for JSON and parses the first object in the reply, tolerating code fences and prose around it. */
 export async function chatJson<T>(ep: Endpoint, messages: Message[]): Promise<T> {
-  const text = await chat(ep, messages);
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error(`LLM didn't return JSON: ${text.slice(0, 200)}`);
-  try {
-    return JSON.parse(repairTexEscapes(text.slice(start, end + 1))) as T;
-  } catch {
-    throw new Error(`LLM returned malformed JSON: ${text.slice(start, start + 200)}`);
+  let text = await chat(ep, messages);
+  // A reply that won't parse gets one more try, told why (a long reply sometimes slips).
+  for (let attempt = 0; ; attempt++) {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    let problem: string;
+    if (start < 0 || end <= start) problem = "There was no JSON object in it.";
+    else {
+      try {
+        return JSON.parse(repairTexEscapes(text.slice(start, end + 1))) as T;
+      } catch (err) {
+        problem = `It wasn't valid JSON: ${err instanceof Error ? err.message : err}.`;
+        console.warn("malformed JSON from the LLM:", problem, "\n", text.slice(start, end + 1));
+      }
+    }
+    if (attempt >= 1) throw new Error(start < 0 || end <= start ? `LLM didn't return JSON: ${text.slice(0, 200)}` : `LLM returned malformed JSON: ${text.slice(start, start + 200)}`);
+    text = await chat(ep, [
+      ...messages,
+      { role: "assistant", content: text },
+      { role: "user", content: `${problem} Reply again with the same answer as one valid JSON object only: double quotes, no comments, no trailing commas, plain numbers.` },
+    ]);
   }
 }
 
