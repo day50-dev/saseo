@@ -119,9 +119,369 @@ async function hover(page, sel, ms = 600) {
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: Math.round(ms / 16) });
 }
 
+
+// ---- Things drawn over the page for the shot: a cursor (headless Chrome draws none), captions,
+// a title card, a box being dragged out. All fixed to the viewport, above everything.
+async function overlay(page) {
+  await page.addStyleTag({
+    content: `
+      #fx-cursor { position: fixed; left: 0; top: 0; width: 26px; height: 26px; z-index: 2147483647; pointer-events: none;
+        transition: transform var(--t, 0ms) cubic-bezier(.45,.05,.35,1); }
+      #fx-caption { position: fixed; left: 1490px; top: 50%; transform: translate(-50%, -50%); width: 640px; z-index: 2147483646; pointer-events: none;
+        font: 600 54px/1.2 Inter, system-ui, sans-serif; color: #1d1d1b; text-align: center; padding: 22px 48px; border-radius: 18px;
+        background: rgba(246,245,241,.94); box-shadow: 0 10px 40px rgba(0,0,0,.18); opacity: 0; transition: opacity 700ms; }
+      #fx-caption b { color: #2f5fb3; font-weight: 700; }
+      #fx-card { position: fixed; inset: 0; z-index: 2147483645; pointer-events: none; opacity: 0; transition: opacity 800ms;
+        background-size: cover; background-position: center; }
+      #fx-box { position: fixed; z-index: 2147483644; pointer-events: none; border: 2px solid #2f5fb3; background: rgba(47,95,179,.08); display: none; }
+      .fx-on { opacity: 1 !important; }
+    `,
+  });
+  await page.evaluate(() => {
+    const c = document.createElement("div");
+    c.id = "fx-cursor";
+    c.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26"><path d="M3 2 L3 20 L8 15.5 L11.5 23 L14.5 21.6 L11 14.3 L18 14.3 Z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+    for (const id of ["fx-caption", "fx-card", "fx-box"]) {
+      const d = document.createElement("div");
+      d.id = id;
+      document.body.appendChild(d);
+    }
+    document.body.appendChild(c);
+  });
+}
+/** Moves the drawn cursor (and the real pointer, for hover effects) to (x, y) over `ms`. */
+async function cursor(page, x, y, ms = 600) {
+  await page.evaluate(([x, y, ms]) => {
+    const c = document.getElementById("fx-cursor");
+    c.style.setProperty("--t", `${ms}ms`);
+    c.style.transform = `translate(${x}px, ${y}px)`;
+  }, [x, y, ms]);
+  // The real pointer jumps (hover effects); the drawn one glides, without holding up the shot.
+  await page.mouse.move(x, y);
+}
+const caption = (page, html) =>
+  page.evaluate((html) => {
+    const c = document.getElementById("fx-caption");
+    if (html) c.innerHTML = html;
+    c.classList.toggle("fx-on", Boolean(html));
+  }, html);
+
 const card = (subject) => `.card-item:has(.asked-text:text-is("${subject}"))`;
 
 const scenes = {
+  // A card's conversation asks for lectures; the gallery that came of it, each with its channel.
+  async "10d-ask"(page) {
+    const ids = JSON.parse(readFileSync(`${DIR}canvases.json`, "utf8"));
+    await open(page, ids.lagrange);
+    await overlay(page);
+    const P = `.card-item[data-card-id="${ids.lagrangeCard}"]`;
+    // The asks, at the foot of the page card's conversation.
+    const first = page.locator(`${P} .chat-msg, ${P} .chat-turn, ${P} .chat-text`).first();
+    const fb = await first.boundingBox();
+    if (fb) await glide(page, { x: fb.x, y: fb.y }, { x: 260, y: 300 }, 10);
+    await sleep(600);
+    start();
+    await cursor(page, 700, 700, 0);
+    await sleep(600);
+    await cursor(page, fb ? 560 : 700, 330, 900);
+    await sleep(2600);
+    const V = `.card-item[data-card-id="${ids.videos}"]`;
+    const vb = await box(page, V);
+    await glide(page, { x: vb.x, y: vb.y }, { x: 420, y: 80 }, 2200);
+    await sleep(500);
+    const vids = await page.locator(`${V} .video`).all();
+    for (const v of vids.slice(0, 4)) {
+      const b = await v.boundingBox();
+      if (!b) continue;
+      await cursor(page, b.x + b.width * 0.6, b.y + b.height - 12, 700);
+      await sleep(1500);
+    }
+    await sleep(2500);
+  },
+
+  // A plot read with the pointer, a graph rearranged, a table charting itself, a map going to a place.
+  async "10e-figures"(page) {
+    const ids = JSON.parse(readFileSync(`${DIR}canvases.json`, "utf8"));
+    await open(page, ids.lagrange);
+    await overlay(page);
+    const at = (id) => `.card-item[data-card-id="${id}"]`;
+    const pb = await box(page, at(ids.plot));
+    await glide(page, { x: pb.x, y: pb.y }, { x: 480, y: 70 }, 10);
+    await sleep(600);
+    start();
+    // Plot: the pointer runs along it, reading values.
+    const svg = await box(page, `${at(ids.plot)} .figure-svg`);
+    await cursor(page, svg.x + 80, svg.y + svg.height * 0.5, 0);
+    for (let i = 0; i <= 30; i++) {
+      await cursor(page, svg.x + 80 + (svg.width - 120) * (i / 30), svg.y + svg.height * 0.5, 0);
+      await sleep(80);
+    }
+    await sleep(500);
+    // Graph: a node dragged somewhere better.
+    const gb = await box(page, at(ids.graph));
+    await glide(page, { x: gb.x, y: gb.y }, { x: 480, y: 70 }, 1300);
+    await sleep(300);
+    const node = page.locator(`${at(ids.graph)} .fig-node`).nth(2);
+    const nb = await node.boundingBox();
+    if (nb) {
+      const x0 = nb.x + nb.width / 2, y0 = nb.y + nb.height / 2;
+      await cursor(page, x0, y0, 500);
+      await sleep(600);
+      await page.mouse.down();
+      for (let i = 1; i <= 20; i++) {
+        await cursor(page, x0 + 150 * (i / 20), y0 + 70 * (i / 20), 0);
+        await sleep(40);
+      }
+      await page.mouse.up();
+    }
+    await sleep(900);
+    // Table: charting itself.
+    const tb = await box(page, at(ids.table));
+    await glide(page, { x: tb.x, y: tb.y }, { x: 480, y: 70 }, 1300);
+    await sleep(500);
+    const chartIt = page.locator(`${at(ids.table)} button:has-text("Chart it")`);
+    const cb = await chartIt.boundingBox();
+    if (cb) {
+      await cursor(page, cb.x + cb.width / 2, cb.y + cb.height / 2, 500);
+      await sleep(600);
+      await chartIt.click();
+    }
+    await sleep(2200);
+    // Map: a place picked from its list.
+    const mb = await box(page, at(ids.map));
+    await glide(page, { x: mb.x, y: mb.y }, { x: 480, y: 70 }, 1300);
+    await sleep(800);
+    const place = page.locator(`${at(ids.map)} .map-places .link`).nth(1);
+    const lb = await place.boundingBox();
+    if (lb) {
+      await cursor(page, lb.x + lb.width / 2, lb.y + lb.height / 2, 600);
+      await sleep(600);
+      await place.click();
+    }
+    await sleep(3500);
+  },
+
+  // The Goals panel: the goal, what it needed, the side trips; one lights its cards, one is walked to.
+  async "10f-goals"(page) {
+    const ids = JSON.parse(readFileSync(`${DIR}canvases.json`, "utf8"));
+    await open(page, ids.lagrange);
+    await overlay(page);
+    // Zoomed out, so the cards a goal lights show.
+    await zoom(page, { x: 1200, y: 500 }, 10, 600);
+    const pb = await box(page, `.card-item[data-card-id="${ids.lagrangeCard}"]`);
+    await glide(page, { x: pb.x, y: pb.y }, { x: 420, y: 80 }, 10);
+    await sleep(800);
+    start();
+    const gbtn = page.locator('button:has-text("Goals")').first();
+    const gb = await gbtn.boundingBox();
+    await cursor(page, 1400, 600, 0);
+    await sleep(400);
+    await cursor(page, gb.x + gb.width / 2, gb.y + gb.height / 2, 900);
+    await sleep(1100);
+    await gbtn.click();
+    await sleep(1600);
+    const rows = await page.locator(".goal-row .goal-text").all();
+    for (const r of rows) {
+      const b = await r.boundingBox();
+      if (!b) continue;
+      await cursor(page, b.x + 60, b.y + b.height / 2, 600);
+      await page.mouse.move(b.x + 60, b.y + b.height / 2);
+      await sleep(1700);
+    }
+    // Walk to the subgoal's card.
+    const sub = page.locator(".goal-row.subgoal .goal-text").first();
+    const sb = await sub.boundingBox();
+    if (sb) {
+      await cursor(page, sb.x + 60, sb.y + sb.height / 2, 500);
+      await sleep(400);
+      await sub.click();
+    }
+    await sleep(3500);
+  },
+
+  // A call: pointing at Berlin on the map, asked why; then "the chart" numbered three ways, and picked.
+  async "10g-which"(page) {
+    const ids = JSON.parse(readFileSync(`${DIR}canvases.json`, "utf8"));
+    const CALL2 = JSON.parse(readFileSync(`${DIR}call2.json`, "utf8"));
+    await open(page, ids.lagrange);
+    await overlay(page);
+    let turn = 0;
+    await page.route("**/call", async (route) => {
+      const t = CALL2.turns[turn++] ?? CALL2.turns.at(-1);
+      await sleep(1500);
+      const { text: _t, pick: _p, looked: _l, ...reply } = t;
+      await route.fulfill({ json: reply });
+      if (reply.removed?.length) await page.evaluate((id) => document.body.classList.add(`gone-${id}`), reply.removed[0]);
+    });
+    await page.addStyleTag({ content: CALL2.turns.flatMap((t) => t.removed ?? []).map((id) => `body.gone-${id} .card-item[data-card-id="${id}"] { opacity: 0; transition: opacity 600ms; }`).join("\n") });
+    // The map at the top, clear of the call bar.
+    const mb0 = await box(page, `.card-item[data-card-id="${ids.map}"]`);
+    await glide(page, { x: mb0.x, y: mb0.y }, { x: 520, y: 70 }, 10);
+    await sleep(1200);
+    start();
+    const t0 = Date.now();
+    await cursor(page, 1500, 500, 0);
+    await page.click(".call-btn");
+    await sleep(1200);
+    // Pointing at Berlin on the map.
+    const berlin = await page.evaluate((i) => {
+      const box = [...document.querySelectorAll(".map-box")].pop();
+      const ol = box?.__ol;
+      if (!ol) return null;
+      // By its own label: a vector source doesn't keep features in the order they were added.
+      const f = ol.getLayers().item(1).getSource().getFeatures().find((f) => f.get("about")?.startsWith(`place ${i + 1} of `));
+      const px = ol.getPixelFromCoordinate(f.getGeometry().getCoordinates());
+      const r = box.getBoundingClientRect();
+      const k = r.width / box.offsetWidth;
+      return { x: r.left + px[0] * k, y: r.top + px[1] * k };
+    }, CALL2.berlin);
+    if (berlin) {
+      await cursor(page, berlin.x, berlin.y, 900);
+      await sleep(400);
+      for (let i = 0; i < 3; i++) {
+        await page.mouse.move(berlin.x + (i % 2 ? 2 : -2), berlin.y);
+        await sleep(120);
+      }
+    }
+    const sayIt = async (text) => {
+      const words = text.split(" ");
+      await page.evaluate(() => window.__rec?.onspeechstart?.());
+      for (let i = 1; i <= words.length; i++) {
+        await page.evaluate((t) => window.__rec.onresult({ resultIndex: 0, results: [Object.assign({ 0: { transcript: t } }, { isFinal: false })] }), words.slice(0, i).join(" "));
+        await sleep(230);
+      }
+      await page.evaluate((t) => window.__rec.onresult({ resultIndex: 0, results: [Object.assign({ 0: { transcript: t } }, { isFinal: true })] }), text);
+    };
+    await sayIt(CALL2.turns[0].text);
+    await sleep(4600);
+    // Up to the figures, for "the chart".
+    await zoom(page, { x: 1200, y: 400 }, 4, 500);
+    const tb = await box(page, `.card-item[data-card-id="${ids.table}"]`);
+    await glide(page, { x: tb.x, y: tb.y }, { x: 520, y: 330 }, 1200);
+    await cursor(page, 1500, 420, 700);
+    await sleep(500);
+    await sayIt(CALL2.turns[1].text);
+    await sleep(3000);
+    // Picking a number from the call bar.
+    const pick = CALL2.turns[2]?.pick;
+    const chip = page.locator(`.call-choices button:has(b:text-is("${pick}"))`);
+    const cb = await chip.boundingBox();
+    if (cb) {
+      await cursor(page, cb.x + cb.width / 2, cb.y + cb.height / 2, 700);
+      await sleep(500);
+      log("which: pick at", ((Date.now() - t0) / 1000).toFixed(1));
+      await chip.click();
+    }
+    await sleep(5000);
+  },
+
+  // The opening, one continuous shot over the narration of scenes 01 to 04: the slide and the
+  // problem (a caption, then the climb), then a box drawn around the words, and the card building
+  // beside it, section by section, as the narration names each section.
+  async "00-open"(page) {
+    const { talkCard, talkDeeper } = JSON.parse(readFileSync(`${DIR}canvases.json`, "utf8"));
+    await open(page, talk);
+    // 100%: the slide on the left, room on the right for the card.
+    await page.evaluate(() => {
+      const b = [...document.querySelectorAll("button")].find((b) => /^\d+%$/.test(b.textContent.trim()));
+      if (b && b.textContent.trim() !== "100%") b.click();
+    });
+    await sleep(600);
+    await bring(page, "img.source-image", 150, 200, 10);
+    const C = `.card-item[data-card-id="${talkCard}"]`;
+    await page.addStyleTag({
+      content: `
+        .card-item[data-card-id="${talkDeeper}"], .connectors path:nth-child(2) { display: none !important; }
+        ${C} { transition: opacity 700ms, transform 700ms; }
+        ${C} .sem-section { transition: opacity 600ms, transform 600ms; }
+        body:not(.fx-card-in) ${C}, body:not(.fx-card-in) .connectors path:first-child { opacity: 0; transform: translateY(14px); }
+        body:not(.fx-region) .region { opacity: 0; }
+        .region { transition: opacity 400ms; }
+        body:not(.fx-why) ${C} .facet-why, body:not(.fx-what) ${C} .facet-what,
+        body:not(.fx-parts) ${C} .facet-parts, body:not(.fx-here) ${C} .facet-here { opacity: 0; transform: translateY(10px); }
+      `,
+    });
+    const climb = readFileSync(`${DIR}shots/02-climb.png`).toString("base64");
+    await overlay(page);
+    await page.evaluate((png) => (document.getElementById("fx-card").style.backgroundImage = `url(data:image/png;base64,${png})`), climb);
+    const body = (cls, on = true) => page.evaluate(([c, on]) => document.body.classList.toggle(c, on), [cls, on]);
+    await cursor(page, 1300, 760, 0);
+    await sleep(800);
+    // Seconds into the shot, by the narration (segments: hook 15.2 s, climb 14.6 s, idea 13.2 s, descend 15.4 s).
+    start();
+    const t0 = Date.now();
+    const at = async (t) => {
+      const wait = t0 + t * 1000 - Date.now();
+      if (wait > 0) await sleep(wait);
+    };
+    const reg = await page.evaluate(() => {
+      const r = document.querySelector(".region").getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    });
+    // Hook: reading down the slide, then stuck on the words.
+    await at(1.5);
+    await cursor(page, 520, 470, 1800);
+    await at(4.5);
+    await cursor(page, 760, 620, 1600);
+    await at(7.5);
+    await cursor(page, 560, 735, 1400);
+    await at(9.6);
+    await cursor(page, reg.x + reg.w * 0.55, reg.y + reg.h + 6, 1200);
+    await at(11.2);
+    await caption(page, "One unfamiliar word goes by,<br>and you're <b>lost</b>.");
+    await at(14.6);
+    await caption(page, "");
+    // Climb: the title card over the canvas, then away.
+    await at(15.3);
+    await page.evaluate(() => document.getElementById("fx-card").classList.add("fx-on"));
+    await at(29.0);
+    await page.evaluate(() => document.getElementById("fx-card").classList.remove("fx-on"));
+    // Idea: the box, drawn around the words, then the card lands beside it.
+    await at(31.0);
+    await cursor(page, 900, 620, 1500);
+    await at(37.6);
+    await cursor(page, reg.x - 2, reg.y - 2, 900);
+    await at(38.7);
+    await page.evaluate(([x, y]) => {
+      const b = document.getElementById("fx-box");
+      Object.assign(b.style, { display: "block", left: `${x}px`, top: `${y}px`, width: "0px", height: "0px" });
+    }, [reg.x - 2, reg.y - 2]);
+    for (let i = 1; i <= 24; i++) {
+      const k = i / 24;
+      const w = (reg.w + 4) * k;
+      const h = (reg.h + 4) * Math.min(1, k * 1.4);
+      await page.evaluate(([w, h]) => Object.assign(document.getElementById("fx-box").style, { width: `${w}px`, height: `${h}px` }), [w, h]);
+      await page.evaluate(([x, y]) => (document.getElementById("fx-cursor").style.cssText += `;--t:0ms;transform:translate(${x}px,${y}px)`), [reg.x - 2 + w, reg.y - 2 + h]);
+      await sleep(45);
+    }
+    await sleep(350);
+    await page.evaluate(() => (document.getElementById("fx-box").style.display = "none"));
+    await body("fx-region");
+    await cursor(page, reg.x + reg.w + 120, reg.y + 260, 700);
+    await at(40.6);
+    log("open: box done at", ((Date.now() - t0) / 1000).toFixed(1), "(planned 40.6)");
+    await body("fx-card-in");
+    // Descend: each section as it's named.
+    const T4 = 15.175 + 14.625 + 13.15;
+    const D4 = 14.325;
+    const said = (frac) => T4 + 0.45 + frac * D4;
+    const show = async (cls, sel, t) => {
+      await at(t - 0.9);
+      const b = await box(page, `${C} ${sel}`);
+      const c = await box(page, C);
+      // The card to the middle of the frame, and the section up to where it's read.
+      if (b && c && (b.y > 620 || b.y < 120 || c.x > 700)) await glide(page, { x: c.x, y: b.y }, { x: 560, y: b.y > 620 || b.y < 120 ? 260 : b.y }, 900);
+      await at(t);
+      await body(cls);
+    };
+    await show("fx-why", ".facet-why", said(52 / 228));
+    await show("fx-what", ".facet-what", said(80 / 228));
+    await show("fx-parts", ".facet-parts", said(97 / 228));
+    await show("fx-here", ".facet-here", said(113 / 228));
+    await at(T4 + 15.4 + 0.5);
+    log("open: card in at", ((Date.now() - t0) / 1000).toFixed(1));
+  },
+
   // A box drawn over a phrase on the slide; the placeholder appears where the card will land.
   async "03-idea"(page) {
     await open(page, talk);

@@ -89,7 +89,7 @@
     {
       "id": "10g-which",
       "shot": "On a call: pointing at Berlin on the map; then 'the chart' is numbered three ways, and one is picked",
-      "say": "On a call, it knows what you're pointing at, even a city on a map. And when it isn't sure what you mean, it doesn't guess. It numbers the choices, and you just say which."
+      "say": "On a call, it knows what you're pointing at, even a city on a map. Point at Berlin and ask why he moved there, and that's what it answers. And when it isn't sure what you mean, it doesn't guess. Ask it to take the chart off, with three on screen, and it numbers them and asks which one. You just say the number, or click it."
     },
     {
       "id": "11-close",

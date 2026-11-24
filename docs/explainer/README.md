@@ -12,9 +12,13 @@ the server has `data/explainer.mp4` (and `data/explainer.jpg` as its poster).
 | `prep.mjs` | Builds the demo canvases on the site as a fresh anonymous visitor: a slide from a research talk with a box, a descent and a grown shape; a lecture stopped at a moment with a box on its frame. Answers the librarian's question if it asks one. |
 | `prep-page.mjs` | The Wikipedia article on eigenvalues as a canvas, and an example notebook asked for in its chat. |
 | `prep-call.mjs` | Makes the call the call scene shows, for real (pointing at a piece, words selected); the scene replays its answer. |
+| `prep-figures.mjs` | The Wikipedia article on Lagrangian mechanics as a canvas, with lectures, a plot, a graph, a table and a map asked for in its chat (goals file themselves as they arrive). |
+| `prep-goals.mjs` | A descent on "generalized coordinates" there, so the goals scene has a subgoal. |
+| `prep-call-which.mjs` | The second call scene's turns, for real: pointing at Berlin on the map, then "take the chart off" (numbered three ways) and a pick; whatever it removes is put back. |
+| `narrate.mjs` | Narrates scenes through the site's own speech route (`/api/speech/say`, Kokoro), when the speech server isn't reachable directly. |
 | `titles.mjs` | Renders the title cards (the opening, the climb, the end) to PNGs. |
 | `record.mjs` | Records one clip per app scene with Playwright, gliding the canvas like a person would, and notes where each shot starts. |
-| `compose.py` | Cuts each scene's picture to its narration plus a breath either side, with soft fades, and joins them. |
+| `compose.py` | Cuts each scene's picture to its narration plus a breath either side, with soft fades, and joins them. Scenes naming the same `"clip"` in a row play one shot straight through, without fades (the opening: scenes 01 to 04 over `00-open`). |
 
 ## Making it
 
@@ -29,6 +33,18 @@ OpenAI-compatible text-to-speech endpoint serving Kokoro.
 4. `python3 compose.py out.mp4`, then copy it to the server's `data/explainer.mp4`.
 
 Things learned on the way:
+
+- The opening is one shot (`00-open`): the slide, a caption, the climb card faded in over the canvas, a box
+  drawn around the words, and the card building section by section as the narration names each. Its timings
+  are seconds into the shot, worked out from the narration's lengths; the recorder logs where it really was.
+- Headless Chrome draws no cursor: the recorder draws one (and captions, title cards, the box being dragged)
+  as fixed overlays. Move the drawn one with a CSS transition and the real pointer in one step; stepping the
+  real pointer makes everything run late.
+- A map's places are found by their own label (`place 3 of 7 …`), via the map element's `__ol`: a vector
+  source doesn't keep features in the order they were added.
+- The call bar covers the bottom of the screen: frame what's pointed at in the top half.
+- A narration shorter than its shot cuts the shot off: time the shot (the recorder logs key moments) and
+  write the narration to cover it.
 
 - Playwright records through its own ffmpeg build; pointing `PLAYWRIGHT_BROWSERS_PATH` at a folder with
   `ffmpeg-<rev>/ffmpeg-linux` linked to the system ffmpeg works.
