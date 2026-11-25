@@ -1274,6 +1274,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           <path
             key={`${c.id}-${i}`}
             d={`M${from.x} ${from.y} C${from.x} ${my} ${to.x} ${my} ${to.x} ${to.y}`}
+            data-card={c.id}
             className={lit ? "connector relation lit" : "connector relation"}
           />,
         ];
@@ -1298,7 +1299,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       const my = (from.y + to.y) / 2;
       d = `M${from.x} ${from.y} C${from.x} ${my} ${to.x} ${my} ${to.x} ${to.y}`;
     }
-    return [<path key={c.id} d={d} className={lit ? "connector lit" : "connector"} />];
+    // Which card a line leads to, for tests and for recordings that reveal a card with its line.
+    return [<path key={c.id} data-card={c.id} d={d} className={lit ? "connector lit" : "connector"} />];
   });
 
   // A note hangs from what it's about by a dotted line, from that thing's nearer side.
@@ -1311,7 +1313,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     const to = { x: right ? n.x : n.x + n.w, y: n.y + 18 };
     const mx = (from.x + to.x) / 2;
     const lit = hover === n.id || hover === n.on.id;
-    return [<path key={`note-${n.id}`} d={`M${from.x} ${from.y} C${mx} ${from.y} ${mx} ${to.y} ${to.x} ${to.y}`} className={lit ? "connector note-line lit" : "connector note-line"} />];
+    return [<path key={`note-${n.id}`} data-card={n.id} d={`M${from.x} ${from.y} C${mx} ${from.y} ${mx} ${to.y} ${to.x} ${to.y}`} className={lit ? "connector note-line lit" : "connector note-line"} />];
   });
 
   /** Opens a new note: beside what's selected (and about it), else in the middle of the screen. */
