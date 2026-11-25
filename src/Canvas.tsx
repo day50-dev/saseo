@@ -1399,6 +1399,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         <span className="muted">/</span>
         <CanvasName name={name} onRename={rename} />
         <CanvasSwitcher currentId={canvasId} />
+        {admin && (
+          <a {...linkTo("/settings")} className="muted small">
+            Settings
+          </a>
+        )}
         {anonymous && (
           <a {...linkTo("/signin")} className="save-link" title="Not signed in: sign in to keep this canvas">
             Sign in to save
@@ -1408,98 +1413,111 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           Drop or paste an image · Select: drag a box over what stopped you · hold Space to pan · Ctrl+scroll to zoom
         </span>
         <span className="spacer" />
-        <button
-          type="button"
-          className="secondary untangle"
-          title="Push overlapping cards down so nothing overlaps (Ctrl+Z undoes it)"
-          onClick={untangle}
-        >
-          Untangle
-        </button>
-        {canCall && (
-          <button type="button" className={calling ? "on call-btn" : "secondary call-btn"} title="Talk with the librarian while you point at things" onClick={() => setCalling(!calling)}>
-            {calling ? "On a call" : "Call"}
+        {/* Making: what goes on the canvas, and the call that does it with you. */}
+        <div className="tb-group" role="group" aria-label="Add to the canvas">
+          {/* Always in its place: on an empty canvas the start box is already open in the middle, so it's only disabled. */}
+          <button
+            type="button"
+            className={dockOpen && shown.length > 0 ? "add-btn on" : "secondary add-btn"}
+            disabled={shown.length === 0}
+            title={shown.length ? "Add a link, a PDF, a video, a question, or papers from arXiv (/)" : "The canvas is empty: start in the box in the middle"}
+            onClick={() => setDockOpen(!dockOpen)}
+          >
+            + Add <kbd>/</kbd>
           </button>
-        )}
-        <button
-          type="button"
-          className={goalsOpen ? "on goals-btn" : "secondary goals-btn"}
-          title="What you're after, and what it took to get there"
-          onClick={() => {
-            setGoalsOpen(!goalsOpen);
-            try {
-              localStorage.setItem("librarian.goalsOpen", goalsOpen ? "0" : "1");
-            } catch {}
-          }}
-        >
-          Goals{openGoals ? ` · ${openGoals}` : ""}
-        </button>
-        <div className="stacking" role="group" aria-label="Stacking order">
-          {(
-            [
-              ["front", "⤒", "Bring to front (Ctrl+Shift+])"],
-              ["forward", "↑", "Bring forward (Ctrl+])"],
-              ["backward", "↓", "Send backward (Ctrl+[)"],
-              ["back", "⤓", "Send to back (Ctrl+Shift+[)"],
-            ] as const
-          ).map(([op, icon, label]) => (
-            <button key={op} type="button" className="secondary" disabled={!selected} title={selected ? label : `${label}: select a card or an image's grip first`} onClick={() => restack(op)}>
-              {icon}
+          <button
+            type="button"
+            className="secondary note-add-btn"
+            title={selected ? "Leave a note about what's selected (N)" : "Leave a note on the canvas (N)"}
+            onClick={startNote}
+          >
+            ✎ Note <kbd>N</kbd>
+          </button>
+          {canCall && (
+            <button type="button" className={calling ? "on call-btn" : "secondary call-btn"} title="Talk with the librarian while you point at things" onClick={() => setCalling(!calling)}>
+              {calling ? "On a call" : "Call"}
             </button>
-          ))}
+          )}
         </div>
-        <div className="history">
-          <button type="button" className="secondary" disabled={!nextUndo} title={nextUndo ? `Undo ${nextUndo.label} (Ctrl+Z)` : "Nothing to undo"} onClick={undo}>
-            ↶ Undo
-          </button>
-          <button type="button" className="secondary" disabled={!nextRedo} title={nextRedo ? `Redo ${nextRedo.label} (Ctrl+Shift+Z)` : "Nothing to redo"} onClick={redo}>
-            ↷ Redo
+        {/* Moving around: the tool, and the zoom. */}
+        <div className="tb-group" role="group" aria-label="View">
+          <div className="modes" role="radiogroup" aria-label="Canvas tool">
+            <button
+              type="button"
+              role="radio"
+              aria-label="Select"
+              aria-checked={mode === "select"}
+              className={mode === "select" ? "on" : ""}
+              title="Select (V): drag a box on an image to explain it, select words in a card to go further down"
+              onClick={() => setMode("select")}
+            >
+              <span aria-hidden>⬚</span> <span className="tb-label">Select</span> <kbd>V</kbd>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-label="Pan"
+              aria-checked={mode === "pan"}
+              className={mode === "pan" ? "on" : ""}
+              title="Pan (H): drag anywhere to move around. Hold Space for a moment of panning in either mode."
+              onClick={() => setMode("pan")}
+            >
+              <span aria-hidden>✥</span> <span className="tb-label">Pan</span> <kbd>H</kbd>
+            </button>
+          </div>
+          <button type="button" className="link" title="Reset zoom" onClick={() => setView(defaultView())}>
+            {Math.round(view.scale * 100)}%
           </button>
         </div>
-        <button
-          type="button"
-          className="secondary note-add-btn"
-          title={selected ? "Leave a note about what's selected (N)" : "Leave a note on the canvas (N)"}
-          onClick={startNote}
-        >
-          ✎ Note <kbd>N</kbd>
-        </button>
-        {/* Always in its place: on an empty canvas the start box is already open in the middle, so it's only disabled. */}
-        <button
-          type="button"
-          className={dockOpen && shown.length > 0 ? "add-btn on" : "secondary add-btn"}
-          disabled={shown.length === 0}
-          title={shown.length ? "Add a link, a PDF, a video, a question, or papers from arXiv (/)" : "The canvas is empty: start in the box in the middle"}
-          onClick={() => setDockOpen(!dockOpen)}
-        >
-          + Add <kbd>/</kbd>
-        </button>
-        <div className="modes" role="radiogroup" aria-label="Canvas tool">
+        {/* Editing: undo, and tidying up what's there. */}
+        <div className="tb-group" role="group" aria-label="Edit">
+          <div className="history">
+            <button type="button" className="secondary" aria-label="Undo" disabled={!nextUndo} title={nextUndo ? `Undo ${nextUndo.label} (Ctrl+Z)` : "Nothing to undo"} onClick={undo}>
+              ↶
+            </button>
+            <button type="button" className="secondary" aria-label="Redo" disabled={!nextRedo} title={nextRedo ? `Redo ${nextRedo.label} (Ctrl+Shift+Z)` : "Nothing to redo"} onClick={redo}>
+              ↷
+            </button>
+          </div>
+          <div className="stacking" role="group" aria-label="Stacking order">
+            {(
+              [
+                ["front", "⤒", "Bring to front (Ctrl+Shift+])"],
+                ["forward", "↑", "Bring forward (Ctrl+])"],
+                ["backward", "↓", "Send backward (Ctrl+[)"],
+                ["back", "⤓", "Send to back (Ctrl+Shift+[)"],
+              ] as const
+            ).map(([op, icon, label]) => (
+              <button key={op} type="button" className="secondary" disabled={!selected} title={selected ? label : `${label}: select a card or an image's grip first`} onClick={() => restack(op)}>
+                {icon}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
-            role="radio"
-            aria-checked={mode === "select"}
-            className={mode === "select" ? "on" : ""}
-            title="Select (V): drag a box on an image to explain it, select words in a card to go further down"
-            onClick={() => setMode("select")}
+            className="secondary untangle"
+            title="Push overlapping cards down so nothing overlaps (Ctrl+Z undoes it)"
+            onClick={untangle}
           >
-            <span aria-hidden>⬚</span> Select <kbd>V</kbd>
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={mode === "pan"}
-            className={mode === "pan" ? "on" : ""}
-            title="Pan (H): drag anywhere to move around. Hold Space for a moment of panning in either mode."
-            onClick={() => setMode("pan")}
-          >
-            <span aria-hidden>✥</span> Pan <kbd>H</kbd>
+            Untangle
           </button>
         </div>
-        <button type="button" className="link" title="Reset zoom" onClick={() => setView(defaultView())}>
-          {Math.round(view.scale * 100)}%
-        </button>
-        {admin && <a {...linkTo("/settings")}>Settings</a>}
+        {/* The panel on the side. */}
+        <div className="tb-group" role="group" aria-label="Goals">
+          <button
+            type="button"
+            className={goalsOpen ? "on goals-btn" : "secondary goals-btn"}
+            title="What you're after, and what it took to get there"
+            onClick={() => {
+              setGoalsOpen(!goalsOpen);
+              try {
+                localStorage.setItem("librarian.goalsOpen", goalsOpen ? "0" : "1");
+              } catch {}
+            }}
+          >
+            Goals{openGoals ? ` · ${openGoals}` : ""}
+          </button>
+        </div>
       </div>
       {trashedAt && (
         <div className="banner">

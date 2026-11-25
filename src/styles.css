@@ -158,6 +158,18 @@ a { color: var(--accent); }
   z-index: 2;
 }
 .toolbar .spacer { flex: 1; }
+/* Controls in groups by what they're for, with a hairline between groups. */
+.tb-group { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.tb-group + .tb-group { border-left: 1px solid var(--line); padding-left: 10px; margin-left: 2px; }
+.history button { min-width: 32px; }
+/* One size for every control in the bar. */
+.toolbar .tb-group button { font-size: 13px; font-weight: 500; height: 30px; padding: 0 10px; line-height: 1; }
+.toolbar .tb-group .stacking button { padding: 0 8px; }
+.toolbar .tb-group .call-btn, .toolbar .tb-group .add-btn { font-weight: 600; }
+/* Narrower screens: the shortcut letters go (the buttons' tooltips still say them). */
+@media (max-width: 1360px) { .toolbar kbd { display: none; } }
+/* Narrower still: Select and Pan by their icons. */
+@media (max-width: 1240px) { .toolbar .tb-label { display: none; } }
 .toolbar .hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .toolbar a { font-size: 14px; }
 .banner { padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px; z-index: 2; }
@@ -255,7 +267,7 @@ kbd {
 .history button { font-size: 13px; padding: 4px 10px; font-weight: 500; }
 .modes, .toolbar > button, .toolbar > a, .toolbar > strong { flex-shrink: 0; }
 .toolbar .hint { flex: 1 1 0; }
-@media (max-width: 900px) { .toolbar .hint { display: none; } }
+@media (max-width: 1360px) { .toolbar .hint { display: none; } }
 
 .remove-btn {
   width: 22px; height: 22px; padding: 0; border-radius: 50%; line-height: 1;
