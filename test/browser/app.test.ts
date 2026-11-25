@@ -42,6 +42,11 @@ before(async () => {
         objectCard("vs", { type: "videos", videos: [{ url: "https://www.youtube.com/watch?v=AAAAAAAAAAA", videoId: "AAAAAAAAAAA", title: "Lecture one", snippet: "", channel: "MIT" }, { url: "https://www.youtube.com/watch?v=BBBBBBBBBBB", videoId: "BBBBBBBBBBB", title: "Lecture two", snippet: "", channel: "Stanford" }] }, 800, 0, { h: 500 }),
       ],
     },
+    {
+      id: "diag0002",
+      name: "Clipped diagram",
+      items: [objectCard("d1", { type: "diagram", caption: "A label past the edge", svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" width="400" height="200"><line x1="10" y1="100" x2="390" y2="100" stroke="black"/><text x="370" y="95" font-size="20">Position (q)</text></svg>' }, 0, 0)],
+    },
     { id: "note0001", name: "Notes", items: [explained("n1", "Bialgebras", 0, 0)] },
     {
       id: "cnot0001",
@@ -469,6 +474,19 @@ describe("F-SET: videos from a set play on the canvas", () => {
     await until(() => body.input === "https://www.youtube.com/watch?v=BBBBBBBBBBB", 5000, "the video to be added");
     assert.ok((body.x ?? 0) >= 800 + 720, `beside the set: x=${body.x}`);
     assert.equal(await p.locator(`${cardSel("vs")} iframe`).count(), 0, "not played inside the tile");
+    await p.context().close();
+  });
+});
+
+describe("F-DIAGRAM: nothing drawn is cut off", () => {
+  test("a label past the drawing's edge widens its frame", async () => {
+    const p = await open("/c/diag0002");
+    const img = p.locator(`${cardSel("d1")} .object-diagram img`);
+    await img.waitFor();
+    const src = decodeURIComponent((await img.getAttribute("src"))!);
+    const vb = src.match(/viewBox="([^"]+)"/)![1].split(" ").map(Number);
+    assert.ok(vb[0] + vb[2] > 470, `the frame reaches past the label's end: ${vb}`);
+    assert.doesNotMatch(src, /width="400"/, "sized by its frame");
     await p.context().close();
   });
 });

@@ -1,5 +1,6 @@
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { GraphView, PlotView, TableView } from "./Figures.tsx";
+import { fitSvg } from "./fitSvg.ts";
 // OpenLayers is large: loaded only when a map is on the canvas.
 const MapView = lazy(() => import("./MapView.tsx"));
 import {
@@ -652,7 +653,7 @@ function ObjectView({
     return (
       <figure className="object-diagram">
         {/* Shown as an image: the browser runs nothing inside it. */}
-        <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(o.svg)}`} alt={card.subject ?? "Diagram"} draggable={false} />
+        <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(fitSvg(o.svg))}`} alt={card.subject ?? "Diagram"} draggable={false} />
         {o.caption && <figcaption className="facet-text">{o.caption}</figcaption>}
       </figure>
     );
