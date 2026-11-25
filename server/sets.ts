@@ -37,14 +37,41 @@ async function getJson<T>(url: string): Promise<T | null> {
 
 const summary = (title: string) => getJson<Summary>(`${WIKI}/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`);
 
-/** The Wikipedia article for an entry: by the title the model gave, else the best search hit for its name. */
-export async function wikiFor(name: string, title?: string, context = ""): Promise<Summary | null> {
-  const usable = (s: Summary | null) => (s && s.type !== "disambiguation" && s.title ? s : null);
+const STOP = new Set(["a", "an", "the", "of", "in", "on", "and", "for", "to", "with", "band", "film", "album", "song", "problem", "system", "systems"]);
+const words = (t: string) => t.toLowerCase().replace(/\([^)]*\)/g, " ").match(/[\p{L}\p{N}]+/gu)?.filter((w) => !STOP.has(w)) ?? [];
+
+/**
+ * Whether an article's title is about the named thing, not just near it: every word of the
+ * shorter of the two is in the longer ("Charged particle in a magnetic field" is not "Quantum
+ * field theory"; "Wire" is "Wire (band)").
+ */
+export function sameThing(name: string, title: string): boolean {
+  const a = words(name);
+  const b = words(title);
+  if (!a.length || !b.length) return name.trim().toLowerCase() === title.replace(/\s*\([^)]*\)$/, "").trim().toLowerCase();
+  const [short, long] = a.length <= b.length ? [a, new Set(b)] : [b, new Set(a)];
+  // Plurals and the like: "oscillators" is "oscillator".
+  const has = (w: string) => long.has(w) || long.has(w.replace(/s$/, "")) || [...long].some((l) => l.replace(/s$/, "") === w);
+  return short.every(has);
+}
+
+/**
+ * The Wikipedia article for an entry: by the title the model gave, else a search for its name.
+ * Either way the article must be about that thing; a near miss is no article at all (the entry is
+ * then shown as not checked, rather than vouched for by something else).
+ */
+export async function wikiFor(name: string, title?: string): Promise<Summary | null> {
+  const usable = (s: Summary | null) => (s && s.type !== "disambiguation" && s.title && (sameThing(name, s.title) || (title !== undefined && sameThing(title, s.title) && sameThing(name, title))) ? s : null);
   const direct = title ? usable(await summary(title)) : null;
   if (direct) return direct;
-  const q = new URLSearchParams({ action: "query", list: "search", srsearch: `${name} ${context}`.trim(), srlimit: "1", format: "json" });
-  const hit = (await getJson<{ query?: { search?: { title: string }[] } }>(`${WIKI}/w/api.php?${q}`))?.query?.search?.[0]?.title;
-  return hit ? usable(await summary(hit)) : null;
+  const q = new URLSearchParams({ action: "query", list: "search", srsearch: name, srlimit: "5", format: "json" });
+  const hits = (await getJson<{ query?: { search?: { title: string }[] } }>(`${WIKI}/w/api.php?${q}`))?.query?.search ?? [];
+  for (const h of hits) {
+    if (!sameThing(name, h.title)) continue;
+    const s = usable(await summary(h.title));
+    if (s) return s;
+  }
+  return null;
 }
 
 /**
@@ -75,10 +102,9 @@ export async function makeSet(request: string, about: string): Promise<{ title: 
   ]);
   const named = (Array.isArray(r.entries) ? r.entries : []).filter((e) => typeof e?.name === "string" && e.name.trim()).slice(0, SET_MAX);
   if (!named.length) throw new Error(`Couldn't put together a set for "${request}".`);
-  const context = String(r.title ?? "").slice(0, 60);
   const entries = await Promise.all(
     named.map(async (e): Promise<SetEntry> => {
-      const w = await wikiFor(e.name!.trim(), e.wikipedia?.trim(), context);
+      const w = await wikiFor(e.name!.trim(), e.wikipedia?.trim());
       const note = e.note?.trim().slice(0, 300) || undefined;
       if (!w) return { title: e.name!.trim().slice(0, 120), subtitle: e.subtitle?.trim().slice(0, 80) || undefined, note, unverified: true };
       return {

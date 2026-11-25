@@ -75,3 +75,20 @@ describe("F-CALL: what a model's card reference means", () => {
     assert.equal(resolveRef("nothing like it", cards), undefined);
   });
 });
+
+describe("F-SET: an article vouches only for the thing it's about", async () => {
+  const { sameThing } = await import("../../server/sets.ts");
+  test("the same thing, said differently", () => {
+    assert.ok(sameThing("Wire", "Wire (band)"));
+    assert.ok(sameThing("The Fall", "The Fall (band)"));
+    assert.ok(sameThing("Harmonic oscillator", "Harmonic oscillator"));
+    assert.ok(sameThing("Two-body problem", "Two-body problem"));
+    assert.ok(sameThing("harmonic oscillators", "Harmonic oscillator"));
+    assert.ok(sameThing("Kepler problem", "Kepler problem"));
+  });
+  test("a near miss is not it", () => {
+    assert.ok(!sameThing("Charged particle in a magnetic field", "Quantum field theory"));
+    assert.ok(!sameThing("Kepler problem", "Hamiltonian mechanics"));
+    assert.ok(!sameThing("Charged particle in a magnetic field", "Hamiltonian mechanics"));
+  });
+});
