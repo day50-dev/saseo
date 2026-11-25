@@ -344,6 +344,46 @@ describe("F-CALL-7: typing into a call", () => {
   });
 });
 
+describe("F-CALL-8: what you say grows on screen, and waits a pause you set", () => {
+  test("phrases gather in the log; the bar runs down after you stop; − and + change the pause; clicking the bar sends now", async () => {
+    llm.reset();
+    llm.on(/voice call/, { say: "Here's my answer.", actions: [] });
+    const p = await open("/c/cnot0001", 1600, 1000);
+    await p.locator(cardSel("q1")).waitFor();
+    await p.click(".call-btn");
+    await p.waitForFunction(() => Boolean((window as unknown as { __rec?: unknown }).__rec));
+    const result = (text: string, final: boolean) =>
+      p.evaluate(([t, f]) => {
+        const rec = (window as unknown as { __rec: Record<string, (e: unknown) => void> }).__rec;
+        rec.onresult({ resultIndex: 0, results: [Object.assign({ 0: { transcript: t } }, { isFinal: f })] });
+      }, [text, final] as const);
+    const bar = p.locator(".call-wait-bar");
+    assert.equal((await bar.innerText()).trim(), "1.5 s", "the default pause");
+    await p.getByRole("button", { name: "Longer pause" }).click();
+    await p.getByRole("button", { name: "Longer pause" }).click();
+    assert.equal((await bar.innerText()).trim(), "3 s");
+    assert.equal(await p.evaluate(() => localStorage.getItem("librarian.callWait")), "3", "remembered");
+
+    await result("so the bound says", false);
+    const live = p.locator(".call-turn.you.live");
+    await live.getByText("so the bound says").waitFor();
+    await result("so the bound says the energy is at least", true);
+    await live.getByText("so the bound says the energy is at least").waitFor();
+    await p.locator(".call-wait-bar.running").waitFor();
+    await result("the charge", false);
+    await p.locator(".call-wait-bar.running").waitFor({ state: "detached" });
+    await result("the charge times a constant, why is that", true);
+    await p.locator(".call-wait-bar.running").waitFor();
+    await p.waitForTimeout(800);
+    assert.equal(llm.askedFor(/voice call/).length, 0, "still waiting out the 3 s pause");
+    await bar.click();
+    await p.getByText("Here's my answer.").waitFor({ timeout: 5000 });
+    assert.match(llm.askedFor(/voice call/)[0].user, /They just said: "so the bound says the energy is at least the charge times a constant, why is that"/);
+    await live.waitFor({ state: "detached" });
+    await p.context().close();
+  });
+});
+
 describe("F-PHONE: it works on a phone", () => {
   test("a canvas opens at phone width without the page scrolling sideways", async () => {
     const p = await open("/c/diag0001", 375, 812);

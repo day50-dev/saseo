@@ -833,7 +833,23 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
   background: var(--card); border: 1px solid var(--line); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22);
   display: flex; flex-direction: column; gap: 8px;
 }
-.call-log { display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; font-size: 14px; }
+.call-log { display: flex; flex-direction: column; gap: 4px; max-height: min(40vh, 320px); overflow-y: auto; font-size: 14px; }
+.call-turn.you.live { color: var(--text); overflow-wrap: anywhere; }
+.call-turn.you.live .call-interim { color: var(--muted); }
+.call-wait { display: flex; align-items: center; gap: 4px; flex: none; }
+.call-wait-btn { width: 28px; height: 28px; padding: 0; font-size: 16px; line-height: 1; }
+.call-wait-bar {
+  position: relative; width: 84px; height: 28px; padding: 0; border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: default;
+}
+.call-wait-bar.running { cursor: pointer; border-color: #1f8a4c; }
+.call-wait-bar:disabled { opacity: 1; }
+.call-wait-fill {
+  position: absolute; inset: 3px; border-radius: 4px; background: color-mix(in srgb, #1f8a4c 22%, transparent);
+  transform-origin: center; transition: transform 60ms linear;
+}
+.call-wait-bar.running .call-wait-fill { background: color-mix(in srgb, #1f8a4c 55%, transparent); }
+.call-wait-label { position: relative; font-size: 12px; font-variant-numeric: tabular-nums; }
 .call-turn.librarian { color: var(--text); }
 .call-turn.you { color: var(--muted); }
 .call-who { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 4px; }
@@ -853,7 +869,7 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .call-mic.talking { background: #c0392b; }
 .call-mic.muted { background: var(--muted); }
 .call-level { width: 8px; height: 100%; background: #fff; border-radius: 3px; transform-origin: bottom; transition: transform 80ms linear; }
-.call-interim { color: var(--text); font-style: italic; overflow: hidden; text-overflow: ellipsis; }
+.call-interim { font-style: italic; }
 .call-voice { flex: 1 1 auto; min-width: 0; max-width: 260px; margin-right: auto; font-size: 13px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
 .call-mute { min-width: 8.5em; }
 .call-mute.interrupting { background: var(--accent); color: #fff; border-color: var(--accent); }

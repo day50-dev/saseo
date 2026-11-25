@@ -149,6 +149,17 @@ function wav(chunks: Float32Array[], rate: number): Blob {
 
 type Voice = "server" | "browser";
 const VOICE_KEY = "librarian.callVoice";
+const WAIT_KEY = "librarian.callWait";
+/** How long a pause before what you said is sent, in seconds: short for quick back-and-forth, longer to think. */
+export const WAITS = [0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 7, 10];
+const DEFAULT_WAIT = 1.5;
+function loadWait(): number {
+  try {
+    const v = Number(localStorage.getItem(WAIT_KEY));
+    if (WAITS.includes(v)) return v;
+  } catch {}
+  return DEFAULT_WAIT;
+}
 
 export function CallBar({
   canvasId,
@@ -185,6 +196,21 @@ export function CallBar({
   const [error, setError] = useState<string | null>(null);
   const [pointed, setPointed] = useState<Pointing>({});
   const [level, setLevel] = useState(0);
+  // The pause before sending, and how much of it is left (null while nothing is waiting to go).
+  const [wait, setWaitState] = useState(loadWait);
+  const waitRef = useRef(wait);
+  waitRef.current = wait;
+  const setWait = (dir: -1 | 1) => {
+    const i = WAITS.indexOf(waitRef.current);
+    const next = WAITS[Math.max(0, Math.min(WAITS.length - 1, (i < 0 ? WAITS.indexOf(DEFAULT_WAIT) : i) + dir))];
+    setWaitState(next);
+    try {
+      localStorage.setItem(WAIT_KEY, String(next));
+    } catch {}
+  };
+  const [left, setLeft] = useState<number | null>(null);
+  /** Sends what's waiting at once, without the rest of the pause. */
+  const sendNow = useRef<() => void>(() => {});
   const hovered = useRef<Element | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const turnsRef = useRef<Turn[]>([]);
@@ -420,6 +446,8 @@ export function CallBar({
   };
   const [BrowserSTT] = useState(browserSTT);
   const [interim, setInterim] = useState("");
+  // What you've said so far in this turn (the recognizer's finished phrases), held until the pause runs out.
+  const [held, setHeld] = useState("");
 
   // The browser's recognizer, listening the whole call.
   useEffect(() => {
@@ -430,10 +458,44 @@ export function CallBar({
     rec.interimResults = true;
     rec.lang = navigator.language || "en-US";
     flush.current = () => rec.abort(); // onend starts it again
+    // Phrases are held, not sent: what you say is sent once you've paused for the chosen wait.
+    let text = "";
+    let deadline: number | null = null;
+    const reset = () => {
+      text = "";
+      deadline = null;
+      setHeld("");
+      setInterim("");
+      setLeft(null);
+    };
+    const fire = () => {
+      const said = text.trim();
+      const pointing = about(during.current);
+      const context = contextFor(startedAt.current, Date.now());
+      during.current = null;
+      reset();
+      // Noise, a stray syllable, or nothing: not a question. Back to listening, quietly.
+      if (!substantive(said)) {
+        setState((st) => (st === "talking" ? "listening" : st));
+        return;
+      }
+      queue.current = queue.current.then(() => heard(said, pointing, context));
+    };
+    sendNow.current = () => {
+      if (text.trim()) fire();
+    };
+    const tick = setInterval(() => {
+      if (deadline === null) return;
+      const ms = deadline - Date.now();
+      if (ms <= 0) fire();
+      else setLeft(ms / 1000);
+    }, 50);
     rec.onspeechstart = () => {
       if (muted.current || deaf.current) return;
-      startedAt.current = Date.now();
-      during.current = pointingAt(hovered.current);
+      if (!during.current) {
+        startedAt.current = Date.now();
+        during.current = pointingAt(hovered.current);
+      }
     };
     rec.onresult = (e) => {
       if (muted.current || deaf.current) return;
@@ -445,28 +507,26 @@ export function CallBar({
         else part += r[0].transcript;
       }
       const live = yours(fin || part);
-      if (live) {
-        if (!during.current) {
-          startedAt.current = Date.now();
-          during.current = pointingAt(hovered.current);
-        }
-        setInterim(part.trim());
-        if (stateRef.current === "listening") setState("talking");
+      if (!live) return;
+      if (!during.current) {
+        startedAt.current = Date.now();
+        during.current = pointingAt(hovered.current);
       }
-      if (!fin.trim()) return;
-      const text = yours(fin);
-      // Noise, a stray syllable, or nothing: not a question. Back to listening, quietly.
-      if (!substantive(text)) {
-        setInterim("");
-        during.current = null;
-        setState((st) => (st === "talking" ? "listening" : st));
-        return;
+      if (stateRef.current === "listening") setState("talking");
+      const done = yours(fin);
+      if (done) {
+        text = `${text} ${done}`.trim();
+        setHeld(text);
       }
-      setInterim("");
-      const pointing = about(during.current);
-      during.current = null;
-      const context = contextFor(startedAt.current, Date.now());
-      queue.current = queue.current.then(() => heard(text, pointing, context));
+      setInterim(part.trim() ? yours(part) : "");
+      // Still talking: the clock waits. A finished phrase starts it.
+      if (part.trim()) {
+        deadline = null;
+        setLeft(null);
+      } else if (text) {
+        deadline = Date.now() + waitRef.current * 1000;
+        setLeft(waitRef.current);
+      }
     };
     rec.onerror = (e) => {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
@@ -482,6 +542,7 @@ export function CallBar({
     setState("listening");
     return () => {
       stopped = true;
+      clearInterval(tick);
       rec.abort();
       hush();
     };
@@ -513,6 +574,10 @@ export function CallBar({
       let quiet = 0;
       let speech: Float32Array[] | null = null;
       let shown = 0;
+      let forced = false;
+      sendNow.current = () => {
+        if (speech) forced = true;
+      };
       proc.onaudioprocess = (ev) => {
         const x = new Float32Array(ev.inputBuffer.getChannelData(0));
         let sum = 0;
@@ -550,7 +615,12 @@ export function CallBar({
         speech.push(x);
         quiet = rms > threshold * 0.7 ? 0 : quiet + frameMs;
         const long = speech.length * frameMs;
-        if (quiet >= END_MS || long > 60_000) {
+        const end = Math.max(END_MS, waitRef.current * 1000);
+        // Repainted with the level meter (shown was just set), not on every frame.
+        if (shown === now) setLeft(quiet > 150 ? Math.max(0, (end - quiet) / 1000) : null);
+        if (quiet >= end || long > 60_000 || forced) {
+          forced = false;
+          setLeft(null);
           const said = speech;
           speech = null;
           above = 0;
@@ -594,11 +664,23 @@ export function CallBar({
     return () => window.removeEventListener("keydown", down);
   });
 
+  // The log follows what's being said, as it grows.
+  const logRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [held, interim, turns]);
+
   const where = pointed.selection ? `your selection “${pointed.selection.slice(0, 50)}${pointed.selection.length > 50 ? "…" : ""}”` : pointed.pieceText ? `“${pointed.pieceText.slice(0, 50)}…”` : "";
   const status = {
     starting: "Opening the microphone…",
     listening: where ? `Listening. Pointing at ${where}` : "Listening. Just talk, and point at what you mean",
-    talking: where ? `Hearing you, about ${where}` : "Hearing you…",
+    talking:
+      left !== null
+        ? "Sending when the bar runs out. Keep talking to add more, or click the bar to send now"
+        : where
+          ? `Hearing you, about ${where}`
+          : "Hearing you…",
     hearing: BrowserSTT ? "Got it…" : "Working out what you said…",
     thinking: "Thinking…",
     speaking: "Speaking. You're muted until it's done: Interrupt (M) to cut in",
@@ -614,7 +696,7 @@ export function CallBar({
   return (
     <div className="call-bar" onPointerDown={(e) => e.stopPropagation()}>
       {marks.length > 0 && <Marks marks={marks} onPick={pick} />}
-      <div className="call-log">
+      <div className="call-log" ref={logRef}>
         {turns.slice(-6).map((t, i) =>
           t.role === "sent" ? (
             <div key={i} className="call-turn sent">
@@ -629,7 +711,13 @@ export function CallBar({
             </div>
           ),
         )}
-        {!turns.length && (
+        {(held || interim) && (
+          <div className="call-turn you live">
+            <span className="call-who">You</span> {held}
+            {interim && <i className="call-interim"> {interim}</i>}
+          </div>
+        )}
+        {!turns.length && !held && !interim && (
           <div className="call-turn muted">
             Just talk. Keep your hand on the canvas: point at a piece and say “break this down”, “why?”, or “what does this word mean?”.
           </div>
@@ -655,7 +743,7 @@ export function CallBar({
       <div className="call-status-line">
         <span className="call-status">
           {(state === "hearing" || state === "thinking" || state === "starting") && <span className="spinner" />} {status}
-          {interim && <i className="call-interim">“{interim}”</i>}
+
         </span>
         {error && <span className="call-error">{error}</span>}
       </div>
@@ -686,6 +774,7 @@ export function CallBar({
         ) : (
           <span className="call-spacer" />
         )}
+        <Countdown wait={wait} left={left} onLess={() => setWait(-1)} onMore={() => setWait(1)} onSendNow={() => sendNow.current()} />
         {/* One place, one key: while it speaks, this cuts it off; otherwise it mutes. */}
         <button
           type="button"
@@ -756,5 +845,36 @@ function Marks({ marks, onPick }: { marks: Mark[]; onPick: (m: Mark) => void }) 
       })}
     </>,
     document.body,
+  );
+}
+
+/**
+ * The pause before what you said is sent: a bar that shrinks to nothing as the pause runs out,
+ * with − and + to make it shorter or longer (some things take more thought before they're done).
+ * Clicking the bar sends at once.
+ */
+function Countdown({ wait, left, onLess, onMore, onSendNow }: { wait: number; left: number | null; onLess: () => void; onMore: () => void; onSendNow: () => void }) {
+  const frac = left === null ? 1 : Math.max(0, Math.min(1, left / wait));
+  const label = (n: number) => (n < 1 ? `${n * 1000} ms` : `${n} s`);
+  return (
+    <div className="call-wait" role="group" aria-label="Pause before sending">
+      <button type="button" className="secondary call-wait-btn" onClick={onLess} disabled={wait <= WAITS[0]} title="Send sooner after you stop talking" aria-label="Shorter pause">
+        −
+      </button>
+      <button
+        type="button"
+        className={`call-wait-bar ${left !== null ? "running" : ""}`}
+        onClick={onSendNow}
+        disabled={left === null}
+        title={left !== null ? "Sending when this runs out: click to send now" : `Sends ${label(wait)} after you stop talking`}
+        aria-label={left !== null ? `Sending in ${left.toFixed(1)} seconds; click to send now` : `Pause before sending: ${label(wait)}`}
+      >
+        <span className="call-wait-fill" style={{ transform: `scaleX(${frac})` }} />
+        <span className="call-wait-label">{left !== null ? `${left.toFixed(1)} s` : label(wait)}</span>
+      </button>
+      <button type="button" className="secondary call-wait-btn" onClick={onMore} disabled={wait >= WAITS[WAITS.length - 1]} title="Wait longer after you stop talking, to think" aria-label="Longer pause">
+        +
+      </button>
+    </div>
   );
 }
