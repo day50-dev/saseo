@@ -149,7 +149,7 @@ export async function chatJson<T>(ep: Endpoint, messages: Message[]): Promise<T>
     text = await chat(ep, [
       ...messages,
       { role: "assistant", content: text },
-      { role: "user", content: `${problem} Reply again with the same answer as one valid JSON object only: double quotes, no comments, no trailing commas, plain numbers.` },
+      { role: "user", content: `That reply couldn't be used: ${problem} Give your answer to my request again, in exactly the JSON shape the instructions ask for, as one JSON object: double quotes, no comments, no trailing commas, plain numbers.` },
     ], undefined, true);
   }
 }
