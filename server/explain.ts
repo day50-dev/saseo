@@ -168,7 +168,17 @@ const strs = (v: unknown, max: number) =>
   (Array.isArray(v) ? v : typeof v === "string" ? [v] : []).map(str).filter(Boolean).slice(0, max);
 
 /** Accepts whatever the model returned and keeps only well-formed pieces of a Sem. */
-function cleanSem(raw: Record<string, unknown>, maxHere = 3): Sem {
+/** The explanation inside a reply that wrapped it ({"explanation": {"why": …}}), or the reply itself. */
+function unwrapSem(raw: Record<string, unknown>): Record<string, unknown> {
+  if (raw.why || raw.what) return raw;
+  for (const v of Object.values(raw)) {
+    if (v && typeof v === "object" && !Array.isArray(v) && ((v as Record<string, unknown>).why || (v as Record<string, unknown>).what)) return v as Record<string, unknown>;
+  }
+  return raw;
+}
+
+function cleanSem(reply: Record<string, unknown>, maxHere = 3): Sem {
+  const raw = unwrapSem(reply);
   const what = (raw.what ?? {}) as Record<string, unknown>;
   const parts = (Array.isArray(raw.parts) ? raw.parts : [])
     .map((p) => p as Record<string, unknown>)
@@ -246,8 +256,12 @@ async function write(
     { role: "system", content: system },
     { role: "user", content: lines.join("\n\n") },
   ];
-  let sem = cleanSem(await chatJson<Record<string, unknown>>(config.llm, messages), flow ? 6 : 3);
-  if (!sem.why.length && !sem.what.gist) throw new Error("The model's answer had no why and no what");
+  const first = await chatJson<Record<string, unknown>>(config.llm, messages);
+  let sem = cleanSem(first, flow ? 6 : 3);
+  if (!sem.why.length && !sem.what.gist) {
+    console.warn("explanation without why or what; the reply had:", JSON.stringify(first).slice(0, 600));
+    throw new Error("The model's answer had no why and no what");
+  }
   let climb: number | undefined;
   let rewritten = false;
 
