@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Paper } from "../shared/canvas.ts";
 import { searchArxiv } from "./arxiv.ts";
 
 /** Search arXiv, or paste an id or URL, and add chosen pages of a paper to the canvas. */
-export function ArxivPanel({ onAdd, onClose }: { onAdd: (paper: Paper, pages: string) => Promise<void>; onClose: () => void }) {
-  const [q, setQ] = useState("");
+export function ArxivPanel({ onAdd, onClose, initial = "" }: { onAdd: (paper: Paper, pages: string) => Promise<void>; onClose: () => void; initial?: string }) {
+  const [q, setQ] = useState(initial);
   const [sort, setSort] = useState<"relevance" | "date">("relevance");
   const [result, setResult] = useState<{ total: number; papers: Paper[] } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -23,6 +23,12 @@ export function ArxivPanel({ onAdd, onClose }: { onAdd: (paper: Paper, pages: st
       setBusy(false);
     }
   };
+
+  // Opened from Add with words already typed: search for them straight away.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, on opening.
+  useEffect(() => {
+    if (initial.trim()) void run();
+  }, []);
 
   return (
     <div className="panel-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>

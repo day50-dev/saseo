@@ -384,6 +384,27 @@ describe("F-CALL-8: what you say grows on screen, and waits a pause you set", ()
   });
 });
 
+describe("F-START: arXiv from Add", () => {
+  test("there's no separate arXiv button; Add searches arXiv for what's typed in it", async () => {
+    const p = await open("/c/note0001");
+    await p.locator(cardSel("n1")).waitFor();
+    assert.equal(await p.locator(".toolbar").getByRole("button", { name: "arXiv", exact: true }).count(), 0);
+    // Kept on this machine: the search is answered here.
+    let asked = "";
+    await p.route("**/api/arxiv/search**", (r) => {
+      asked = new URL(r.request().url()).searchParams.get("q") ?? "";
+      return r.fulfill({ json: { total: 1, papers: [{ id: "1234.5678", title: "BPS monopoles", authors: ["A. Person"], summary: "On monopoles.", published: "2020-01-01", category: "hep-th", url: "https://arxiv.org/abs/1234.5678" }] } });
+    });
+    await p.keyboard.press("/");
+    await p.locator(".start-dock input").fill("BPS monopoles");
+    await p.getByRole("button", { name: "Search arXiv for “BPS monopoles”" }).click();
+    await p.getByRole("dialog", { name: "Add from arXiv" }).getByText("BPS monopoles", { exact: false }).first().waitFor();
+    await until(() => asked === "BPS monopoles", 5000, "the search");
+    assert.equal(await p.locator(".start-dock").count(), 0, "Add closed behind it");
+    await p.context().close();
+  });
+});
+
 describe("F-PHONE: it works on a phone", () => {
   test("a canvas opens at phone width without the page scrolling sideways", async () => {
     const p = await open("/c/diag0001", 375, 812);

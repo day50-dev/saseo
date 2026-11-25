@@ -478,7 +478,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
 
   // ---- Papers from arXiv ----
 
-  const [arxivOpen, setArxivOpen] = useState(false);
+  // The arXiv search, opened from Add (with what was typed there), or closed.
+  const [arxivOpen, setArxivOpen] = useState<string | false>(false);
 
   /**
    * Renders the chosen pages of a paper and lays them side by side, starting at `at` (or near the
@@ -1389,9 +1390,6 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         >
           Goals{openGoals ? ` · ${openGoals}` : ""}
         </button>
-        <button type="button" className="secondary untangle" title="Search arXiv and add pages of a paper" onClick={() => setArxivOpen(true)}>
-          arXiv
-        </button>
         <div className="stacking" role="group" aria-label="Stacking order">
           {(
             [
@@ -1427,7 +1425,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           type="button"
           className={dockOpen && shown.length > 0 ? "add-btn on" : "secondary add-btn"}
           disabled={shown.length === 0}
-          title={shown.length ? "Add a link, a PDF, a video or a question to the canvas (/)" : "The canvas is empty: start in the box in the middle"}
+          title={shown.length ? "Add a link, a PDF, a video, a question, or papers from arXiv (/)" : "The canvas is empty: start in the box in the middle"}
           onClick={() => setDockOpen(!dockOpen)}
         >
           + Add <kbd>/</kbd>
@@ -1522,7 +1520,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             and closes again once it's used or left. */}
         {loaded && shown.length > 0 && dockOpen && (
           <div className="start-dock">
-            <StartBox onStart={startFrom} onClose={() => setDockOpen(false)} />
+            <StartBox onStart={startFrom} onClose={() => setDockOpen(false)} onArxiv={(q) => setArxivOpen(q)} />
           </div>
         )}
         <div
@@ -1886,7 +1884,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           }}
         />
       )}
-      {arxivOpen && <ArxivPanel onAdd={(paper, pages) => addPaperPages(paper, pages)} onClose={() => setArxivOpen(false)} />}
+      {arxivOpen !== false && <ArxivPanel initial={arxivOpen} onAdd={(paper, pages) => addPaperPages(paper, pages)} onClose={() => setArxivOpen(false)} />}
     </div>
   );
 }
@@ -2031,7 +2029,7 @@ function CanvasSwitcher({ currentId }: { currentId: string }) {
 }
 
 /** A link to read or a question to explain: a start that isn't an image. */
-function StartBox({ onStart, big = false, onClose }: { onStart: (input: string) => Promise<void>; big?: boolean; onClose?: () => void }) {
+function StartBox({ onStart, big = false, onClose, onArxiv }: { onStart: (input: string) => Promise<void>; big?: boolean; onClose?: () => void; onArxiv?: (query: string) => void }) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   return (
@@ -2058,6 +2056,22 @@ function StartBox({ onStart, big = false, onClose }: { onStart: (input: string) 
         title="Paste a link (e.g. a Wikipedia page) to read it here, or type a question to have it explained"
         onChange={(e) => setValue(e.target.value)}
       />
+      {onArxiv && (
+        <button
+          type="button"
+          className="start-arxiv"
+          // Pressing it mustn't blur the box first, which would close it.
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            onArxiv(/^https?:\/\//.test(value.trim()) ? "" : value.trim());
+            setValue("");
+            onClose?.();
+          }}
+          title="Search arXiv for papers, then add the pages you want"
+        >
+          {value.trim() && !/^https?:\/\//.test(value.trim()) ? `Search arXiv for “${value.trim().slice(0, 40)}”` : "Search arXiv for papers"}
+        </button>
+      )}
     </form>
   );
 }
