@@ -5,13 +5,13 @@ import { chromium } from "playwright-core";
 const DIR = new URL(".", import.meta.url).pathname;
 const sec = (f) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f]).toString());
 const LEAD = 0.45, TAIL = 0.65;
-const script = JSON.parse(readFileSync(`${DIR}script-v3.json`, "utf8")).scenes;
+const script = JSON.parse(readFileSync(`${DIR}script-v4.json`, "utf8")).scenes;
 const len = (id) => LEAD + sec(`${DIR}audio/${id}.wav`) + TAIL + (script.find((s) => s.id === id).hold ?? 0);
 const L0 = len("d0-promise"), L1 = len("d1-noise"), L2 = len("d2-explore");
-const r = (f) => sec(`${DIR}v3fast/${f}.wav`);
+const r = (f) => sec(`${DIR}v4fast/${f}.wav`);
 const T = {
   a: { bury: LEAD + r("d0-promise__00") + 0.6 - 0.15 },
-  b: { start: L0, calm: L0 + LEAD + r("d1-noise__00") + 0.3 + r("d1-noise__01") + 0.3 - 0.08 },
+  b: { start: L0, calm: L0 }, // the noise is its own clip (build_noise.py)
   c: { start: L0 + L1, end: L0 + L1 + L2 },
 };
 console.log(JSON.stringify(T), "total", (L0 + L1 + L2).toFixed(2));

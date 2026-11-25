@@ -1,12 +1,12 @@
 """The noise: real feeds (YouTube Shorts, Instagram Reels, a page of YouTube clickbait), cut faster
-and faster under the narration, then a hard cut to a blank, quiet canvas on its last line."""
+and faster under the narration, to a hard cut into the next scene."""
 import json, os, subprocess
 D = os.path.dirname(os.path.abspath(__file__))
 sec = lambda f: float(subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",f],capture_output=True,text=True).stdout)
 LEAD = 0.45
-hold = next(s["hold"] for s in json.load(open(f"{D}/script-v3.json"))["scenes"] if s["id"] == "d1-noise")
+hold = next(s["hold"] for s in json.load(open(f"{D}/script-v4.json"))["scenes"] if s["id"] == "d1-noise")
 L = LEAD + sec(f"{D}/audio/d1-noise.wav") + 0.65 + hold
-calm = LEAD + sec(f"{D}/v3fast/d1-noise__00.wav") + 0.3 + sec(f"{D}/v3fast/d1-noise__01.wav") + 0.3 - 0.06
+calm = L
 R = f"{D}/real"
 # Where the vertical video sits in each desktop recording, and the stretch of it worth using.
 SRC = {
@@ -52,12 +52,8 @@ while t < calm - 0.05:
     segs.append(out)
     t += d
     k += 1
-# The quiet: a blank canvas until the scene ends.
-out = f"{D}/noise/calm.mp4"
-subprocess.run(["ffmpeg","-y","-loglevel","error","-f","lavfi","-i",f"color=c=0xf6f5f1:s=1920x1080:r=30:d={L - t + 0.5:.3f}","-c:v","libx264","-preset","veryfast","-crf","18","-pix_fmt","yuv420p",out],check=True)
-segs.append(out)
 with open(f"{D}/noise/list.txt","w") as fh:
     for s in segs: fh.write(f"file '{s}'\n")
 subprocess.run(["ffmpeg","-y","-loglevel","error","-f","concat","-safe","0","-i",f"{D}/noise/list.txt","-c:v","libvpx-vp9","-crf","20","-b:v","0","-deadline","realtime","-cpu-used","8",f"{D}/clips/d1-noise.webm"],check=True)
 m = json.load(open(f"{D}/clips/marks.json")); m["d1-noise"] = 0; json.dump(m, open(f"{D}/clips/marks.json","w"), indent=2)
-print(f"noise: {k} cuts to {calm:.2f}s, then quiet to {L:.2f}s")
+print(f"noise: {k} cuts, {L:.2f}s")
