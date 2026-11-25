@@ -17,7 +17,9 @@ Playwright's ffmpeg (`PLAYWRIGHT_BROWSERS_PATH=$PWD/pw`):
 2. `python3 lines_v4.py`, then on the TTS box: Breeze for the narration (Oxford voice) and the
    questions ("you" voice), Kokoro (`af_heart`) for the librarian's answers.
    `python3 build_v4_audio.py` joins each scene's lines and builds the call's track and schedule.
-3. `node opshots.mjs` (Wikipedia screenshots for the opener), `node rec_op.mjs` (the promise and the
+3. `python3 build_first.py` (the opening: 1994 web footage, DEC's "Glimpse of the Future" from 0:43,
+   its narrator for four seconds and then ours over it; the video goes in `first/src.mp4`),
+   `node opshots.mjs` (Wikipedia screenshots for the opener), `node rec_op.mjs` (the promise and the
    tabs, from `op.html`), `node rec_real.mjs` then `python3 build_noise.py` (the noise: real YouTube
    Shorts, Instagram Reels and YouTube clickbait, recorded logged out and cut faster and faster),
    `node record_v4.mjs` (the canvas scenes), `node endcard.mjs`.

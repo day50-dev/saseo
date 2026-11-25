@@ -1,12 +1,34 @@
 {
  "title": "Librarian: a place to think",
  "scenes": [
-  {"id": "d0-promise", "clip": "op", "hold": 0.3},
-  {"id": "d1-noise", "hold": 0.3},
-  {"id": "d2-explore", "clip": "op", "hold": 0.3},
-  {"id": "d3-call", "hold": 0},
-  {"id": "d4-space", "hold": 0.6},
-  {"id": "d5-close", "hold": 0.3},
-  {"id": "d6-end", "hold": 0}
+  {
+   "id": "d0-promise",
+   "hold": 0.2
+  },
+  {
+   "id": "d1-noise",
+   "hold": 0.3
+  },
+  {
+   "id": "d2-explore",
+   "clip": "op",
+   "hold": 0.3
+  },
+  {
+   "id": "d3-call",
+   "hold": 0
+  },
+  {
+   "id": "d4-space",
+   "hold": 0.6
+  },
+  {
+   "id": "d5-close",
+   "hold": 0.3
+  },
+  {
+   "id": "d6-end",
+   "hold": 0
+  }
  ]
 }
