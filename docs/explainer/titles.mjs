@@ -56,7 +56,7 @@ const cards = {
   "11-close": `${base}
     <div class="center">
       <h1>Librarian</h1>
-      <h2 style="font-weight:500">Bring the thing that stopped you.</h2>
+      <h2 style="font-weight:500">Find your path to understanding.</h2>
       <p>Free · open · no account needed</p>
       <p style="font-size:44px;color:#2b5797;font-weight:600">librarian.9ol.es</p>
     </div>`,

@@ -13,7 +13,7 @@ import { snap } from "./snap.ts";
 import { exampleNotebook } from "./notebooks.ts";
 import { bestRead, editVersion, hashText, pageVersion, readOf, remember } from "./pagecache.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
-import { searchArxiv } from "./arxiv.ts";
+import { arxivPaper, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { readPage as readWebPage } from "./pages.ts";
 import { runSearch } from "./providers.ts";
 import { partialSvg, sanitizeSvg, svgLabels } from "./svg.ts";
@@ -306,7 +306,17 @@ async function search(query: string): Promise<FoundSource[]> {
   if (!enabled.length) return [];
   const found = mergeHits(await runSearch(config, query, enabled, 4));
   // A PDF often comes back titled with its own address; give it a title a person would recognize.
-  return Promise.all(found.map(async (f) => (untitled(f) ? { ...f, title: await pdfTitle(f.url) } : f)));
+  return Promise.all(
+    found.map(async (f) => {
+      // arXiv knows its papers' titles; a PDF's first line there is only arXiv's stamp.
+      const arxiv = /arxiv\.org\//.test(f.url) && (untitled(f) || /^arXiv:/i.test(f.title)) ? parseArxivId(f.url) : null;
+      if (arxiv) {
+        const paper = await arxivPaper(arxiv).catch(() => null);
+        if (paper?.title) return { ...f, title: `${paper.title} (arXiv)` };
+      }
+      return untitled(f) ? { ...f, title: await pdfTitle(f.url) } : f;
+    }),
+  );
 }
 
 /** A hit whose "title" is only its address ("math.aalto.fi/~kk/files/Hopf-lecture_notes.pdf"). */
