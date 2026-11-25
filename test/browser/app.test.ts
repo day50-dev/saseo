@@ -476,6 +476,29 @@ describe("F-SET: videos from a set play on the canvas", () => {
     assert.equal(await p.locator(`${cardSel("vs")} iframe`).count(), 0, "not played inside the tile");
     await p.context().close();
   });
+
+  test("several videos played one after another each get their own space", async () => {
+    const p = await open("/c/vids0001");
+    await p.route(/youtube|ytimg/, (r) => r.abort());
+    const asked: { input: string; x: number; y: number }[] = [];
+    await p.route("**/api/canvases/vids0001/sources", async (r) => {
+      const b = r.request().postDataJSON();
+      asked.push(b);
+      // Slow to arrive, so the next is asked for before this one is on the canvas.
+      await new Promise((ok) => setTimeout(ok, 800));
+      const id = `vnew000${asked.length}`;
+      await r.fulfill({ json: { image: { kind: "image", id, asset: "", name: id, x: b.x, y: b.y, w: 720, h: 405, naturalW: 1280, naturalH: 720, video: { videoId: b.input.slice(-11), title: id, channel: "", duration: 100, embeddable: true } } } });
+    });
+    const plays = p.locator(`${cardSel("vs")} .set-tile .set-actions`).getByRole("button", { name: "▶ Play on the canvas" });
+    await plays.first().waitFor();
+    const n = Math.min(3, await plays.count());
+    assert.ok(n >= 2, "the set has at least two videos");
+    for (let i = 0; i < n; i++) await plays.nth(i).click();
+    await until(() => asked.length === n, 5000, "every video to be added");
+    const ys = asked.map((a) => a.y).sort((a, b) => a - b);
+    for (let i = 1; i < ys.length; i++) assert.ok(ys[i] - ys[i - 1] >= 405, `stacked apart, not on top of each other: ${ys}`);
+    await p.context().close();
+  });
 });
 
 describe("F-DIAGRAM: nothing drawn is cut off", () => {

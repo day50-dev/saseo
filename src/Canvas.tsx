@@ -1,6 +1,6 @@
 import { GoalsPanel } from "./GoalsPanel.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, type Rect, type RegionItem, VIDEO_WIDTH } from "../shared/canvas.ts";
 import { Note } from "./Note.tsx";
 import { Card, type Side } from "./Card.tsx";
 import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
@@ -410,17 +410,29 @@ export function Canvas({ canvasId }: { canvasId: string }) {
    * First free y at or below `wanted` for a new card at x. The new card is assumed to be as tall
    * as the reserve, since it hasn't been written yet. Placement is decided once and never revisited.
    */
-  const slotY = (x: number, wanted: number) => {
+  // Spots promised to things still on their way (a video asked for while another loads), so the
+  // next one placed doesn't land on top of them.
+  const promised = useRef<{ key: string; id?: string; x: number; y: number; w: number; h: number }[]>([]);
+  // Once the item itself is drawn, it holds its own space.
+  useEffect(() => {
+    promised.current = promised.current.filter((p) => !p.id || !shown.some((i) => i.id === p.id));
+  });
+  const slotY = (x: number, wanted: number, tall = PENDING_HEIGHT) => {
     let y = wanted;
-    const column = cards
+    const column = [
+      ...cards.map((c) => ({ x: c.x, w: c.w, y: c.y, h: cardHeight(c) })),
+      ...images.map((i) => ({ x: i.x, w: i.w, y: i.y, h: i.h })),
+      ...notes.map((n) => ({ x: n.x, w: n.w, y: n.y, h: n.h ?? 200 })),
+      ...promised.current,
+    ]
       .filter((c) => c.x < x + CARD_WIDTH && x < c.x + c.w)
       .sort((a, b) => a.y - b.y);
     let moved = true;
     while (moved) {
       moved = false;
       for (const c of column) {
-        const bottom = c.y + cardHeight(c);
-        if (y < bottom + STACK_GAP && y + PENDING_HEIGHT > c.y - STACK_GAP) {
+        const bottom = c.y + c.h;
+        if (y < bottom + STACK_GAP && y + tall > c.y - STACK_GAP) {
           y = bottom + STACK_GAP;
           moved = true;
         }
@@ -493,9 +505,17 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       players.get(there.id)?.playVideo();
       return;
     }
+    // Asked for again while it's still loading: once is enough.
+    if (promised.current.some((p) => p.key === videoId)) return;
     const x = from.x + from.w + GAP;
-    const id = await startFrom(url, { x, y: slotY(x, from.y) });
-    if (id) setAutoPlayId(id);
+    const h = Math.round((VIDEO_WIDTH * 9) / 16) + 120;
+    const spot: (typeof promised.current)[number] = { key: videoId, x, y: slotY(x, from.y, h), w: VIDEO_WIDTH, h };
+    promised.current.push(spot);
+    const id = await startFrom(url, { x, y: spot.y }).catch(() => undefined);
+    if (id) {
+      spot.id = id;
+      setAutoPlayId(id);
+    } else promised.current = promised.current.filter((p) => p !== spot);
   };
 
   // ---- Papers from arXiv ----
