@@ -3,6 +3,7 @@
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import type { ReactNode } from "react";
+import { dropStrayCloses, repairTex } from "../shared/tex.ts";
 
 const cache = new Map<string, string | null>();
 
@@ -27,7 +28,9 @@ function toHtml(tex: string, display: boolean): string | null {
   const key = `${display ? "D" : "I"}${tex}`;
   if (!cache.has(key)) {
     const bare = stripDelims(tex);
-    cache.set(key, render(tex, display) ?? (bare !== tex.trim() ? render(bare, display) : null));
+    // As written; then without stray delimiters; then mended where KaTeX is stricter than LaTeX.
+    const attempt = (t: string) => render(t, display) ?? (repairTex(t) !== t ? render(repairTex(t), display) : null);
+    cache.set(key, attempt(tex) ?? (bare !== tex.trim() ? attempt(bare) : null));
   }
   return cache.get(key)!;
 }
@@ -52,11 +55,11 @@ export function withMath(text: string, plain: (s: string) => ReactNode = (s) => 
   let last = 0;
   for (const m of text.matchAll(MATH)) {
     if (m[4] !== undefined && !dollarMath(m[4])) continue;
-    if (m.index > last) out.push(<span key={`t${last}`}>{plain(text.slice(last, m.index))}</span>);
+    if (m.index > last) out.push(<span key={`t${last}`}>{plain(dropStrayCloses(text.slice(last, m.index)))}</span>);
     out.push(<Tex key={`m${m.index}`} tex={(m[1] ?? m[2] ?? m[3] ?? m[4]).trim()} display={m[2] !== undefined || m[3] !== undefined} />);
     last = m.index + m[0].length;
   }
-  if (last < text.length) out.push(<span key={`t${last}`}>{plain(text.slice(last))}</span>);
+  if (last < text.length) out.push(<span key={`t${last}`}>{plain(dropStrayCloses(text.slice(last)))}</span>);
   return out;
 }
 
