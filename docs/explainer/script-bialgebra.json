@@ -4,32 +4,37 @@
     {
       "id": "b1-page",
       "say": "This is a real Wikipedia page. Every sentence is correct, and almost no one can read it.",
-      "hold": 6
+      "hold": 4
     },
     {
       "id": "b2-shapes",
-      "say": "Give Librarian the link. It reads the whole page and redraws it: why the idea exists, what it is, the parts it's made of. Nothing is left out, and every piece points back to the paragraph it came from.",
-      "hold": 3
+      "say": "Give Librarian the link, and it redraws the whole page as shapes: why the idea exists, what it is, the parts it's made of. Each piece points back to the paragraph it came from.",
+      "hold": 2
     },
     {
       "id": "b3-sections",
       "say": "The rest of the page follows, section by section, as diagrams instead of walls of notation.",
-      "hold": 4
-    },
-    {
-      "id": "b4-grow",
-      "say": "Anything still unclear, point at it and ask why, for the steps, or for an example. The answer grows right there.",
       "hold": 3
     },
     {
+      "id": "c1-lecture",
+      "say": "But most of us meet ideas like this in a lecture. Stop it where it loses you, and box the part you don't follow.",
+      "hold": 6
+    },
+    {
+      "id": "c2-call",
+      "say": "Then call the librarian. Point at anything, and ask. (Then the call itself: three questions, three answers.)",
+      "hold": 0
+    },
+    {
       "id": "b5-sources",
-      "say": "And it doesn't make things up. It goes looking for what people have already written and taught: lecture notes from university courses, talks by the people who work on this, the papers themselves. Each is credited and linked, and hangs from the piece it explains.",
+      "say": "And it doesn't make things up. The notebook it found is one someone actually wrote and ran. Around it: lecture notes from university courses, talks by the people who work on this, and the papers themselves. Each is credited and linked.",
       "hold": 2
     },
     {
       "id": "b6-whole",
-      "say": "The same page. The same ideas.",
-      "hold": 5
+      "say": "One page, one lecture, one conversation, grown into one explanation.",
+      "hold": 4
     },
     {
       "id": "b7-close",

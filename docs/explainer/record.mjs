@@ -528,15 +528,17 @@ const scenes = {
     const ids = await bialgebraOpen(page);
     const m = ids.bialgebraMade;
     const card = (id) => `.card-item[data-card-id="${id}"]`;
-    // The page card on the left, its finds beside it.
-    await bring(page, card(m.links), 900, 90, 10);
+    // The notebook the call found, then what hangs from the page: course notes, lectures, papers.
+    await bring(page, card(ids.lectureNotebook), 520, 90, 10);
     await sleep(600);
     start();
-    await sleep(5500);
+    await sleep(4200);
+    await bring(page, card(m.links), 900, 90, 1500);
+    await sleep(4300);
     await bring(page, card(m.videos), 900, 90, 1500);
-    await sleep(4500);
+    await sleep(3600);
     await bring(page, card(m.papers), 900, 90, 1500);
-    await sleep(5000);
+    await sleep(4500);
   },
 
   // The whole tree, and the page it came from.
@@ -545,14 +547,151 @@ const scenes = {
     await bring(page, `.card-item[data-card-id="${ids.bialgebraCard}"]`, 700, 90, 10);
     await overlay(page);
     const wiki = readFileSync(`${DIR}shots/02-climb.png`).toString("base64");
-    await page.addStyleTag({ content: `#fx-card { inset: auto; left: 40px; top: 140px; width: 760px; height: 428px; border-radius: 10px; box-shadow: 0 18px 50px rgba(0,0,0,.25); }` });
+    await page.addStyleTag({ content: `#fx-card { inset: auto; left: 40px; bottom: 40px; width: 560px; height: 315px; border-radius: 10px; box-shadow: 0 18px 50px rgba(0,0,0,.25); }` });
     await page.evaluate((png) => (document.getElementById("fx-card").style.backgroundImage = `url(data:image/png;base64,${png})`), wiki);
     await sleep(600);
     start();
-    await zoom(page, { x: 1300, y: 300 }, 9, 2500);
+    await zoom(page, { x: 700, y: 200 }, 13, 3000);
     await sleep(600);
     await page.evaluate(() => document.getElementById("fx-card").classList.add("fx-on"));
     await sleep(6000);
+  },
+
+  // A lecture on the same canvas, stopped where it loses you; the board's definition boxed and explained.
+  async "c1-lecture"(page) {
+    const ids = await bialgebraOpen(page);
+    const F = ids.lectureFrame;
+    const LC = `.card-item[data-card-id="${ids.lectureCard}"]`;
+    await page.addStyleTag({
+      content: `
+        [data-image-id="${F}"] { transition: opacity 700ms; }
+        body:not(.fx-frame) [data-image-id="${F}"] { opacity: 0 !important; }
+        body:not(.fx-region) .region { opacity: 0 !important; }
+        ${LC} { transition: opacity 600ms; }
+        body:not(.fx-card) ${LC}, body:not(.fx-card) .connectors { opacity: 0 !important; }
+        ${LC} .grown, ${LC} .chat, ${LC} .clarify, ${LC} .look, .card-item[data-card-id="${ids.lectureNotebook}"] { display: none !important; }
+        ${LC} .sem-section { transition: opacity 600ms, transform 600ms; }
+        body:not(.fx-why) ${LC} .facet-why, body:not(.fx-what) ${LC} .facet-what,
+        body:not(.fx-parts) ${LC} .facet-parts, body:not(.fx-here) ${LC} .facet-here, body:not(.fx-here) ${LC} .sem-aside { opacity: 0; transform: translateY(12px); }
+      `,
+    });
+    // 100%, so the frame and its card sit side by side.
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /^\d+%$/.test(b.textContent.trim()))?.click());
+    await sleep(600);
+    await zoom(page, { x: 40, y: 100 }, -2, 300);
+    await bring(page, ".video-item", 40, 90, 10);
+    await overlay(page);
+    await sleep(600);
+    start();
+    await sleep(1400);
+    await hover(page, ".video-stop", 900);
+    await sleep(900);
+    await page.evaluate(() => document.body.classList.add("fx-frame"));
+    await sleep(900);
+    await bring(page, `img[data-image-id="${F}"]`, 30, 110, 1300);
+    await sleep(500);
+    // The box, drawn over the definition's first line (in the frame's own pixels).
+    const fb = await box(page, `img[data-image-id="${F}"]`);
+    const k = fb.width / 1920;
+    const reg = { x: fb.x + 110 * k, y: fb.y + 245 * k, w: 1150 * k, h: 95 * k };
+    await cursor(page, reg.x - 2, reg.y - 2, 700);
+    await sleep(750);
+    await page.evaluate(([x, y]) => Object.assign(document.getElementById("fx-box").style, { display: "block", left: `${x}px`, top: `${y}px`, width: "0px", height: "0px" }), [reg.x - 2, reg.y - 2]);
+    for (let i = 1; i <= 20; i++) {
+      const w = (reg.w + 4) * (i / 20);
+      const h = (reg.h + 4) * Math.min(1, (i / 20) * 1.4);
+      await page.evaluate(([w, h]) => Object.assign(document.getElementById("fx-box").style, { width: `${w}px`, height: `${h}px` }), [w, h]);
+      await page.evaluate(([x, y]) => (document.getElementById("fx-cursor").style.cssText += `;--t:0ms;transform:translate(${x}px,${y}px)`), [reg.x - 2 + w, reg.y - 2 + h]);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    await sleep(300);
+    await page.evaluate(() => (document.getElementById("fx-box").style.display = "none"));
+    const body = (c) => page.evaluate((c) => document.body.classList.add(c), c);
+    await body("fx-region");
+    await cursor(page, reg.x + reg.w + 60, reg.y + 220, 600);
+    await body("fx-card");
+    for (const c of ["fx-why", "fx-what", "fx-parts", "fx-here"]) {
+      await sleep(900);
+      await body(c);
+    }
+    await sleep(4000);
+  },
+
+  // The call: asked aloud while pointing at pieces of the lecture's card; it answers, and the
+  // canvas grows. The real call (call3.json) is replayed in time with the call's audio.
+  async "c2-call"(page) {
+    const ids = await bialgebraOpen(page);
+    const LC = `.card-item[data-card-id="${ids.lectureCard}"]`;
+    const NB = `.card-item[data-card-id="${ids.lectureNotebook}"]`;
+    const CALL3 = JSON.parse(readFileSync(`${DIR}call3.json`, "utf8")).turns;
+    const S = JSON.parse(readFileSync(`${DIR}call3-schedule.json`, "utf8"));
+    const shapes = ["why", "example", "then"];
+    await page.addStyleTag({
+      content: `
+        ${LC} .chat, ${LC} .clarify, ${LC} .look { display: none !important; }
+        ${shapes.map((sh, i) => `body:not(.fx-g${i + 1}) ${LC} .grown-${sh}`).join(", ")}, body:not(.fx-nb) ${NB} { display: none !important; }
+      `,
+    });
+    let turn = 0;
+    await page.route("**/call", async (route) => {
+      const i = turn++;
+      const t = CALL3[i] ?? CALL3.at(-1);
+      const a = S[`a${i + 1}`];
+      // Answered as it was: spoken from when its audio starts.
+      const wait = t0 + a.start * 1000 - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      await route.fulfill({ json: { say: t.reply.short ?? t.reply.say, did: t.reply.did } });
+      await page.evaluate((n) => document.body.classList.add(`fx-g${n}`), i + 1);
+    });
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /^\d+%$/.test(b.textContent.trim()))?.click());
+    await sleep(600);
+    await zoom(page, { x: 40, y: 100 }, -2, 300);
+    await bring(page, `img[data-image-id="${ids.lectureFrame}"]`, -500, 110, 10);
+    await sleep(800);
+    start();
+    const t0 = Date.now();
+    const at = async (t) => {
+      const w = t0 + t * 1000 - Date.now();
+      if (w > 0) await new Promise((r) => setTimeout(r, w));
+    };
+    await hover(page, ".call-btn", 600);
+    await page.click(".call-btn");
+    const sayIt = async (text, from, to) => {
+      const words = text.split(" ");
+      await page.evaluate(() => window.__rec?.onspeechstart?.());
+      for (let i = 1; i <= words.length; i++) {
+        await at(from + ((to - from) * i) / (words.length + 1));
+        await page.evaluate((t) => window.__rec.onresult({ resultIndex: 0, results: [Object.assign({ 0: { transcript: t } }, { isFinal: false })] }), words.slice(0, i).join(" "));
+      }
+      await at(to);
+      await page.evaluate((t) => window.__rec.onresult({ resultIndex: 0, results: [Object.assign({ 0: { transcript: t } }, { isFinal: true })] }), text);
+    };
+    const point = async (key, t) => {
+      const b = await box(page, `${LC} [data-a="${key}"]`);
+      if (!b) return;
+      await page.mouse.move(b.x + Math.min(120, b.width / 2), b.y + b.height / 2, { steps: 25 });
+      await at(t);
+    };
+    for (let i = 0; i < CALL3.length; i++) {
+      const q = S[`q${i + 1}`];
+      const key = CALL3[i].pointing.key;
+      // Bring the piece into a clear part of the frame, then point at it while asking.
+      await at(q.start - 1.6);
+      const pb = await box(page, `${LC} [data-a="${key}"]`);
+      if (pb && (pb.x > 1300 || pb.y > 600 || pb.y < 120)) await glide(page, { x: pb.x, y: pb.y }, { x: Math.min(pb.x, 900), y: 300 }, 700);
+      await point(key, q.start);
+      await sayIt(CALL3[i].text, q.start, q.end);
+      if (i === 1) {
+        // The example it found is a notebook: shown, beside the card, while it's described.
+        await at(S.a2.start + 3.5);
+        await page.evaluate(() => document.body.classList.add("fx-nb"));
+        await sleep(400);
+        const nb = await box(page, NB);
+        if (nb) await glide(page, { x: nb.x, y: nb.y }, { x: 900, y: 120 }, 1400);
+        await at(S.a2.end - 1);
+      }
+    }
+    await at(S.a3.end + 0.6);
   },
 
   // The opening, one continuous shot over the narration of scenes 01 to 04: the slide and the
