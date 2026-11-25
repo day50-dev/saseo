@@ -116,6 +116,14 @@ async function zoom(page, at, ticks, ms) {
   }
 }
 
+/** Opens the bialgebra canvas for a shot, without the main card's conversation. */
+async function bialgebraOpen(page) {
+  const ids = JSON.parse(readFileSync(`${DIR}canvases.json`, "utf8"));
+  await open(page, ids.bialgebra);
+  await page.addStyleTag({ content: `.card-item[data-card-id="${ids.bialgebraCard}"] .chat { display: none !important; } .start-dock { transform: scale(1.7); transform-origin: top center; }` });
+  return ids;
+}
+
 const box = (page, sel) => page.locator(sel).first().boundingBox();
 
 /** Brings an element's top-left to a screen point, gliding. */
@@ -385,6 +393,166 @@ const scenes = {
       await chip.click();
     }
     await sleep(5000);
+  },
+
+  // ---- The bialgebra film: one Wikipedia page, made readable ----
+  // (bialgebraOpen hides the main card's conversation, which only shows how the canvas was built.)
+
+  // The page as anyone sees it, then closer, read along its first paragraph.
+  async "b1-page"(page) {
+    await page.goto("https://en.wikipedia.org/wiki/Bialgebra", { waitUntil: "networkidle" });
+    await page.evaluate(() => document.querySelectorAll("#siteNotice, #centralNotice").forEach((e) => e.remove()));
+    await page.addStyleTag({ content: "html { transform-origin: 0 0; transition: transform 2600ms cubic-bezier(.4,0,.2,1); }" });
+    const at = await page.evaluate(() => {
+      const p = [...document.querySelectorAll("#mw-content-text .mw-parser-output p")].find((p) => p.textContent.includes("bialgebra"));
+      const r = p.getBoundingClientRect();
+      const f = [...document.querySelectorAll("h2")].find((h) => /Formal definition/.test(h.textContent)).getBoundingClientRect();
+      return { x: r.x, y: r.y + scrollY, f: f.y + scrollY };
+    });
+    const k = 1.6;
+    const look = (y) => page.evaluate(([k, x, y]) => (document.documentElement.style.transform = `translate(${x}px, ${y}px) scale(${k})`), [k, 70 - at.x * k, y]);
+    await sleep(800);
+    start();
+    await sleep(2400);
+    // Closer on the opening paragraph; then down into the formal definition and its diagrams.
+    await look(250 - at.y * k);
+    await sleep(4200);
+    await look(90 - at.f * k);
+    await sleep(3800);
+    await look(90 - (at.f + 330) * k);
+    await sleep(6000);
+  },
+
+  // The link given to Librarian; the page drawn as shapes, section by section of the overview.
+  async "b2-shapes"(page) {
+    const ids = await bialgebraOpen(page);
+    const C = `.card-item[data-card-id="${ids.bialgebraCard}"]`;
+    await page.addStyleTag({
+      content: `
+        .card-item:not([data-card-id="${ids.bialgebraCard}"]), .connectors { opacity: 0 !important; }
+        ${C} .page-sections, ${C} .grown { display: none !important; }
+        ${C} .sem-section, ${C} .sem-title, ${C} .card-head { transition: opacity 700ms, transform 700ms; }
+        body:not(.fx-in) ${C} { opacity: 0; }
+        ${C} { transition: opacity 600ms; }
+        body:not(.fx-why) ${C} .facet-why, body:not(.fx-what) ${C} .facet-what,
+        body:not(.fx-parts) ${C} .facet-parts, body:not(.fx-here) ${C} .facet-here, body:not(.fx-here) ${C} .sem-aside { opacity: 0; transform: translateY(12px); }
+      `,
+    });
+    await bring(page, C, 470, 90, 10);
+    await sleep(600);
+    start();
+    await sleep(500);
+    // Given the link: typed into Add.
+    const add = page.locator("button", { hasText: "Add" }).first();
+    await add.click();
+    await sleep(500);
+    await page.keyboard.type("https://en.wikipedia.org/wiki/Bialgebra", { delay: 45 });
+    await sleep(900);
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => document.querySelector(".start-dock")?.remove());
+    const body = (cls) => page.evaluate((c) => document.body.classList.add(c), cls);
+    await body("fx-in");
+    for (const [cls, ms] of [["fx-why", 2600], ["fx-what", 2600], ["fx-parts", 3200], ["fx-here", 2400]]) {
+      await sleep(ms * 0.4);
+      await body(cls);
+      if (cls === "fx-parts") {
+        const pb = await box(page, `${C} .facet-parts`);
+        if (pb && pb.y > 560) await glide(page, { x: pb.x, y: pb.y }, { x: pb.x, y: 260 }, 1400);
+      }
+      await sleep(ms * 0.6);
+    }
+    await sleep(3000);
+  },
+
+  // Down through the whole page, section by section.
+  async "b3-sections"(page) {
+    const ids = await bialgebraOpen(page);
+    const C = `.card-item[data-card-id="${ids.bialgebraCard}"]`;
+    await page.addStyleTag({ content: `.card-item:not([data-card-id="${ids.bialgebraCard}"]), .connectors { opacity: 0 !important; } ${C} .grown:not(.page-sections .grown) { display: none !important; }` });
+    await page.evaluate((c) => document.querySelectorAll(`${c} details.page-section`).forEach((d) => (d.open = true)), C);
+    await sleep(800);
+    const secs = await box(page, `${C} .page-sections`);
+    await glide(page, { x: secs.x, y: secs.y }, { x: 470, y: 260 }, 10);
+    await sleep(600);
+    start();
+    await sleep(1000);
+    for (const n of [2, 3, 4, 5, 6]) {
+      const b = await box(page, `${C} .page-section:nth-of-type(${n})`);
+      if (b) await glide(page, { x: b.x, y: b.y }, { x: 470, y: 110 }, 1800);
+      await sleep(500);
+    }
+    await sleep(3000);
+  },
+
+  // A piece still unclear: its + menu, close up; the example it grows.
+  async "b4-grow"(page) {
+    const ids = await bialgebraOpen(page);
+    const C = `.card-item[data-card-id="${ids.bialgebraCard}"]`;
+    await page.addStyleTag({
+      content: `.card-item:not([data-card-id="${ids.bialgebraCard}"]), .connectors { opacity: 0 !important; }
+        body:not(.fx-grown) ${C} .grown:not(.page-sections .grown) { display: none !important; }`,
+    });
+    const piece = page.locator(`${C} [data-a="part-3"]`);
+    const b = await piece.boundingBox();
+    await glide(page, { x: b.x, y: b.y }, { x: 700, y: 300 }, 10);
+    await sleep(600);
+    start();
+    await sleep(400);
+    await piece.hover();
+    await sleep(500);
+    const pb = await piece.locator(".grow-btn").first().boundingBox();
+    const anchor = { x: Math.min(pb.x, 760), y: pb.y - 80 };
+    await zoom(page, anchor, -5, 1200);
+    const pz = await piece.locator(".grow-btn").first().boundingBox();
+    if (pz && (pz.x > 1000 || pz.y > 500)) await glide(page, { x: pz.x, y: pz.y }, { x: Math.min(pz.x, 1000), y: Math.min(pz.y, 300) }, 700);
+    await sleep(300);
+    await piece.hover();
+    await sleep(200);
+    await piece.locator(".grow-btn").first().click();
+    await sleep(800);
+    for (const label of ["Why?", "Steps", "For example"]) {
+      await hover(page, `.grow-shapes button:text-is("${label}")`, 400);
+      await sleep(650);
+    }
+    // Closed with its own +, as a reader would; then the example it grows.
+    await piece.locator(".grow-btn").first().click();
+    await page.evaluate(() => document.body.classList.add("fx-grown"));
+    await sleep(500);
+    const g = await box(page, `${C} .grown`);
+    if (g) await glide(page, { x: g.x, y: g.y }, { x: Math.max(80, Math.min(g.x, 700)), y: 260 }, 1200);
+    await sleep(3500);
+  },
+
+  // What people already wrote and taught, hung from the page: course notes, lectures, papers.
+  async "b5-sources"(page) {
+    const ids = await bialgebraOpen(page);
+    const m = ids.bialgebraMade;
+    const card = (id) => `.card-item[data-card-id="${id}"]`;
+    // The page card on the left, its finds beside it.
+    await bring(page, card(m.links), 900, 90, 10);
+    await sleep(600);
+    start();
+    await sleep(5500);
+    await bring(page, card(m.videos), 900, 90, 1500);
+    await sleep(4500);
+    await bring(page, card(m.papers), 900, 90, 1500);
+    await sleep(5000);
+  },
+
+  // The whole tree, and the page it came from.
+  async "b6-whole"(page) {
+    const ids = await bialgebraOpen(page);
+    await bring(page, `.card-item[data-card-id="${ids.bialgebraCard}"]`, 700, 90, 10);
+    await overlay(page);
+    const wiki = readFileSync(`${DIR}shots/02-climb.png`).toString("base64");
+    await page.addStyleTag({ content: `#fx-card { inset: auto; left: 40px; top: 140px; width: 760px; height: 428px; border-radius: 10px; box-shadow: 0 18px 50px rgba(0,0,0,.25); }` });
+    await page.evaluate((png) => (document.getElementById("fx-card").style.backgroundImage = `url(data:image/png;base64,${png})`), wiki);
+    await sleep(600);
+    start();
+    await zoom(page, { x: 1300, y: 300 }, 9, 2500);
+    await sleep(600);
+    await page.evaluate(() => document.getElementById("fx-card").classList.add("fx-on"));
+    await sleep(6000);
   },
 
   // The opening, one continuous shot over the narration of scenes 01 to 04: the slide and the

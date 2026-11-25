@@ -33,7 +33,8 @@ into = {}  # how far into a shared clip each scene starts
 for i, sc in enumerate(scenes):
     sid = sc["id"]
     wav = os.path.join(DIR, "audio", f"{sid}.wav")
-    length = LEAD + duration(wav) + TAIL
+    # "hold": seconds more on the picture after the words, for a shot that needs to be seen.
+    length = LEAD + duration(wav) + TAIL + float(sc.get("hold", 0))
     seg = os.path.join(DIR, "segments", f"{sid}.mp4")
     shared = sc.get("clip")
     png = os.path.join(DIR, "shots", f"{sid}.png")
