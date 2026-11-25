@@ -13,12 +13,15 @@ Playwright's ffmpeg (`PLAYWRIGHT_BROWSERS_PATH=$PWD/pw`):
 2. `python3 lines_v3.py`, then on the TTS box: Breeze for the narration (Oxford voice) and the
    questions ("you" voice), Kokoro (`af_heart`) for the librarian's answers.
    `python3 build_v3_audio.py` joins each scene's lines and builds the call's track and schedule.
-3. `node opshots.mjs` (Wikipedia screenshots for the opener), `node rec_op.mjs` (the opener, from
-   `op.html`), `node record_v3.mjs` (the canvas scenes), `node endcard.mjs`.
-4. `SCRIPT=script-v3.json python3 ../compose.py out.mp4`, then loudness to −16 LUFS.
+3. `node opshots.mjs` (Wikipedia screenshots for the opener), `node rec_op.mjs` (the promise and the
+   tabs, from `op.html`), `node rec_real.mjs` then `python3 build_noise.py` (the noise: real YouTube
+   Shorts, Instagram Reels and YouTube clickbait, recorded logged out and cut faster and faster),
+   `node record_v3.mjs` (the canvas scenes), `node endcard.mjs`.
+4. `SCRIPT=script-v3.json python3 compose.py out.mp4` (this folder's compose: a shared clip runs on
+   the film's clock, so the noise can sit between the opener's scenes), then loudness to −16 LUFS.
 
 **Clock strips.** Screen recording falls behind when the page is busy (the opener ran 4 s long over
 36 s). Every page here draws its own clock as a strip of squares under the picture; `retime.py` reads
 each frame's stamp and rebuilds the clip at 30 fps on the page's clock, cropping the strip off.
 
-The opener is original: generic feeds, reels, thumbnails and pop-ups, no real app's look or logo.
+The narration runs 8% faster than recorded and the call's voices 5% (atempo, pitch kept).

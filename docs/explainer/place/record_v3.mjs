@@ -262,12 +262,14 @@ const scenes = {
     if (db) await glide(page, { x: db.x, y: db.y }, { x: 520, y: 70 }, 1600);
     await body("fx-draw");
     await cursor(page, 1700, 950, 900);
-    await at(43.4);
+    await at(S.a3.end + 3.6);
   },
 
   // The space: connected, notes, demonstrations, goals, and coming back later, one beat each.
   async "d4-space"(page, go) {
     const len = lengthOf("d4-space");
+    // Beats were set against the first narration (11.2 s); scaled to this one.
+    const K4 = sec(`${DIR}audio/d4-space.wav`) / 11.2;
     await open(page, 100);
     await addCursor(page);
     // The lecture (the librarian's own copy), playing from a minute in, from the start of the scene.
@@ -292,35 +294,35 @@ const scenes = {
       if (w > 0) await sleep(w);
     };
     // "Find how things are connected"
-    await at(0.6);
+    await at(0.6 * K4);
     await cursorTo(page, `.card-item[data-card-id="${ids.hamRelation}"] .card-head`, 900);
     // "take notes"
-    await at(2.3);
+    await at(2.3 * K4);
     const nb = await box(page, ".note-item");
     if (nb) await glide(page, { x: nb.x, y: nb.y }, { x: 1150, y: 360 }, 900);
     await cursorTo(page, ".note-item", 600);
     // "watch demonstrations"
-    await at(4.0);
+    await at(4.0 * K4);
     const vv = await box(page, ".video-item");
     if (vv) await glide(page, { x: vv.x, y: vv.y }, { x: 700, y: 260 }, 900);
     await cursor(page, 1650, 820, 700);
     // "modify your goals"
-    await at(5.9);
+    await at(5.9 * K4);
     await cursorTo(page, ".goals-btn", 500);
     await page.click(".goals-btn");
     await page.locator(".goals-panel").waitFor();
-    await at(6.9);
+    await at(6.9 * K4);
     await cursorTo(page, ".goals-panel .goal-text >> nth=2", 500, 0.4);
     // "and come back later with everything exactly where you left it"
-    await at(8.6);
+    await at(8.6 * K4);
     await page.goto(`${SITE}/`);
     await page.locator(`a[href="/c/${ids.ham}"]`).first().waitFor();
     await addCursor(page);
     await page.addStyleTag({ content: ".save-link { display: none !important; }" });
     await cursor(page, 900, 700, 0);
-    await at(9.4);
+    await at(9.4 * K4);
     await cursorTo(page, `a[href="/c/${ids.ham}"]`, 800);
-    await at(10.6);
+    await at(10.6 * K4);
     await page.click(`a[href="/c/${ids.ham}"]`);
     await page.waitForSelector(".card-item");
     await page.addStyleTag({ content: `.start-open, .save-link, .toolbar .hint { display: none !important; } .card-item .chat { display: none !important; }` });
