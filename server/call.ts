@@ -131,6 +131,10 @@ You can change the canvas while you talk, with up to three actions:
   as shapes), a YouTube video, a PDF (its pages), or a question or statement (explained). "text" is the link or the
   words themselves; for something they typed into the call, "text" can be just "text 1". Use it when they ask you to
   open, add or put up a link or something they sent, or to start on a new question of its own.
+- {"kind": "relate", "ids": ["id1", "id2"]}: connect two cards (or a card and a slide) to show how they're related: a new
+  card hangs from both with a Y connector and explains the relationship. Use it when they ask to connect, link, relate or
+  compare two things on the canvas. Use the ids you're given (pointed at, or from "cards"); "these two" are what they
+  pointed at as they spoke. Never say you can't connect cards: this is how.
 - {"kind": "note", "text": "..."}: leave a written note on the canvas, beside what they're pointing at (or loose).
   Use it when they ask you to note, jot down or remember something, or when something is worth keeping for later
   that the canvas doesn't show: an open question, a caveat, something to come back to. Write the note itself, short,
@@ -241,6 +245,8 @@ export async function callTurn(
     remove: (ids: string[]) => Promise<string[]>;
     /** Opens a link or words as something new on the canvas, beside `near`; returns what was made. */
     open?: (input: string, near?: CardItem) => Promise<{ id: string; what: string }>;
+    /** A card relating two things, hung from both. */
+    relate?: (a: string, b: string) => Promise<CardItem | null>;
     /** Leaves a note, about a card (and a piece of it) when one is pointed at. */
     note?: (text: string, on?: { id: string; key?: string; quote?: string }) => Promise<unknown>;
   },
@@ -386,6 +392,16 @@ export async function callTurn(
           const made = await hooks.open(input.slice(0, 2000), card);
           opened = made.id;
           done.push(`opened ${made.what}`);
+        } else failed = true;
+      } else if (a.kind === "relate" && hooks.relate) {
+        const known = new Set(state.items.filter((i) => !i.hidden && (i.kind === "card" || i.kind === "image")).map((i) => i.id));
+        let ids = (Array.isArray(a.ids) ? a.ids : []).map(String).filter((id) => known.has(id));
+        // "These two": what they pointed at while saying it.
+        if (ids.length < 2) ids = [...new Set([...ids, ...said.map((d) => d.p.cardId!).filter((id) => known.has(id))])];
+        const made = ids.length >= 2 ? await hooks.relate(ids[0], ids[1]) : null;
+        if (made) {
+          opened = made.id;
+          done.push(`related two things on a new card (${made.id})`);
         } else failed = true;
       } else if (a.kind === "note" && hooks.note) {
         const words = String(a.text ?? "").trim().slice(0, 2000);

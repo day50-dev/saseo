@@ -183,4 +183,26 @@ describe("F-CALL-7: things typed into a call", () => {
     assert.match(r.body.say, /didn't work/);
     assert.equal(r.body.opened, undefined);
   });
+
+  test("\"connect these two cards\" relates them on a card hung from both", async () => {
+    llm.on(/.*/, { kind: "answer", request: "x" });
+    llm.on(/voice call/, { say: "I'll connect them.", actions: [{ kind: "relate", ids: ["eig", "det"] }] });
+    const r = await s.api("POST", `${C}/call`, { text: "can you connect these two cards together" });
+    const made = (await state()).items.find((i) => i.id === r.body.opened) as CardItem;
+    assert.deepEqual(made.relates, ["eig", "det"]);
+    assert.match(made.subject!, /Eigenvectors ⟷ Determinants/);
+    assert.match(r.body.did, /related two things/);
+    assert.match(llm.askedFor(/voice call/).at(-1)!.system, /"kind": "relate"/);
+  });
+
+  test("with no ids, \"these two\" are what they pointed at as they said it", async () => {
+    llm.on(/.*/, { kind: "answer", request: "x" });
+    llm.on(/voice call/, { say: "Connecting them.", actions: [{ kind: "relate" }] });
+    const r = await s.api("POST", `${C}/call`, {
+      text: "relate this one and that one",
+      context: { spoke: 3000, timeline: [{ at: 0, p: { cardId: "det" } }, { at: 2000, p: { cardId: "eig" } }] },
+    });
+    const made = (await state()).items.find((i) => i.id === r.body.opened) as CardItem;
+    assert.deepEqual(made.relates, ["det", "eig"]);
+  });
 });

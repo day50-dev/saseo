@@ -330,6 +330,7 @@ app.post("/api/canvases/:cid/call", async (c) => {
       return hidden;
     },
     note: (text, on) => addNote(store, { text, by: "librarian", via: "call", on, said: body.text }),
+    relate: (a, b) => relate(store, a, b),
     open: async (input, near) => {
       // Beside what they're pointing at, else to the right of everything, level with the top.
       const { items } = await store.getState();
@@ -622,29 +623,37 @@ app.post("/api/canvases/:cid/relate", async (c) => {
   const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
   const body = (await c.req.json()) as { a: string; b: string; x: number; y: number };
-  const [a, b] = await Promise.all([store.findItem(body.a), store.findItem(body.b)]);
-  // Either side may be a card or a whole image (a slide).
-  const relatable = (i: typeof a) => i?.kind === "card" || i?.kind === "image";
-  if (!a || !b || !relatable(a) || !relatable(b) || a.id === b.id) {
-    return c.json({ error: "two different cards or images are required" }, 400);
-  }
-  const label = (i: NonNullable<typeof a>) => (i.kind === "card" ? (i.subject ?? "this") : i.kind === "image" ? (i.topic ?? i.name) : "this");
   if (!Number.isFinite(body.x) || !Number.isFinite(body.y)) return c.json({ error: "x and y are required" }, 400);
+  const card = await relate(store, body.a, body.b, { x: body.x, y: body.y });
+  return card ? c.json({ card }) : c.json({ error: "two different cards or images are required" }, 400);
+});
+
+/**
+ * Asks how two things are related: a relation card hung from both (the Y connector), explained.
+ * Either may be a card or a whole image. Without a place, it goes below the two, between them.
+ */
+async function relate(store: CanvasStore, aId: string, bId: string, at?: { x: number; y: number }): Promise<CardItem | null> {
+  const [a, b] = await Promise.all([store.findItem(aId), store.findItem(bId)]);
+  const relatable = (i: typeof a): i is CardItem | ImageItem => i?.kind === "card" || i?.kind === "image";
+  if (!relatable(a) || !relatable(b) || a.id === b.id) return null;
+  const label = (i: CardItem | ImageItem) => (i.kind === "card" ? (i.subject ?? "this") : (i.topic ?? i.name));
+  const bottom = (i: CardItem | ImageItem) => i.y + (i.kind === "card" ? (i.h ?? (i.sem ? 900 : 300)) : i.h);
+  const place = at ?? { x: Math.round((a.x + a.w / 2 + b.x + b.w / 2) / 2 - CARD_WIDTH / 2), y: Math.round(Math.max(bottom(a), bottom(b)) + 80) };
   const card: CardItem = {
     kind: "card",
     id: newId(),
     parentId: a.id,
     relates: [a.id, b.id],
-    x: body.x,
-    y: body.y,
+    x: Math.round(place.x),
+    y: Math.round(place.y),
     w: CARD_WIDTH,
     stage: "reading",
     subject: `${label(a)} ⟷ ${label(b)}`,
   };
   await store.add(card);
   void explainRelation(store, card.id);
-  return c.json({ card });
-});
+  return card;
+}
 
 // A conversation held at a card: the question is recorded, and the answer arrives in the log.
 app.post("/api/canvases/:cid/cards/:id/chat", async (c) => {
