@@ -168,17 +168,35 @@ async function cursorTo(page, sel, ms = 700, dx = 0.5, dy = 0.5) {
   if (b) await cursor(page, b.x + Math.min(b.width * dx, 160), b.y + b.height * dy, ms);
 }
 
-/** Steps the zoom (Ctrl+wheel at a point, which stays put) until the toolbar reads about `pct`. */
-async function zoomTo(page, at, pct, ms = 700) {
-  await page.mouse.move(at.x, at.y);
-  for (let i = 0; i < 20; i++) {
-    const z = await zoomBtn(page);
-    if (Math.abs(z - pct) < 6) break;
-    await page.keyboard.down("Control");
-    await page.mouse.wheel(0, z < pct ? -40 : 40);
-    await page.keyboard.up("Control");
-    await sleep(ms / 8);
-  }
+/**
+ * Zooms smoothly to `pct` about a screen point, in one eased motion inside the page (the canvas
+ * zooms by exp(-deltaY * 0.0025) per Ctrl+wheel, so the whole change is one known total, spread
+ * over frames). No stepping, so no overshooting and coming back.
+ */
+async function zoomTo(page, at, pct, ms = 900) {
+  await page.evaluate(
+    ([x, y, pct, ms]) =>
+      new Promise((done) => {
+        const stage = document.querySelector(".stage");
+        const btn = [...document.querySelectorAll("button")].find((b) => /^\d+%$/.test(b.textContent.trim()));
+        const from = Number(btn.textContent.trim().replace("%", ""));
+        const total = -Math.log(pct / from) / 0.0025;
+        const t0 = performance.now();
+        let sent = 0;
+        const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+        const step = () => {
+          const t = Math.min(1, (performance.now() - t0) / ms);
+          const want = ease(t);
+          const d = want - sent;
+          sent = want;
+          stage.dispatchEvent(new WheelEvent("wheel", { deltaY: total * d, ctrlKey: true, bubbles: true, cancelable: true, clientX: x, clientY: y }));
+          if (t < 1) requestAnimationFrame(step);
+          else done();
+        };
+        requestAnimationFrame(step);
+      }),
+    [at.x, at.y, pct, Math.max(1, ms)],
+  );
 }
 /** Glides an element's centre to a screen point. */
 async function centre(page, sel, tx = 960, ty = 540, ms = 900) {
@@ -268,8 +286,7 @@ const scenes = {
     // Q1: "Can you expand on this?" pointing at Hamilton's equations.
     await at(S.q1.start - 2.6);
     await centre(page, piece("here-3"), 960, 420, 900);
-    await zoomTo(page, { x: 960, y: 420 }, 135, 600);
-    await centre(page, piece("here-3"), 960, 420, 400);
+    await zoomTo(page, { x: 960, y: 420 }, 135, 700);
     await cursorTo(page, piece("here-3"), 600, 0.3);
     await sayIt(CALL[0].text, S.q1.start, S.q1.end);
     await at(S.a1.start + 0.9);
@@ -277,7 +294,7 @@ const scenes = {
     await sleep(250);
     // Close enough to read the steps it added.
     await centre(page, `${MC} .grown-then`, 960, 560, 900);
-    await zoomTo(page, { x: 960, y: 560 }, 175, 700);
+    await zoomTo(page, { x: 960, y: 560 }, 170, 900);
     await park();
     // Q2: examples, not pointing at anything; the set comes in and fills the view.
     await at(S.q2.start - 0.4);
@@ -286,13 +303,12 @@ const scenes = {
     await body("fx-set-pre");
     await body("fx-set");
     await sleep(60);
-    await zoomTo(page, { x: 960, y: 540 }, 110, 600);
-    await centre(page, SET, 960, 560, 1300);
+    // To the set, then one zoom so it fills the view.
+    await centre(page, SET, 960, 545, 1200);
     await body("fx-set-pre", false);
-    await sleep(300);
     const sb = await box(page, SET);
-    if (sb && sb.height > 980) await zoomTo(page, { x: 960, y: 540 }, Math.round(((110 * 980) / sb.height) / 10) * 10, 400);
-    await centre(page, SET, 960, 545, 500);
+    const z = await zoomBtn(page);
+    await zoomTo(page, { x: 960, y: 545 }, Math.round(z * Math.min(1760 / sb.width, 960 / sb.height)), 1000);
     // Q3: the diagram; the shot ends as it finishes drawing.
     await at(S.q3.start - 0.3);
     await sayIt(CALL[2].text, S.q3.start, S.q3.end);
