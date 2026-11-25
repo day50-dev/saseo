@@ -34,6 +34,14 @@ before(async () => {
       ],
     },
     { id: "srcs0001", name: "Sources", items: [explained("w1", "The Smiths", 0, 0, { sources: [{ n: 1, url: "http://127.0.0.1:9/no-such-page", title: "The Smiths", snippet: "", searcher: "keenable" }] })] },
+    {
+      id: "vids0001",
+      name: "Videos",
+      items: [
+        explained("h1", "Hamiltonian", 0, 0, { h: 400 }),
+        objectCard("vs", { type: "videos", videos: [{ url: "https://www.youtube.com/watch?v=AAAAAAAAAAA", videoId: "AAAAAAAAAAA", title: "Lecture one", snippet: "", channel: "MIT" }, { url: "https://www.youtube.com/watch?v=BBBBBBBBBBB", videoId: "BBBBBBBBBBB", title: "Lecture two", snippet: "", channel: "Stanford" }] }, 800, 0, { h: 500 }),
+      ],
+    },
     { id: "note0001", name: "Notes", items: [explained("n1", "Bialgebras", 0, 0)] },
     {
       id: "cnot0001",
@@ -442,6 +450,25 @@ describe("F-START: adding a found page", () => {
     const pc = page as CardItem;
     assert.equal(pc.origin?.kind === "page" && pc.origin.url, "http://127.0.0.1:9/no-such-page");
     assert.ok(pc.x >= 720, `beside the card: x=${pc.x}`);
+    await p.context().close();
+  });
+});
+
+describe("F-SET: videos from a set play on the canvas", () => {
+  test("Play puts the video on the canvas beside the set, as a video that can be stopped and asked about", async () => {
+    const p = await open("/c/vids0001");
+    // Nothing goes to YouTube from a test.
+    await p.route(/youtube|ytimg/, (r) => r.abort());
+    let body: { input?: string; x?: number; y?: number } = {};
+    await p.route("**/api/canvases/vids0001/sources", async (r) => {
+      body = r.request().postDataJSON();
+      await r.fulfill({ json: { image: { kind: "image", id: "vnew0001", asset: "", name: "Lecture two", x: body.x, y: body.y, w: 720, h: 405, naturalW: 1280, naturalH: 720, video: { videoId: "BBBBBBBBBBB", title: "Lecture two", channel: "Stanford", duration: 100, embeddable: true } } } });
+    });
+    const tile = p.locator(`${cardSel("vs")} .set-tile`).filter({ hasText: "Lecture two" });
+    await tile.locator(".set-actions").getByRole("button", { name: "▶ Play on the canvas" }).click();
+    await until(() => body.input === "https://www.youtube.com/watch?v=BBBBBBBBBBB", 5000, "the video to be added");
+    assert.ok((body.x ?? 0) >= 800 + 720, `beside the set: x=${body.x}`);
+    assert.equal(await p.locator(`${cardSel("vs")} iframe`).count(), 0, "not played inside the tile");
     await p.context().close();
   });
 });

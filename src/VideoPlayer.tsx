@@ -16,8 +16,11 @@ export function VideoPlayer({
   selected,
   onStop,
   onNeedCopy,
+  autoPlay = false,
 }: {
   item: ImageItem;
+  /** Start playing as soon as it's ready (it was just chosen from a set of videos). */
+  autoPlay?: boolean;
   z: number | undefined;
   selected: boolean;
   /** Stop at this many seconds in: capture the moment. */
@@ -61,7 +64,10 @@ export function VideoPlayer({
         ) : (
           <YouTubeEmbed
             item={item}
-            onReady={() => setReady(true)}
+            onReady={() => {
+              setReady(true);
+              if (autoPlay) players.get(item.id)?.playVideo();
+            }}
             onBlocked={() => {
               setBlocked(true);
               setReady(false);

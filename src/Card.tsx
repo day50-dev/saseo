@@ -127,6 +127,8 @@ export function Card(props: {
   onAddPaper: (paper: Paper) => Promise<void>;
   /** Puts a linked page on the canvas, beside this card, read and drawn as shapes. */
   onAddLink?: (url: string) => Promise<void>;
+  /** Plays a video from this card's set on the canvas, where it can be stopped and asked about. */
+  onPlayVideo?: (videoId: string, url: string) => void;
   /** Brings back what an object card held before a message redid it. */
   onObjectBack: () => void;
   /** Opens this card's notebook in the panel beside the canvas. */
@@ -365,7 +367,7 @@ export function Card(props: {
       {card.objectKind === "notebook" ? (
         <NotebookCard card={card} onOpen={props.onOpenNotebook} />
       ) : (
-        card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} onExplain={props.onDescend} onAddLink={props.onAddLink} />
+        card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} onExplain={props.onDescend} onAddLink={props.onAddLink} onPlayVideo={props.onPlayVideo} />
       )}
       {card.replaced && card.stage === "done" && (
         <button type="button" className="link small object-back" onPointerDown={(e) => e.stopPropagation()} onClick={props.onObjectBack}>
@@ -626,8 +628,10 @@ function ObjectView({
   onAddPaper,
   onExplain,
   onAddLink,
+  onPlayVideo,
 }: {
   card: CardItem;
+  onPlayVideo?: (videoId: string, url: string) => void;
   onAddPaper: (paper: Paper) => Promise<void>;
   onExplain?: (text: string, context: string, clientY: number) => void;
   onAddLink?: (url: string) => Promise<void>;
@@ -681,8 +685,9 @@ function ObjectView({
           image: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
           wide: true,
           url: v.url,
-          openLabel: "▶ Play here",
-          onOpen: () => setPlaying(v.videoId),
+          openLabel: onPlayVideo ? "▶ Play on the canvas" : "▶ Play here",
+          // On the canvas it's a video like any other: stop it where it loses you, and ask.
+          onOpen: () => (onPlayVideo ? onPlayVideo(v.videoId, v.url) : setPlaying(v.videoId)),
           playing:
             playing === v.videoId ? (
               <iframe

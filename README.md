@@ -60,7 +60,7 @@ Paste a link to a PDF (an arXiv paper, or any `.pdf`) and its pages land on the 
 
 ![A card set: nine British post-punk bands, three across, each with its Wikipedia photo, a line on who they were, and why they matter](docs/screenshots/set.png)
 
-Ask for a collection to look through ("who were the top talents of the era? list some so I can look at them", "the key albums", "the main figures") and it comes as a **set of cards**: tiles three across, up to nine. The model picks the entries and says why each belongs; each is then checked against its Wikipedia article, which supplies the picture, the description, the opening paragraph (on hover) and the link. One with no article stays, marked "Not checked". **Explain** on a tile opens an explanation of it. Videos are a set too: the same grid, where each tile plays in place.
+Ask for a collection to look through ("who were the top talents of the era? list some so I can look at them", "the key albums", "the main figures") and it comes as a **set of cards**: tiles three across, up to nine. The model picks the entries and says why each belongs; each is then checked against its Wikipedia article, which supplies the picture, the description, the opening paragraph (on hover) and the link. One with no article stays, marked "Not checked". **Explain** on a tile opens an explanation of it. Videos are a set too: the same grid. Playing one puts it on the canvas beside the set, as a video like any other, so you can stop it where it loses you and ask.
 
 ### Notebooks
 

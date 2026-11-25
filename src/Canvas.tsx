@@ -454,7 +454,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
 
   /** Puts a source card in clear space to the right of everything and brings it into view. */
   /** Starts from a link or words: to the right of everything, or at `at` (beside the card it came from). */
-  const startFrom = async (input: string, at?: { x: number; y: number }) => {
+  const startFrom = async (input: string, at?: { x: number; y: number }): Promise<string | undefined> => {
     const r = stageRef.current!.getBoundingClientRect();
     const right = Math.max(0, ...shown.filter((i) => i.kind !== "region").map((i) => i.x + i.w));
     const x = at?.x ?? (shown.length ? right + 120 : 40);
@@ -470,6 +470,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       setView((v) => ({ ...v, x: r.width * 0.06 - x * v.scale, y: 60 - y * v.scale }));
       setSelected(id);
       if (res.total && res.images && res.total > res.images.length) setError(`That PDF has ${res.total} pages; the first ${res.images.length} are on the canvas.`);
+      return id;
     } catch (e) {
       setError(`Couldn't start from that: ${e}`);
       // Asked for from a card ("+ Add" on a found page): its button goes back to Add.
@@ -477,6 +478,24 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     } finally {
       done();
     }
+  };
+
+  /**
+   * A video chosen from a set of videos plays on the canvas, beside the set, as a video of its own:
+   * so it can be stopped where it loses you, like any other. One already there is gone to instead.
+   */
+  const [autoPlayId, setAutoPlayId] = useState<string | null>(null);
+  const playOnCanvas = async (from: CardItem, videoId: string, url: string) => {
+    const there = images.find((i) => i.video?.videoId === videoId);
+    if (there) {
+      focusOn(there.id);
+      setAutoPlayId(there.id);
+      players.get(there.id)?.playVideo();
+      return;
+    }
+    const x = from.x + from.w + GAP;
+    const id = await startFrom(url, { x, y: slotY(x, from.y) });
+    if (id) setAutoPlayId(id);
   };
 
   // ---- Papers from arXiv ----
@@ -490,7 +509,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
    */
   const tryExample = async (ex: Example) => {
     try {
-      await runExample(ex, startFrom, (paper, pages) => addPaperPages(paper, pages));
+      await runExample(ex, (input) => startFrom(input).then(() => {}), (paper, pages) => addPaperPages(paper, pages));
     } catch (e) {
       setError(`Couldn't start the example: ${e}`);
     }
@@ -1582,6 +1601,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 selected={selected === img.id}
                 onStop={(t) => stopAt(img, t)}
                 onNeedCopy={() => api.hostVideo(img.id).then(refresh, (e) => setError(`Couldn't fetch a copy of the video: ${e}`))}
+                autoPlay={autoPlayId === img.id}
               />
             ))}
           {images.filter((img) => !img.video).map((img) => (
@@ -1790,7 +1810,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               onFocus={focusOn}
               onObjectBack={() => api.objectBack(c.id).then(refresh, (e) => setError(`Couldn't bring that back: ${e}`))}
               onAddPaper={(paper) => addPaperPages(paper, "1-2", { x: c.x + c.w + GAP, y: c.y })}
-              onAddLink={(url) => startFrom(url, { x: c.x + c.w + GAP, y: slotY(c.x + c.w + GAP, c.y) })}
+              onAddLink={(url) => startFrom(url, { x: c.x + c.w + GAP, y: slotY(c.x + c.w + GAP, c.y) }).then(() => {})}
+              onPlayVideo={(videoId, url) => playOnCanvas(c, videoId, url)}
               onOpenNotebook={() => setNotebook({ id: c.id, autoRun: false })}
               onAsk={async (text) => {
                 try {
@@ -2033,7 +2054,7 @@ function CanvasSwitcher({ currentId }: { currentId: string }) {
 }
 
 /** A link to read or a question to explain: a start that isn't an image. */
-function StartBox({ onStart, big = false, onClose, onArxiv }: { onStart: (input: string) => Promise<void>; big?: boolean; onClose?: () => void; onArxiv?: (query: string) => void }) {
+function StartBox({ onStart, big = false, onClose, onArxiv }: { onStart: (input: string) => Promise<unknown>; big?: boolean; onClose?: () => void; onArxiv?: (query: string) => void }) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   return (
