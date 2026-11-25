@@ -47,6 +47,26 @@ export async function wikiFor(name: string, title?: string, context = ""): Promi
   return hit ? usable(await summary(hit)) : null;
 }
 
+/**
+ * A picture for an article with no lead image: its first real figure, in page order (not an icon,
+ * a logo or a tiny inline image). Undefined when it has none.
+ */
+export async function firstFigure(title: string): Promise<string | undefined> {
+  const list = await getJson<{ items?: { type?: string; title?: string; showInGallery?: boolean; srcset?: { src: string; scale?: string }[] }[] }>(
+    `${WIKI}/api/rest_v1/page/media-list/${encodeURIComponent(title.replace(/ /g, "_"))}`,
+  );
+  for (const m of list?.items ?? []) {
+    if (m.type !== "image" || m.showInGallery === false || !m.srcset?.length) continue;
+    if (/icon|logo|symbol|commons|wiki|question|disambig|edit|portal|stub/i.test(m.title ?? "")) continue;
+    const src = m.srcset[0].src;
+    // Thumbnails say their width ("/60px-…"); a small one is an inline icon.
+    const px = Number(src.match(/\/(\d+)px-/)?.[1] ?? 999);
+    if (px < 150) continue;
+    return src.startsWith("//") ? `https:${src}` : src;
+  }
+  return undefined;
+}
+
 /** Makes a set for `request` about `about`: named by the model, checked against Wikipedia. */
 export async function makeSet(request: string, about: string): Promise<{ title: string; caption?: string; entries: SetEntry[] }> {
   const r = await chatJson<{ title?: string; caption?: string; entries?: { name?: string; wikipedia?: string; subtitle?: string; note?: string }[] }>((await loadConfig()).llm, [
@@ -66,7 +86,7 @@ export async function makeSet(request: string, about: string): Promise<{ title: 
         title: w.title!.replace(/\s*\([^)]*\)$/, ""),
         subtitle: e.subtitle?.trim().slice(0, 80) || w.description?.slice(0, 80),
         note,
-        image: w.thumbnail?.source,
+        image: w.thumbnail?.source ?? (await firstFigure(w.title!)),
         url: w.content_urls?.desktop?.page ?? `${WIKI}/wiki/${encodeURIComponent(w.title!.replace(/ /g, "_"))}`,
         extract: w.extract?.slice(0, 600),
       };

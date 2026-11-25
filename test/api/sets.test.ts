@@ -25,6 +25,16 @@ after(async () => {
 beforeEach(() => {
   llm.reset();
   llm.wikiPage("Joy Division", { description: "English rock band", extract: "Joy Division were an English rock band formed in Salford in 1976.", thumbnail: { source: "https://upload.example/jd.jpg" }, content_urls: { desktop: { page: "https://en.wikipedia.org/wiki/Joy_Division" } } });
+  // No lead image: its first real figure, passing over an icon and a tiny inline image.
+  llm.wikiPage("Wire (band)", {
+    description: "English rock band",
+    content_urls: { desktop: { page: "https://en.wikipedia.org/wiki/Wire_(band)" } },
+    media: [
+      { type: "image", title: "File:Music_icon.svg", showInGallery: true, srcset: [{ src: "//upload.example/thumb/400px-Music_icon.svg.png" }] },
+      { type: "image", title: "File:Tiny.png", showInGallery: true, srcset: [{ src: "//upload.example/thumb/40px-Tiny.png" }] },
+      { type: "image", title: "File:Wire_live_1978.jpg", showInGallery: true, srcset: [{ src: "//upload.example/thumb/330px-Wire_live_1978.jpg" }] },
+    ],
+  });
   // The model's title is a disambiguation page; search finds the band.
   llm.wikiPage("The Fall", { type: "disambiguation", description: "Topics referred to by the same term" });
   llm.wikiPage("The Fall (band)", { description: "English post-punk band", thumbnail: { source: "https://upload.example/fall.jpg" }, content_urls: { desktop: { page: "https://en.wikipedia.org/wiki/The_Fall_(band)" } } }, "The Fall");
@@ -34,6 +44,7 @@ beforeEach(() => {
     entries: [
       { name: "Joy Division", wikipedia: "Joy Division", subtitle: "band, 1976–1980", note: "Turned bleakness into a template for the genre." },
       { name: "The Fall", wikipedia: "The Fall", subtitle: "band, 1976–2018", note: "Mark E. Smith's long, abrasive run." },
+      { name: "Wire", wikipedia: "Wire (band)", subtitle: "band", note: "Art-school minimalism." },
       { name: "The Shimmering Nobodies", wikipedia: "The Shimmering Nobodies", subtitle: "band", note: "Not a real band." },
       { name: "Joy Division", wikipedia: "Joy Division", note: "Twice." },
     ],
@@ -56,8 +67,9 @@ describe("F-SET: a set of cards to look through", () => {
     assert.equal(c.subject, "Top talents of British post-punk");
     const o = c.object as Extract<CardItem["object"], { type: "set" }>;
     assert.equal(o.caption, "The bands that defined the sound.");
-    assert.deepEqual(o.entries.map((e) => e.title), ["Joy Division", "The Fall", "The Shimmering Nobodies"], "shown without Wikipedia's \"(band)\"");
-    const [jd, fall, fake] = o.entries;
+    assert.deepEqual(o.entries.map((e) => e.title), ["Joy Division", "The Fall", "Wire", "The Shimmering Nobodies"], "shown without Wikipedia's \"(band)\"");
+    const [jd, fall, wire, fake] = o.entries;
+    assert.equal(wire.image, "https://upload.example/thumb/330px-Wire_live_1978.jpg", "no lead image: its first real figure");
     assert.deepEqual([jd.image, jd.url, jd.subtitle, jd.note], ["https://upload.example/jd.jpg", "https://en.wikipedia.org/wiki/Joy_Division", "band, 1976–1980", "Turned bleakness into a template for the genre."]);
     assert.match(jd.extract!, /Salford/);
     assert.equal(fall.url, "https://en.wikipedia.org/wiki/The_Fall_(band)", "a disambiguation page is passed over for the search's hit");

@@ -61,6 +61,10 @@ export async function fakeLlm() {
       res.writeHead(200, { "content-type": "audio/wav" });
       return res.end(Buffer.from("RIFF0000WAVEfake"));
     }
+    if (req.url?.startsWith("/api/rest_v1/page/media-list/")) {
+      const title = decodeURIComponent(req.url.slice("/api/rest_v1/page/media-list/".length)).replace(/_/g, " ");
+      return json(200, { items: (wiki.get(title) as { media?: unknown[] } | undefined)?.media ?? [] });
+    }
     if (req.url?.startsWith("/api/rest_v1/page/summary/")) {
       const title = decodeURIComponent(req.url.slice("/api/rest_v1/page/summary/".length)).replace(/_/g, " ");
       const page = wiki.get(title);
