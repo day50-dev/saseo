@@ -11,7 +11,7 @@ R = f"{D}/real"
 # Where the vertical video sits in each desktop recording, and the stretch of it worth using.
 SRC = {
   "shorts": (f"{R}/yt-shorts.webm", (754, 64, 556, 980), 5.0, 25.0),
-  "insta": (f"{R}/insta.webm", (682, 72, 554, 986), 6.0, 10.6),
+  "insta": (f"{R}/insta.webm", (682, 72, 554, 986), 2.0, 11.8),
   "search": (f"{R}/yt-search.webm", None, 5.5, 20.0),
 }
 BG = "0x0b0b0d"
@@ -20,34 +20,43 @@ def vert(name, t, d, out_w, out_h):
     return ["-ss", f"{t:.2f}", "-t", f"{d:.2f}", "-i", f], f"crop={w}:{h}:{x}:{y},scale=-2:{out_h},pad={out_w}:{out_h}:(ow-iw)/2:0:{BG},setsar=1"
 segs = []
 t, k = 0.0, 0
-pos = {"shorts": 5.0, "insta": 6.0, "search": 5.5}
-pattern = ["shorts", "search", "insta", "tri", "shorts", "search", "tri", "insta", "shorts", "tri", "search", "insta", "tri"]
+# Every video in the recordings, by where it plays (between the swipes), each used exactly once.
+V = {
+  "lady": ("shorts", 5.5), "farmer": ("shorts", 8.6), "unboxing": ("shorts", 10.8), "sacking": ("shorts", 12.6),
+  "cow": ("shorts", 14.4), "nutmeg": ("shorts", 16.5), "moonwalk": ("shorts", 18.3), "pencil": ("shorts", 20.6),
+  "dog": ("shorts", 24.4), "comedian": ("insta", 2.3), "boomer": ("insta", 8.1), "attendant": ("insta", 10.2),
+}
+search_at = 5.5
+# The order of the cuts: a video, the clickbait page ("search"), three at once ("tri").
+CUTS = ["lady", "search", ("farmer", "comedian", "unboxing"), "sacking", "search", ("cow", "boomer", "nutmeg"),
+        "moonwalk", "search", "attendant", "pencil", "dog"]
+names = [n for c in CUTS for n in (c if isinstance(c, tuple) else [c]) if n != "search"]
+assert len(names) == len(set(names)), "a video used twice"
 os.makedirs(f"{D}/noise", exist_ok=True)
 while t < calm - 0.05:
     frac = t / calm
     d = min(max(0.32, 1.25 - 1.0 * frac), calm - t)
-    kind = pattern[k % len(pattern)]
+    if calm - t - d < 0.25 or k == len(CUTS) - 1:  # no sliver at the end: the last cut runs to the end
+        d = calm - t
+    cut = CUTS[k]
     out = f"{D}/noise/{k:02d}.mp4"
-    if kind == "search":
-        f, _, a, b = SRC["search"]
-        ins, flt = ["-ss", f"{pos['search']:.2f}", "-t", f"{d:.2f}", "-i", f], "[0:v]scale=1920:1080,setsar=1[o]"
-        pos["search"] = a + ((pos["search"] - a + d * 1.6) % (b - a))
-    elif kind == "tri":
+    if cut == "search":
+        ins, flt = ["-ss", f"{search_at:.2f}", "-t", f"{d:.2f}", "-i", SRC["search"][0]], "[0:v]scale=1920:1080,setsar=1[o]"
+        search_at += d + 0.8
+    elif isinstance(cut, tuple):
         ins, parts = [], []
-        for i, n in enumerate(["shorts", "insta", "shorts"]):
-            st = pos[n] + (4.0 if i == 2 else 0)
-            f, box, a, b = SRC[n]
-            st = a + ((st - a) % (b - a - d))
-            i2, fl = vert(n, st, d, 620, 1080)
+        for i, n in enumerate(cut):
+            src, at = V[n]
+            i2, fl = vert(src, at, d, 620, 1080)
             ins += i2
             parts.append(f"[{i}:v]{fl}[p{i}]")
         flt = ";".join(parts) + f";[p0][p1][p2]hstack=inputs=3,pad=1920:1080:30:0:{BG}[o]"
     else:
-        f, box, a, b = SRC[kind]
-        ins, fl = vert(kind, pos[kind], d, 1920, 1080)
         # Enlarged: the video fills the height, on dark.
+        src, at = V[cut]
+        ins, fl = vert(src, at, d, 1920, 1080)
         flt = f"[0:v]{fl}[o]"
-        pos[kind] = a + ((pos[kind] - a + d * 1.8) % (b - a - 1))
+    print(k, cut, f"{d:.2f}s")
     subprocess.run(["ffmpeg","-y","-loglevel","error",*ins,"-filter_complex",flt,"-map","[o]","-r","30","-t",f"{d:.3f}","-c:v","libx264","-preset","veryfast","-crf","18","-pix_fmt","yuv420p",out],check=True)
     segs.append(out)
     t += d
