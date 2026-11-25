@@ -40,6 +40,24 @@ describe("talking to the model", () => {
     await assert.rejects(chatJson(ep, [{ role: "user", content: "never json" }]), /didn't return JSON/);
   });
 
+  test("JSON is asked for in JSON mode, so a model can't answer in prose", async () => {
+    llm.on(/json mode/, '{"ok": true}', 1);
+    await chatJson(ep, [{ role: "user", content: "json mode" }]);
+    assert.equal(llm.asked.at(-1)!.json, true);
+  });
+
+  test("an endpoint without JSON mode is asked again plainly, and remembered", async () => {
+    const other = { ...ep, baseUrl: `${llm.url.replace("127.0.0.1", "localhost")}/v1` };
+    llm.refuseJsonMode();
+    llm.on(/plain please/, '{"ok": 1}', 2);
+    assert.deepEqual(await chatJson(other, [{ role: "user", content: "plain please" }]), { ok: 1 });
+    const n = llm.asked.length;
+    assert.deepEqual(await chatJson(other, [{ role: "user", content: "plain please" }]), { ok: 1 });
+    assert.equal(llm.asked.length, n + 1, "no second refused request");
+    assert.equal(llm.asked.at(-1)!.json, false);
+    llm.refuseJsonMode(false);
+  });
+
   test("streaming, falling back to a plain reply when the server doesn't stream", async () => {
     llm.on(/stream me/, "<think>x</think>streamed", 1);
     const seen: string[] = [];

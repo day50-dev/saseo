@@ -11,6 +11,8 @@ export interface Asked {
   user: string;
   messages: { role: string; content: unknown }[];
   stream: boolean;
+  /** Asked for JSON mode (response_format). */
+  json: boolean;
 }
 
 type Reply = string | object | ((a: Asked) => string | object | undefined | Promise<string | object | undefined>);
@@ -35,6 +37,7 @@ export async function fakeLlm() {
   const heard: Buffer[] = [];
   const spoken: string[] = [];
   let transcript = "what is an eigenvector";
+  let refuseJson = false;
 
   const server = createServer(async (req, res) => {
     const raw = await body(req);
@@ -60,7 +63,9 @@ export async function fakeLlm() {
       user: text([...messages].reverse().find((m) => m.role === "user")?.content),
       messages,
       stream: Boolean(b.stream),
+      json: b.response_format?.type === "json_object",
     };
+    if (a.json && refuseJson) return json(400, { error: "response_format is not supported" });
     asked.push(a);
     const hay = `${a.system}\n${a.user}`;
     for (const r of rules) {
@@ -84,6 +89,10 @@ export async function fakeLlm() {
     /** Answer requests matching `match` (system prompt + last user message) with `reply`; newest rules win. */
     on(match: RegExp, reply: Reply, times = -1) {
       rules.unshift({ match, reply, times });
+    },
+    /** Answer requests for JSON mode with a 400, as servers without it do. */
+    refuseJsonMode(on = true) {
+      refuseJson = on;
     },
     /** What the speech recogniser hears next. */
     hears(words: string) {

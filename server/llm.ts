@@ -27,17 +27,31 @@ async function send(url: string, init: RequestInit): Promise<Response> {
   }
 }
 
-export async function chat(ep: Endpoint, messages: Message[], timeoutMs = ep.timeoutSeconds * 1000): Promise<string> {
+/** Endpoints that refused JSON mode (by base URL): asked plainly from then on. */
+const noJsonMode = new Set<string>();
+
+/**
+ * One reply. `json` asks the endpoint for JSON mode (response_format), which keeps a model from
+ * answering in prose (it may, given an image of math); an endpoint that refuses it is asked again
+ * without, and remembered.
+ */
+export async function chat(ep: Endpoint, messages: Message[], timeoutMs = ep.timeoutSeconds * 1000, json = false): Promise<string> {
   if (!ep.baseUrl || !ep.model) throw new Error("The language model isn't configured (Settings)");
+  const jsonMode = json && !noJsonMode.has(ep.baseUrl);
   const res = await send(`${ep.baseUrl}/chat/completions`, {
     method: "POST",
     headers: headers(ep),
     signal: AbortSignal.timeout(timeoutMs),
-    body: JSON.stringify({ model: ep.model, messages, temperature: 0.3 }),
+    body: JSON.stringify({ model: ep.model, messages, temperature: 0.3, ...(jsonMode ? { response_format: { type: "json_object" } } : {}) }),
   });
   if (!res.ok) {
+    const body = await res.text();
+    if (jsonMode && (res.status === 400 || res.status === 422 || /response_format|json/i.test(body))) {
+      noJsonMode.add(ep.baseUrl);
+      return chat(ep, messages, timeoutMs, false);
+    }
     const hint = res.status === 404 && !/\/v\d+$/.test(ep.baseUrl) ? ` (try the base URL ${ep.baseUrl}/v1 in Settings)` : "";
-    throw new Error(`LLM: HTTP ${res.status}${hint} ${(await res.text()).slice(0, 300)}`.trim());
+    throw new Error(`LLM: HTTP ${res.status}${hint} ${body.slice(0, 300)}`.trim());
   }
   const data = await res.json();
   const text = data?.choices?.[0]?.message?.content;
@@ -116,7 +130,7 @@ export function repairTexEscapes(json: string): string {
 
 /** Asks for JSON and parses the first object in the reply, tolerating code fences and prose around it. */
 export async function chatJson<T>(ep: Endpoint, messages: Message[]): Promise<T> {
-  let text = await chat(ep, messages);
+  let text = await chat(ep, messages, undefined, true);
   // A reply that won't parse gets one more try, told why (a long reply sometimes slips).
   for (let attempt = 0; ; attempt++) {
     const start = text.indexOf("{");
@@ -136,7 +150,7 @@ export async function chatJson<T>(ep: Endpoint, messages: Message[]): Promise<T>
       ...messages,
       { role: "assistant", content: text },
       { role: "user", content: `${problem} Reply again with the same answer as one valid JSON object only: double quotes, no comments, no trailing commas, plain numbers.` },
-    ]);
+    ], undefined, true);
   }
 }
 
