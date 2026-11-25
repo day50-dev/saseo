@@ -6,7 +6,7 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
-import { CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type Goal, type ImageItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type Goal, type ImageItem, type NoteItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { remember } from "./pagecache.ts";
 import { pdfLink, servesPdf, slicePdf } from "./pdf.ts";
@@ -330,6 +330,19 @@ app.post("/api/canvases/:cid/call", async (c) => {
       return hidden;
     },
     note: (text, on) => addNote(store, { text, by: "librarian", via: "call", on, said: body.text }),
+    open: async (input, near) => {
+      // Beside what they're pointing at, else to the right of everything, level with the top.
+      const { items } = await store.getState();
+      const shown = items.filter((i) => !i.hidden && i.kind !== "region") as (CardItem | ImageItem | NoteItem)[];
+      const cards = shown.filter((i): i is CardItem => i.kind === "card");
+      const at = near
+        ? besideOf(cards, near, (x) => x.h ?? (x.sem ? 900 : 300))
+        : { x: shown.length ? Math.max(...shown.map((i) => i.x + i.w)) + 120 : 0, y: shown.length ? Math.min(...shown.map((i) => i.y)) : 0 };
+      const r = await addSource(store, input, at);
+      const id = r.card?.id ?? r.image?.id ?? "";
+      const what = r.images ? `${r.total ?? r.images.length} pages of a PDF` : r.image?.video ? `the video "${r.image.video.title}"` : r.card?.origin?.kind === "page" ? `the page ${input}` : `a card on "${input.slice(0, 80)}"`;
+      return { id, what };
+    },
     descend: async (card, phrase) => {
       const cards = (await store.getState()).items.filter((i): i is CardItem => i.kind === "card" && !i.hidden);
       const at = besideOf(cards, card, (x) => x.h ?? (x.sem ? 900 : 300));
@@ -670,7 +683,18 @@ app.post("/api/canvases/:cid/sources", async (c) => {
   const input = typeof body.input === "string" ? body.input.trim().slice(0, 2000) : "";
   if (!input) return c.json({ error: "a link or a statement is required" }, 400);
   if (!Number.isFinite(body.x) || !Number.isFinite(body.y)) return c.json({ error: "x and y are required" }, 400);
-  const at = { x: Math.round(body.x!), y: Math.round(body.y!) };
+  try {
+    return c.json(await addSource(store, input, { x: Math.round(body.x!), y: Math.round(body.y!) }));
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 502);
+  }
+});
+
+/**
+ * Starts something new on the canvas from what was typed or pasted: a YouTube link (the video), a
+ * PDF (its pages), any other link (the page, read), or a statement or question (explained).
+ */
+async function addSource(store: CanvasStore, input: string, at: { x: number; y: number }): Promise<{ card?: CardItem; answer?: CardItem; image?: ImageItem; images?: ImageItem[]; total?: number }> {
   // A YouTube link is a lecture to watch here, stopping where it loses you.
   const yt = youtubeId(input);
   if (yt) {
@@ -698,12 +722,12 @@ app.post("/api/canvases/:cid/sources", async (c) => {
     // Its uploader doesn't allow playing it elsewhere: fetch our own copy to play here.
     if (!info.embeddable) void hostVideo(store, video.id, "not-embeddable");
     void captions(yt).catch(() => []); // fetched ahead, so the first moment is quick
-    return c.json({ image: video });
+    return { image: video };
   }
   // A PDF (an arXiv paper, or any .pdf) becomes its pages, each a single-page PDF, ten to a row.
   const pdf = pdfLink(input) ?? (looksLikeLink(input) && (await servesPdf(input)) ? { url: input } : null);
   if (pdf) {
-    try {
+    {
       const sliced = await slicePdf(pdf);
       const PER_ROW = 10;
       const GAP_X = 40;
@@ -738,16 +762,14 @@ app.post("/api/canvases/:cid/sources", async (c) => {
         }
         rowTop += tallest + GAP_Y;
       }
-      return c.json({ image: images[0], images, total: sliced.total });
-    } catch (err) {
-      return c.json({ error: (err as Error).message }, 502);
+      return { image: images[0], images, total: sliced.total };
     }
   }
   if (looksLikeLink(input)) {
     const card: CardItem = { kind: "card", id: newId(), parentId: "", origin: { kind: "page", url: input, title: input }, ...at, w: SOURCE_WIDTH, stage: "reading", subject: input };
     await store.add(card);
     void readSource(store, card.id);
-    return c.json({ card });
+    return { card };
   }
   // A statement is what you want to understand, so it is explained right away, beside it.
   const note: CardItem = { kind: "card", id: newId(), parentId: "", origin: { kind: "note", title: input }, ...at, w: CARD_WIDTH, stage: "done", subject: input, pageText: input };
@@ -755,8 +777,8 @@ app.post("/api/canvases/:cid/sources", async (c) => {
   await store.add(note);
   await store.add(answer);
   void explainSelection(store, answer.id);
-  return c.json({ card: note, answer });
-});
+  return { card: note, answer };
+}
 
 /** Fetches a copy of a video to play here, recording progress on its item so the canvas can show it. */
 async function hostVideo(store: CanvasStore, itemId: string, why?: "not-embeddable" | "player-refused") {

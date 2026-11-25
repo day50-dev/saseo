@@ -838,6 +838,10 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .call-turn.you { color: var(--muted); }
 .call-who { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 4px; }
 .call-turn.librarian .call-who { color: #1f8a4c; }
+.call-turn.sent { color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
+.call-sent { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--bg); border-radius: 4px; padding: 1px 4px; }
+.call-sent-text { color: var(--accent); }
+.call-type input { width: 100%; font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
 .call-controls { display: flex; align-items: center; gap: 10px; }
 .call-controls > button { flex: none; white-space: nowrap; }
 .call-spacer { flex: 1; }

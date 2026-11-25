@@ -151,3 +151,36 @@ describe("F-NOTES: notes the librarian leaves", () => {
     assert.match(answers, /a note they wrote, at .*It says: "Read Manton–Sutcliffe chapter 4"/);
   });
 });
+
+describe("F-CALL-7: things typed into a call", () => {
+  test("what was typed reaches the librarian, numbered, with the new ones marked", async () => {
+    llm.on(/voice call/, { say: "I see your link.", actions: [] });
+    await s.api("POST", `${C}/call`, {
+      text: "i sent you a link",
+      context: { sent: [{ n: 1, text: "https://example.org/old" }, { n: 2, text: "https://en.wikipedia.org/wiki/BPS_bound", fresh: true }] },
+    });
+    const asked = llm.askedFor(/voice call/).at(-1)!.user;
+    assert.match(asked, /typed into the call[\s\S]*\[text 1\]: https:\/\/example.org\/old\n\[text 2\] \(new, sent since they last spoke\): https:\/\/en.wikipedia.org\/wiki\/BPS_bound/);
+    assert.match(llm.askedFor(/voice call/).at(-1)!.system, /"kind": "open"/);
+  });
+
+  test("\"open it as a new card\" puts what text 1 says on the canvas, and says which", async () => {
+    llm.on(/.*/, { kind: "answer", request: "x" });
+    llm.on(/voice call/, { say: "Opening it now.", actions: [{ kind: "open", text: "text 1" }] });
+    const before = (await state()).items.length;
+    const r = await s.api("POST", `${C}/call`, { text: "can you open that up as a new card", context: { sent: [{ n: 1, text: "Why is the BPS bound saturated by solitons?", fresh: true }] } });
+    assert.ok(r.body.opened, JSON.stringify(r.body));
+    const made = (await state()).items.find((i) => i.id === r.body.opened) as CardItem;
+    assert.equal(made.origin?.kind, "note");
+    assert.equal(made.subject, "Why is the BPS bound saturated by solitons?");
+    assert.ok((await state()).items.length > before);
+    assert.match(r.body.did, /opened a card on "Why is the BPS bound/);
+  });
+
+  test("an open with nothing to open fails out loud", async () => {
+    llm.on(/voice call/, { say: "Opening it.", actions: [{ kind: "open", text: "text 3" }] });
+    const r = await s.api("POST", `${C}/call`, { text: "open text three", context: { sent: [{ n: 1, text: "a" }, { n: 2, text: "b" }] } });
+    assert.match(r.body.say, /didn't work/);
+    assert.equal(r.body.opened, undefined);
+  });
+});

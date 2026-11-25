@@ -86,6 +86,8 @@ export interface CallContext {
   marks?: Mark[];
   /** The number they picked, by clicking it or saying it. */
   picked?: number;
+  /** What they typed or pasted into the call (a link, a passage), numbered; `fresh` since they last spoke. */
+  sent?: { n: number; text: string; fresh?: boolean }[];
 }
 
 const CALL = `You are a research librarian on a voice call with a curious, intelligent reader who is not a specialist.
@@ -125,6 +127,10 @@ You can change the canvas while you talk, with up to three actions:
 - {"kind": "remove", "ids": ["..."]}: take cards off the canvas (they can undo it). Only cards they clearly mean;
   look up their ids with "cards" if you don't have them. Never guess here: if more than one card fits their words
   ("the other graph" with two graphs, "the chart" with a plot and a table, "that" with nothing pointed at), mark them and ask.
+- {"kind": "open", "text": "..."}: put something new on the canvas from a link or words: a web page (read and drawn
+  as shapes), a YouTube video, a PDF (its pages), or a question or statement (explained). "text" is the link or the
+  words themselves; for something they typed into the call, "text" can be just "text 1". Use it when they ask you to
+  open, add or put up a link or something they sent, or to start on a new question of its own.
 - {"kind": "note", "text": "..."}: leave a written note on the canvas, beside what they're pointing at (or loose).
   Use it when they ask you to note, jot down or remember something, or when something is worth keeping for later
   that the canvas doesn't show: an open question, a caveat, something to come back to. Write the note itself, short,
@@ -233,11 +239,13 @@ export async function callTurn(
     find: (near: CardItem | undefined, kind: ObjectKind, request: string, focus?: string) => Promise<CardItem>;
     /** Hides cards (and what hangs from them); returns everything hidden. */
     remove: (ids: string[]) => Promise<string[]>;
+    /** Opens a link or words as something new on the canvas, beside `near`; returns what was made. */
+    open?: (input: string, near?: CardItem) => Promise<{ id: string; what: string }>;
     /** Leaves a note, about a card (and a piece of it) when one is pointed at. */
     note?: (text: string, on?: { id: string; key?: string; quote?: string }) => Promise<unknown>;
   },
   ctx: CallContext = {},
-): Promise<{ say: string; did?: string; removed?: string[]; marks?: Mark[]; looked?: string[] }> {
+): Promise<{ say: string; did?: string; removed?: string[]; marks?: Mark[]; looked?: string[]; opened?: string }> {
   const state = await store.getState();
   const cards = state.items.filter((i): i is CardItem => i.kind === "card" && !i.hidden);
   // A number picked from the marks is what they mean now.
@@ -271,6 +279,12 @@ export async function callTurn(
         : !pick && !pointing.selection
           ? "Not pointing at anything."
           : "",
+    ctx.sent?.length
+      ? `They typed into the call (they may say "the link", "what I sent", "text 2"):\n${ctx.sent
+          .slice(-10)
+          .map((t) => `[text ${t.n}]${t.fresh ? " (new, sent since they last spoke)" : ""}: ${t.text.slice(0, 2000)}`)
+          .join("\n")}`
+      : "",
     ctx.marks?.length && !pick ? `Numbered on screen from your last turn: ${ctx.marks.map((m) => `${m.n} = ${m.label}`).join("; ")}` : "",
     history.length ? `The call so far:\n${history.slice(-8).map((t) => `${t.role === "you" ? "Reader" : "You"}: ${t.text}`).join("\n")}` : "",
     `They just said: "${text}"`,
@@ -340,6 +354,7 @@ export async function callTurn(
   const done: string[] = [];
   const removed: string[] = [];
   let marks: Mark[] = [];
+  let opened: string | undefined;
   let failed = false;
   for (const a of actions) {
     try {
@@ -361,6 +376,17 @@ export async function callTurn(
         // Beside what they're pointing at, else beside the newest card.
         const made = await hooks.find(card ?? cards.at(-1), what, request, focus);
         done.push(`finding ${what}: ${request} (${made.id})`);
+      } else if (a.kind === "open" && hooks.open) {
+        let input = String(a.text ?? "").trim();
+        // "text 2" (or "[text 2]") is what they typed into the call.
+        const ref = input.match(/^\[?\s*text\s*(\d+)\s*\]?$/i);
+        if (ref) input = ctx.sent?.find((t) => t.n === Number(ref[1]))?.text.trim() ?? "";
+        if (!input && ctx.sent?.length === 1) input = ctx.sent[0].text.trim();
+        if (input) {
+          const made = await hooks.open(input.slice(0, 2000), card);
+          opened = made.id;
+          done.push(`opened ${made.what}`);
+        } else failed = true;
       } else if (a.kind === "note" && hooks.note) {
         const words = String(a.text ?? "").trim().slice(0, 2000);
         if (words) {
@@ -392,7 +418,7 @@ export async function callTurn(
   }
   if (failed) spoken += " Something I tried on the canvas didn't work, though.";
   const did = done.length ? done.join("; ") : undefined;
-  return { say: spoken, did, ...(removed.length ? { removed } : {}), ...(marks.length ? { marks } : {}), ...(looked.length ? { looked } : {}) };
+  return { say: spoken, did, ...(removed.length ? { removed } : {}), ...(marks.length ? { marks } : {}), ...(looked.length ? { looked } : {}), ...(opened ? { opened } : {}) };
 }
 
 /** Where a new card for a phrase in `from` goes: to its right, below anything already there. */

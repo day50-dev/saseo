@@ -162,6 +162,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   // A note being written, not yet saved: where it goes and what it's about.
   const [noteDraft, setNoteDraft] = useState<{ x: number; y: number; on?: { id: string } } | null>(null);
   const startNoteRef = useRef<() => void>(() => {});
+  // Something to bring into view once it has loaded (opened on a call).
+  const [focusNext, setFocusNext] = useState<string | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const imgRefs = useRef<Record<string, HTMLImageElement | null>>({});
   const pan = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
@@ -1132,6 +1134,13 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     setSelected(id);
   };
 
+  useEffect(() => {
+    if (focusNext && byId.has(focusNext)) {
+      focusOn(focusNext);
+      setFocusNext(null);
+    }
+  });
+
   // Cards about an image written before pieces pointed into their page: find those places once.
   const looked = useRef(new Set<string>());
   const mapped = useRef(new Set<string>());
@@ -1827,6 +1836,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       {calling && <CallBar canvasId={canvasId} serverVoice={!!me.speech?.tts}
           onChanged={(removed) => {
             if (removed?.length) pushStep({ label: "remove (on the call)", undo: () => api.show(removed), redo: () => api.hide(removed) });
+            void refresh();
+          }} onOpened={(id) => {
+            setFocusNext(id);
             void refresh();
           }} onClose={() => setCalling(false)} />}
       {goalsOpen && (

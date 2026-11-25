@@ -311,6 +311,39 @@ describe("F-NOTES: a call reads notes", () => {
   });
 });
 
+describe("F-CALL-7: typing into a call", () => {
+  test("typed text shows as [text 1: …], waits for the next words, then goes with them; what it opens comes into view", async () => {
+    llm.reset();
+    llm.on(/.*/, { kind: "answer", request: "x" });
+    llm.on(/voice call/, { say: "Opening it as a new card.", actions: [{ kind: "open", text: "text 1" }] });
+    const p = await open("/c/cnot0001", 1600, 1000);
+    await p.locator(cardSel("q1")).waitFor();
+    await p.click(".call-btn");
+    await p.waitForFunction(() => Boolean((window as unknown as { __rec?: unknown }).__rec));
+    const box = p.getByLabel("Text for the librarian");
+    await box.fill("What saturates the BPS bound?");
+    await box.press("Enter");
+    const sent = p.locator(".call-turn.sent");
+    await sent.waitFor();
+    assert.match(await sent.innerText(), /\[text 1: What saturates the BPS bound\?\][\s\S]*the next time you speak/);
+    assert.equal(await box.inputValue(), "");
+    assert.equal(llm.askedFor(/voice call/).length, 0, "nothing is sent until they speak");
+    await p.evaluate(() => {
+      const rec = (window as unknown as { __rec: Record<string, (e: unknown) => void> }).__rec;
+      rec.onspeechstart?.({});
+      rec.onresult({ resultIndex: 0, results: [Object.assign({ 0: { transcript: "i sent you something, can you open it as a new card" } }, { isFinal: true })] });
+    });
+    await p.getByText("Opening it as a new card.").waitFor({ timeout: 10000 });
+    assert.match(llm.askedFor(/voice call/).at(-1)!.user, /\[text 1\] \(new, sent since they last spoke\): What saturates the BPS bound\?/);
+    await until(async () => !(await sent.innerText()).includes("next time you speak"), 5000, "the hint to go");
+    const made = (await state("cnot0001")).find((i) => i.kind === "card" && i.subject === "What saturates the BPS bound?")!;
+    await p.locator(cardSel(made.id)).waitFor();
+    const r = await p.locator(cardSel(made.id)).boundingBox();
+    assert.ok(r && r.x > -50 && r.x < 1600, `brought into view: ${JSON.stringify(r)}`);
+    await p.context().close();
+  });
+});
+
 describe("F-PHONE: it works on a phone", () => {
   test("a canvas opens at phone width without the page scrolling sideways", async () => {
     const p = await open("/c/diag0001", 375, 812);

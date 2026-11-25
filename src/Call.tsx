@@ -9,7 +9,7 @@ import { pickedNumber } from "./callWords.ts";
 import { withoutEcho } from "./echo.ts";
 import { selectedText, textWithTex } from "./MathText.tsx";
 
-type Turn = { role: "you" | "librarian"; text: string };
+type Turn = { role: "you" | "librarian"; text: string } | { role: "sent"; n: number; text: string; seen: boolean };
 type State = "starting" | "listening" | "talking" | "hearing" | "thinking" | "speaking" | "muted";
 
 export interface Pointing {
@@ -154,12 +154,15 @@ export function CallBar({
   canvasId,
   serverVoice,
   onChanged,
+  onOpened,
   onClose,
 }: {
   canvasId: string;
   serverVoice: boolean;
   /** The canvas changed; `removed` is what the librarian took off it (for Undo). */
   onChanged: (removed?: string[]) => void;
+  /** The librarian put something new on the canvas: show it. */
+  onOpened?: (id: string) => void;
   onClose: () => void;
 }) {
   // The librarian's voice: the browser's own (instant) or the server's (Kokoro; nicer, slower).
@@ -186,6 +189,15 @@ export function CallBar({
   const audio = useRef<HTMLAudioElement | null>(null);
   const turnsRef = useRef<Turn[]>([]);
   turnsRef.current = turns;
+  // Typed or pasted into the call: numbered, and given to the librarian with what you next say.
+  const [typed, setTyped] = useState("");
+  const send = () => {
+    const text = typed.trim();
+    if (!text) return;
+    const n = turnsRef.current.filter((t) => t.role === "sent").length + 1;
+    setTurns((t) => [...t, { role: "sent", n, text: text.slice(0, 4000), seen: false }]);
+    setTyped("");
+  };
   const stateRef = useRef<State>("starting");
   stateRef.current = state;
   const muted = useRef(false);
@@ -357,15 +369,20 @@ export function CallBar({
       // A number while things are numbered on screen picks one.
       const picked = marksRef.current.length ? (context?.picked ?? pickedNumber(text)) : undefined;
       if (!substantive(text) && picked === undefined) return;
-      const history = turnsRef.current;
-      setTurns([...history, { role: "you", text }]);
+      const before = turnsRef.current;
+      setTurns([...before, { role: "you", text }]);
       setState("thinking");
+      // What was typed goes as its own list; the spoken history is just what was said.
+      const sent = before.flatMap((t) => (t.role === "sent" ? [{ n: t.n, text: t.text, ...(t.seen ? {} : { fresh: true }) }] : [])).slice(-10);
+      const history = before.filter((t) => t.role !== "sent").map((t) => ({ role: t.role, text: t.text }));
       const r = await fetch(`/api/canvases/${encodeURIComponent(canvasId)}/call`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text, pointing, history, context: { ...context, ...(picked !== undefined ? { picked } : {}) } }),
+        body: JSON.stringify({ text, pointing, history, context: { ...context, ...(picked !== undefined ? { picked } : {}), ...(sent.length ? { sent } : {}) } }),
       });
-      const { say, did, removed, marks: numbered } = (await r.json()) as { say: string; did?: string; removed?: string[]; marks?: Mark[] };
+      const { say, did, removed, marks: numbered, opened } = (await r.json()) as { say: string; did?: string; removed?: string[]; marks?: Mark[]; opened?: string };
+      // It has seen what was typed now.
+      if (sent.some((t) => t.fresh)) setTurns((all) => all.map((t) => (t.role === "sent" && !t.seen ? { ...t, seen: true } : t)));
       // Numbers last one turn: they're new, or gone.
       setMarks(numbered ?? []);
       if (!say) return;
@@ -375,6 +392,7 @@ export function CallBar({
       speaking.current = [...speaking.current.filter((x) => x.until > Date.now()), spoken].slice(-3);
       echoClear.current = () => (spoken.until = Date.now() + 4000);
       if (did) onChanged(removed);
+      if (opened) onOpened?.(opened);
       deaf.current = true;
       await speak(say);
       if (deaf.current) {
@@ -597,17 +615,42 @@ export function CallBar({
     <div className="call-bar" onPointerDown={(e) => e.stopPropagation()}>
       {marks.length > 0 && <Marks marks={marks} onPick={pick} />}
       <div className="call-log">
-        {turns.slice(-4).map((t, i) => (
-          <div key={i} className={`call-turn ${t.role}`}>
-            <span className="call-who">{t.role === "you" ? "You" : "Librarian"}</span> {t.text}
-          </div>
-        ))}
+        {turns.slice(-6).map((t, i) =>
+          t.role === "sent" ? (
+            <div key={i} className="call-turn sent">
+              <span className="call-sent">
+                [text {t.n}: <span className="call-sent-text">{t.text}</span>]
+              </span>
+              {!t.seen && <span className="muted small"> (the librarian will see this the next time you speak)</span>}
+            </div>
+          ) : (
+            <div key={i} className={`call-turn ${t.role}`}>
+              <span className="call-who">{t.role === "you" ? "You" : "Librarian"}</span> {t.text}
+            </div>
+          ),
+        )}
         {!turns.length && (
           <div className="call-turn muted">
             Just talk. Keep your hand on the canvas: point at a piece and say “break this down”, “why?”, or “what does this word mean?”.
           </div>
         )}
       </div>
+      <form
+        className="call-type"
+        onSubmit={(e) => {
+          e.preventDefault();
+          send();
+        }}
+      >
+        <input
+          type="text"
+          value={typed}
+          maxLength={4000}
+          placeholder="Paste a link or type something to show the librarian…"
+          aria-label="Text for the librarian"
+          onChange={(e) => setTyped(e.target.value)}
+        />
+      </form>
       {/* What's happening, on a line of its own so it's never squeezed out by the buttons. */}
       <div className="call-status-line">
         <span className="call-status">
