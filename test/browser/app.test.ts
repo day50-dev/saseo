@@ -26,6 +26,7 @@ before(async () => {
     { id: "map00001", name: "Map", items: [objectCard("m", { type: "map", title: "Lagrange", route: true, places: [{ name: "Turin", lat: 45.07, lon: 7.69, note: "born" }, { name: "Berlin", lat: 52.52, lon: 13.4 }, { name: "Paris", lat: 48.86, lon: 2.35, approximate: true }] })] },
     { id: "undo0001", name: "Undo", items: [explained("u1", "Keep me", 0, 0), explained("u2", "Remove me", 800, 0)] },
     { id: "chat0001", name: "Chat", items: [explained("c1", "Eigenvalues", 0, 0)] },
+    { id: "note0001", name: "Notes", items: [explained("n1", "Bialgebras", 0, 0)] },
     {
       id: "call0001",
       name: "Call",
@@ -181,6 +182,50 @@ describe("F-DESK-2: removing, and Undo", () => {
     assert.equal((await state("undo0001")).find((i) => i.id === "u2")!.hidden, false);
     await p.keyboard.press("Control+Shift+z");
     await p.locator(cardSel("u2")).waitFor({ state: "detached" });
+    await p.context().close();
+  });
+});
+
+describe("F-NOTES: notes on the canvas", () => {
+  test("N opens a note beside the selected card; it saves, rewords, shows its history, and Undo takes it away", async () => {
+    const p = await open("/c/note0001");
+    await p.locator(cardSel("n1")).waitFor();
+    await p.locator(`${cardSel("n1")} .card-head`).click({ position: { x: 60, y: 8 } });
+    await p.keyboard.press("n");
+    await p.locator(".note-edit").fill("Is the 1 really needed?");
+    await p.keyboard.press("Control+Enter");
+    const note = p.locator(".note-item:not([data-note-id=draft])");
+    await note.waitFor();
+    const saved = await until(async () => (await state("note0001")).find((i) => i.kind === "note"), 5000, "the note");
+    assert.equal((saved as { on?: { id: string } }).on?.id, "n1", "about the selected card");
+    assert.match(await note.locator(".note-meta").innerText(), /You[\s\S]*on “Bialgebras”/);
+    assert.equal(await p.locator("path.note-line").count(), 1, "a line to what it's about");
+
+    await note.locator(".note-text").dblclick();
+    await p.locator(".note-edit").fill("Is the unit really needed?");
+    await p.keyboard.press("Control+Enter");
+    await until(async () => (await note.locator(".note-text").innerText()) === "Is the unit really needed?", 5000, "the new wording");
+
+    await note.getByRole("button", { name: "History" }).click();
+    const h = note.locator(".note-history");
+    await h.getByText("Wordings").waitFor();
+    assert.match(await h.innerText(), /You left this on the canvas[\s\S]*Is the 1 really needed\?[\s\S]*Is the unit really needed\?/);
+
+    await p.locator(".stage").click({ position: { x: 1400, y: 900 } });
+    await p.keyboard.press("Control+z");
+    await p.keyboard.press("Control+z");
+    await note.waitFor({ state: "detached" });
+    assert.deepEqual((p as Page & { errors: string[] }).errors, []);
+    await p.context().close();
+  });
+
+  test("Escape drops a note that was never written", async () => {
+    const p = await open("/c/note0001");
+    await p.locator(cardSel("n1")).waitFor();
+    await p.locator(".note-add-btn").click();
+    await p.locator(".note-edit").waitFor();
+    await p.keyboard.press("Escape");
+    await p.locator(".note-edit").waitFor({ state: "detached" });
     await p.context().close();
   });
 });

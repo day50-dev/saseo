@@ -1,5 +1,6 @@
 // The librarian's loop for one card: read the region, go fish, write a descending
 // explanation from what was found, then check that it doesn't climb.
+import { addNote } from "./notes.ts";
 import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { execFile } from "node:child_process";
@@ -589,6 +590,12 @@ export async function extendPiece(store: CanvasStore, cardId: string, extId: str
     if (choosing) {
       const piece = chain[chain.length - 1] ?? "";
       const { kind, request } = await decideIntent(ext.ask!, `${card.subject ?? ""}: ${ext.focus || piece}`);
+      if (kind === "note") {
+        // A note isn't a shape: it goes beside the card, about this piece, and the ask is dropped.
+        await addNote(store, { text: request, by: "librarian", via: "canvas", on: { id: cardId, key: ext.at, quote: ext.focus || piece }, said: ext.ask });
+        await store.edit(cardId, (now) => (now?.kind === "card" && now.ext ? { ext: now.ext.filter((e) => e.id !== extId) } : null));
+        return;
+      }
       if (kind !== "answer") {
         const made = await findFor(store, card, kind, request, ext.focus || piece);
         await save({ status: "done", made: made.id, items: [request.trim().toLowerCase() === ext.ask!.trim().toLowerCase() ? MADE[kind] : `${MADE[kind]}: ${request}`] });
@@ -1063,10 +1070,11 @@ export async function chatAbout(store: CanvasStore, cardId: string) {
 // Asking for videos, reading or a diagram makes an object on its own card, connected to the card
 // it was asked from, so a card gathers a collection instead of a long transcript.
 
-type Intent = "answer" | ObjectKind;
+type Intent = "answer" | "note" | ObjectKind;
 
 const INTENT_CRITERIA: Record<Intent, string> = {
   answer: "A question to be answered in words.",
+  note: "A request to note, jot down or remember something for later, rather than to answer it now.",
   videos: "A request for videos, lectures or talks to watch.",
   links: "A request for reading: articles, notes, papers, textbooks or other pages.",
   diagram: "A request to draw, sketch, picture or diagram something.",
@@ -1081,7 +1089,7 @@ const isIntent = (v: unknown): v is Intent => typeof v === "string" && v in INTE
 
 const INTENT = `A reader typed a message in the conversation box on a card about a topic they are studying.
 Decide what they want: an answer in words, or an object made for them.
-Return JSON only: {"kind": "answer" | "videos" | "links" | "diagram" | "papers" | "notebook" | "table" | "plot" | "graph" | "map", "request": "what they asked for, restated in a few words"}
+Return JSON only: {"kind": "answer" | "note" | "videos" | "links" | "diagram" | "papers" | "notebook" | "table" | "plot" | "graph" | "map", "request": "what they asked for, restated in a few words"}
 - "videos": they ask for videos, lectures or talks to watch.
 - "links": they ask for things to read: articles, notes, papers, textbook chapters.
 - "diagram": they ask you to draw, sketch, picture or diagram something.
@@ -1092,6 +1100,8 @@ Return JSON only: {"kind": "answer" | "videos" | "links" | "diagram" | "papers" 
 - "graph": they ask for nodes and edges: a graph in graph theory, a tree, a network, a map of how things connect.
 - "map": they ask for a geographic map, or where places are on the earth: cities, battles, routes, countries.
   ("graph y = x^2" is a plot; "draw K4" or "how are these ideas connected" is a graph; a picture or sketch is a diagram.)
+- "note": they ask you to note, jot down or remember something for later ("note that…", "remind me to check this",
+  "remember: the 1 is the unit"). "request" is then the note itself, as it should read (their point, in their words).
 - "answer": anything else.`;
 
 async function decideIntent(text: string, about: string): Promise<{ kind: Intent; request: string }> {
@@ -1406,6 +1416,12 @@ export async function handleChat(store: CanvasStore, cardId: string) {
   }
   const { kind, request } = await decideIntent(last.text, card.subject ?? card.selection ?? "this");
   if (kind === "answer") return chatAbout(store, cardId);
+  if (kind === "note") {
+    const note = await addNote(store, { text: request, by: "librarian", via: "chat", on: { id: cardId }, said: last.text });
+    await store.record({ type: "chat", id: cardId, message: { role: "assistant", text: `Noted beside the card: ${request}`, at: new Date().toISOString(), ...(note ? { objectId: note.id } : {}) } });
+    await store.update(cardId, { chatPending: false });
+    return;
+  }
 
   const object = await addObject(store, card, kind, request);
   await store.record({

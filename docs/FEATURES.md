@@ -116,6 +116,18 @@ Each feature has an ID. The tests carry the same ID in their `describe` names, s
 |---|---|---|
 | F-GOALS | A card the librarian makes is placed under a goal. You can add your own goals, with subgoals. Rewording a goal keeps what it was, and a goal can be marked done. A goal never goes under itself or one of its own. A card works toward one goal at a time: giving it to another moves it. Undo puts a goal back exactly as it was. | `api/grow-goals` |
 
+## F-NOTES: notes, from you or the librarian
+
+| ID | Feature | Checked by |
+|---|---|---|
+| F-NOTES-1 | **Leaving a note.** Press N, or use ✎ Note in the toolbar. With a card or image selected, the note is about it: it lands beside it, below any earlier notes there, joined to it by a dotted line. With nothing selected, it's a loose note in the middle of the screen. Ctrl+Enter or clicking away saves it, and Escape drops an empty one. Undo takes a note away. | `api/notes`, `browser/app` |
+| F-NOTES-2 | **What a note keeps.** Its words as written (line breaks kept), who left it (you or the librarian), when, and where from: the canvas, a call, or a card's conversation. It also keeps what had just been said, and what it's about: a card, a piece of one, and the words there. A note on a box goes on the image. | `api/notes` |
+| F-NOTES-3 | **History.** A note can just sit there, or you can look into it. History shows how it came to be, then its earlier wordings, each with who wrote it and when. "Before it" is what happened on the canvas up to the moment it was left. "Since" is what has happened to the note, and to what it's about, after that. Double-click or Edit rewords it, and the earlier wording is kept. | `api/notes`, `browser/app` |
+| F-NOTES-4 | **Notes the librarian leaves.** On a call it can leave a note: when you ask it to note or remember something, or when something is worth keeping for later. The note goes beside what you're pointing at, or is loose if you're pointing at nothing. Asking a card's conversation to note something, or growing a piece with "note this", leaves a note beside the card instead of an answer. | `api/notes` |
+| F-NOTES-5 | **A note goes with what it's about.** Dragging the thing moves its notes too; removing it removes them, and bringing it back brings them back. A note can also be moved on its own. | `api/notes` |
+
+**Not covered automatically:** whether a real model chooses to leave a note when it should (and only then); growing a piece with "note this" (it goes through the same decision as a card's conversation, but no test drives it).
+
 ## F-SETTINGS and F-HOST: your models; hosting it for others
 
 | ID | Feature | Checked by |

@@ -1,6 +1,7 @@
 import { GoalsPanel } from "./GoalsPanel.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { Note } from "./Note.tsx";
 import { Card, type Side } from "./Card.tsx";
 import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
 import { players } from "./youtube.ts";
@@ -158,6 +159,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   // so a selection is answered at once rather than after the server replies.
   const [expected, setExpected] = useState<Pending[]>([]);
   const [heights, setHeights] = useState<Record<string, number>>({});
+  // A note being written, not yet saved: where it goes and what it's about.
+  const [noteDraft, setNoteDraft] = useState<{ x: number; y: number; on?: { id: string } } | null>(null);
+  const startNoteRef = useRef<() => void>(() => {});
   const stageRef = useRef<HTMLDivElement>(null);
   const imgRefs = useRef<Record<string, HTMLImageElement | null>>({});
   const pan = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
@@ -183,6 +187,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       else if (e.key === "/") {
         e.preventDefault();
         setDockOpen(true);
+      } else if (e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        startNoteRef.current();
       }
     };
     const up = (e: KeyboardEvent) => e.key === " " && setSpaceHeld(false);
@@ -373,6 +380,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const images = shown.filter((i): i is ImageItem => i.kind === "image");
   const regions = shown.filter((i): i is RegionItem => i.kind === "region");
   const cards = shown.filter((i): i is CardItem => i.kind === "card");
+  const notes = shown.filter((i): i is NoteItem => i.kind === "note");
 
   const toWorld = useCallback(
     (clientX: number, clientY: number) => {
@@ -645,7 +653,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       grew = false;
       for (const i of items) {
         if (out.has(i.id)) continue;
-        const parent = i.kind === "region" ? i.imageId : i.kind === "card" ? i.parentId : undefined;
+        // A note moves with what it's about.
+        const parent = i.kind === "region" ? i.imageId : i.kind === "card" ? i.parentId : i.kind === "note" ? i.on?.id : undefined;
         if (parent && out.has(parent)) {
           out.add(i.id);
           grew = true;
@@ -1243,6 +1252,56 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     return [<path key={c.id} d={d} className={lit ? "connector lit" : "connector"} />];
   });
 
+  // A note hangs from what it's about by a dotted line, from that thing's nearer side.
+  const noteLines = notes.flatMap((n) => {
+    if (!n.on || folded.has(n.on.id)) return [];
+    const box = relBox(n.on.id);
+    if (!box) return [];
+    const right = n.x >= box.x + box.w / 2;
+    const from = { x: right ? box.x + box.w : box.x, y: box.y + Math.min(28, box.h / 2) };
+    const to = { x: right ? n.x : n.x + n.w, y: n.y + 18 };
+    const mx = (from.x + to.x) / 2;
+    const lit = hover === n.id || hover === n.on.id;
+    return [<path key={`note-${n.id}`} d={`M${from.x} ${from.y} C${mx} ${from.y} ${mx} ${to.y} ${to.x} ${to.y}`} className={lit ? "connector note-line lit" : "connector note-line"} />];
+  });
+
+  /** Opens a new note: beside what's selected (and about it), else in the middle of the screen. */
+  const startNote = () => {
+    const sel = selected ? byId.get(selected) : undefined;
+    if (sel && (sel.kind === "card" || sel.kind === "image")) {
+      const taken = notes.filter((n) => n.on?.id === sel.id).reduce((y, n) => Math.max(y, n.y + (heights[n.id] ?? 120) + 16), sel.y);
+      setNoteDraft({ x: sel.x + sel.w + 32, y: taken, on: { id: sel.id } });
+      return;
+    }
+    const r = stageRef.current?.getBoundingClientRect();
+    const c = r ? toWorld(r.left + r.width / 2 - 140 * view.scale, r.top + r.height / 3) : { x: 0, y: 0 };
+    setNoteDraft({ x: Math.round(c.x), y: Math.round(c.y) });
+  };
+  startNoteRef.current = startNote;
+
+  const saveNote = async (text: string) => {
+    const d = noteDraft;
+    setNoteDraft(null);
+    if (!d) return;
+    try {
+      const { note } = await api.addNote({ text, x: d.x, y: d.y, ...(d.on ? { on: d.on } : {}) });
+      pushStep({ label: "note", undo: () => api.hide([note.id]), redo: () => api.show([note.id]) });
+      await refresh();
+    } catch (e) {
+      setError(`Couldn't save the note: ${e}`);
+    }
+  };
+
+  const rewordNote = async (n: NoteItem, text: string) => {
+    try {
+      await api.editNote(n.id, text);
+      pushStep({ label: "edit note", undo: () => api.editNote(n.id, n.text), redo: () => api.editNote(n.id, text) });
+      await refresh();
+    } catch (e) {
+      setError(`Couldn't save the note: ${e}`);
+    }
+  };
+
   const draftRect = draft && {
     x: Math.min(draft.start.x, draft.end.x),
     y: Math.min(draft.start.y, draft.end.y),
@@ -1329,6 +1388,14 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             ↷ Redo
           </button>
         </div>
+        <button
+          type="button"
+          className="secondary note-add-btn"
+          title={selected ? "Leave a note about what's selected (N)" : "Leave a note on the canvas (N)"}
+          onClick={startNote}
+        >
+          ✎ Note <kbd>N</kbd>
+        </button>
         {/* Always in its place: on an empty canvas the start box is already open in the middle, so it's only disabled. */}
         <button
           type="button"
@@ -1437,7 +1504,46 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           // --zoom lets handles keep the same size on screen at any zoom.
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, ["--zoom" as string]: view.scale }}
         >
-          <svg className="connectors">{connectors}</svg>
+          <svg className="connectors">
+            {connectors}
+            {noteLines}
+          </svg>
+          {notes.map((n) => (
+            <Note
+              key={n.id}
+              note={n}
+              aboutName={n.on ? noteAboutName(byId.get(n.on.id)) : undefined}
+              z={rank.get(n.id)}
+              selected={selected === n.id}
+              lit={hover === n.id || (!!n.on && hover === n.on.id)}
+              moving={!!drag?.ids.includes(n.id)}
+              onGrab={(e) => startMove(n.id, e)}
+              onHover={(on) => setHover(on ? n.id : null)}
+              onHeight={(h) => setHeights((all) => (all[n.id] === h ? all : { ...all, [n.id]: h }))}
+              onSave={(text) => rewordNote(n, text)}
+              onRemove={() => remove(n.id, "remove note")}
+              onFocus={focusOn}
+              history={() => api.noteHistory(n.id)}
+            />
+          ))}
+          {noteDraft && (
+            <Note
+              key="note-draft"
+              note={{ kind: "note", id: "draft", text: "", by: "you", at: new Date().toISOString(), x: noteDraft.x, y: noteDraft.y, w: NOTE_WIDTH, context: { via: "canvas", seq: 0 }, ...(noteDraft.on ? { on: noteDraft.on } : {}) }}
+              editing
+              selected={false}
+              lit={false}
+              moving={false}
+              onGrab={() => {}}
+              onHover={() => {}}
+              onHeight={() => {}}
+              onSave={saveNote}
+              onCancel={() => setNoteDraft(null)}
+              onRemove={() => setNoteDraft(null)}
+              onFocus={focusOn}
+              history={() => Promise.reject(new Error("not saved yet"))}
+            />
+          )}
 
           {images
             .filter((img) => img.video)
@@ -1783,6 +1889,15 @@ function renderRegion(img: HTMLImageElement, rect: Rect): { marked: string; crop
 }
 
 /** The canvas's name, edited in place: click it, type, press Enter or click away. */
+/** What a note is about, by name, for its "on …" line. */
+function noteAboutName(i: Item | undefined): string | undefined {
+  if (!i) return undefined;
+  const t = i.kind === "card" ? (i.subject ?? i.selection ?? i.request ?? i.origin?.title) : i.kind === "image" ? (i.video?.title ?? i.moment?.title ?? i.pdf?.title ?? i.topic ?? i.name) : undefined;
+  if (!t) return undefined;
+  const one = t.replace(/\s+/g, " ").trim();
+  return `“${one.length > 40 ? `${one.slice(0, 39)}…` : one}”`;
+}
+
 function CanvasName({ name, onRename }: { name: string; onRename: (name: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);

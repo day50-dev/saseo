@@ -122,6 +122,10 @@ You can change the canvas while you talk, with up to three actions:
 - {"kind": "remove", "ids": ["..."]}: take cards off the canvas (they can undo it). Only cards they clearly mean;
   look up their ids with "cards" if you don't have them. Never guess here: if more than one card fits their words
   ("the other graph" with two graphs, "the chart" with a plot and a table, "that" with nothing pointed at), mark them and ask.
+- {"kind": "note", "text": "..."}: leave a written note on the canvas, beside what they're pointing at (or loose).
+  Use it when they ask you to note, jot down or remember something, or when something is worth keeping for later
+  that the canvas doesn't show: an open question, a caveat, something to come back to. Write the note itself, short,
+  in plain words (their words when they dictate it), not a description of it. Say briefly that you've noted it.
 - {"kind": "mark", "marks": [{"card": "id", "piece": "key (optional)", "label": "two or three words"}]}: number 2 to 5
   candidates on screen so they can say which they mean.
 Your words say briefly what you're doing ("Let me break that down on the card.", "I'll take those two off.").
@@ -217,6 +221,8 @@ export async function callTurn(
     find: (near: CardItem | undefined, kind: ObjectKind, request: string, focus?: string) => Promise<CardItem>;
     /** Hides cards (and what hangs from them); returns everything hidden. */
     remove: (ids: string[]) => Promise<string[]>;
+    /** Leaves a note, about a card (and a piece of it) when one is pointed at. */
+    note?: (text: string, on?: { id: string; key?: string; quote?: string }) => Promise<unknown>;
   },
   ctx: CallContext = {},
 ): Promise<{ say: string; did?: string; removed?: string[]; marks?: Mark[]; looked?: string[] }> {
@@ -280,7 +286,7 @@ export async function callTurn(
         return `Unknown tool ${String(t.tool)}.`;
     }
   };
-  type Action = { kind?: string; shape?: string; phrase?: string; find?: string; request?: string; ids?: unknown; marks?: unknown };
+  type Action = { kind?: string; shape?: string; phrase?: string; find?: string; request?: string; ids?: unknown; marks?: unknown; text?: unknown };
   const llm = (await loadConfig()).llm;
   const convo: Message[] = [
     { role: "system", content: CALL },
@@ -338,6 +344,13 @@ export async function callTurn(
         // Beside what they're pointing at, else beside the newest card.
         const made = await hooks.find(card ?? cards.at(-1), what, request, focus);
         done.push(`finding ${what}: ${request} (${made.id})`);
+      } else if (a.kind === "note" && hooks.note) {
+        const words = String(a.text ?? "").trim().slice(0, 2000);
+        if (words) {
+          const quote = pointing.selection || pointing.pieceText || pointing.figure;
+          await hooks.note(words, card ? { id: card.id, ...(pointing.key ? { key: pointing.key } : {}), ...(quote ? { quote } : {}) } : undefined);
+          done.push(`left a note: ${words.slice(0, 80)}`);
+        } else failed = true;
       } else if (a.kind === "mark") {
         const known = new Set(cards.map((c) => c.id));
         const list = (Array.isArray(a.marks) ? a.marks : []) as Record<string, unknown>[];

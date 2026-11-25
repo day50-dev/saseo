@@ -80,8 +80,50 @@ export interface VideoMeta {
   why?: "not-embeddable" | "player-refused";
 }
 
-/** What an update event may change: a card's fields, or what was read off an image. */
-export type ItemPatch = Partial<Omit<CardItem, "kind" | "id">> & Partial<Pick<ImageItem, "pageText" | "topic" | "video">>;
+/** What an update event may change: a card's fields, what was read off an image, or a note's words. */
+export type ItemPatch = Partial<Omit<CardItem, "kind" | "id">> & Partial<Pick<ImageItem, "pageText" | "topic" | "video">> & Partial<Pick<NoteItem, "text" | "was" | "edited">>;
+
+/**
+ * A free-form note: words left on the canvas by the reader or the librarian, read as they are and
+ * never explained. It remembers who left it, when, what it was about and what led to it, so it can
+ * just sit there as a note or be looked into later ("why did I write this?").
+ */
+export interface NoteItem extends ItemState {
+  kind: "note";
+  id: string;
+  text: string;
+  by: "you" | "librarian";
+  /** When it was left. */
+  at: string;
+  x: number;
+  y: number;
+  w: number;
+  /** Height as last drawn, recorded with moves. */
+  h?: number;
+  /** What it's about: a card or an image, a piece of a card, and the words there. Absent for a loose note. */
+  on?: { id: string; key?: string; quote?: string };
+  /** What led to it: where it was left from, what had just been said, and the log's seq at that moment. */
+  context: { via: NoteVia; said?: string; seq: number };
+  /** Its earlier wordings, oldest first: each with when it was written and by whom. */
+  was?: { text: string; at: string; by: "you" | "librarian" }[];
+  /** Who last reworded it, and when (absent until it's reworded). */
+  edited?: { at: string; by: "you" | "librarian" };
+}
+
+export type NoteVia = "canvas" | "call" | "chat";
+
+/** A note's story, for looking into it. */
+export interface NoteHistory {
+  /** Its wordings, oldest first, the current one last. */
+  versions: { text: string; at: string; by: "you" | "librarian" }[];
+  /** What happened on the canvas just before it was left, oldest first. */
+  before: { at: string; what: string; id?: string }[];
+  /** What happened to it, and to what it's about, since. */
+  since: { at: string; what: string; id?: string }[];
+}
+
+/** How wide a new note is. */
+export const NOTE_WIDTH = 340;
 
 /** A rectangle the learner drew on an image; `rect` is in the image's natural pixels. */
 export interface RegionItem extends ItemState {
@@ -470,7 +512,7 @@ export interface CardItem extends ItemState {
   error?: string;
 }
 
-export type Item = ImageItem | RegionItem | CardItem;
+export type Item = ImageItem | RegionItem | CardItem | NoteItem;
 
 export type CanvasEvent =
   | { type: "add"; item: Item }

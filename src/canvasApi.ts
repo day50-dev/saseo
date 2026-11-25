@@ -1,5 +1,6 @@
 import { unreachable } from "./api.ts";
-import type { CanvasInfo, CanvasState, CanvasSummary, CardItem, Extension, Goal, ImageItem, NotebookCell, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
+export type { NoteHistory } from "../shared/canvas.ts";
+import type { NoteHistory, NoteItem, CanvasInfo, CanvasState, CanvasSummary, CardItem, Extension, Goal, ImageItem, NotebookCell, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
 
 async function json<T>(res: Response): Promise<T> {
   if (res.status === 401) location.reload();
@@ -73,6 +74,13 @@ export function canvasApi(cid: string) {
 
     descend: (body: { parentId: string; selection: string; context: string; x: number; y: number }) =>
       post(`${base}/descend`, body).then((r) => json<{ card: CardItem }>(r)),
+
+    /** Leaves a note: loose, or about a card or an image (`on`). */
+    addNote: (body: { text: string; x?: number; y?: number; on?: { id: string; key?: string; quote?: string } }) =>
+      post(`${base}/notes`, body).then((r) => json<{ note: NoteItem }>(r)),
+    /** Rewords a note; what it said before is kept. */
+    editNote: (id: string, text: string) => send("PATCH", `${base}/notes/${id}`, { text }).then((r) => json<{ note: NoteItem }>(r)),
+    noteHistory: (id: string) => fetch(`${base}/notes/${id}/history`).then((r) => json<NoteHistory>(r)),
 
     /** Hides items and whatever depends on them; returns everything that was hidden. */
     hide: (ids: string[]) => post(`${base}/hide`, { ids }).then((r) => json<{ ids: string[] }>(r)),

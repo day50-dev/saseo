@@ -178,6 +178,7 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   else if (e.type === "update") {
     const item = s.items.find((i) => i.id === e.id);
     if (item?.kind === "card") Object.assign(item, e.patch);
+    else if (item?.kind === "note") Object.assign(item, { text: e.patch.text ?? item.text, was: e.patch.was ?? item.was, edited: e.patch.edited ?? item.edited });
     else if (item?.kind === "image")
       Object.assign(item, { pageText: e.patch.pageText ?? item.pageText, topic: e.patch.topic ?? item.topic, video: e.patch.video ?? item.video });
   } else if (e.type === "goal") {
@@ -199,7 +200,7 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   } else if (e.type === "move") {
     for (const m of e.moves) {
       const item = s.items.find((i) => i.id === m.id);
-      if (item && item.kind !== "region") Object.assign(item, { x: m.x, y: m.y }, item.kind === "card" && m.h ? { h: m.h } : {}, item.kind === "card" && m.w ? { w: m.w } : {});
+      if (item && item.kind !== "region") Object.assign(item, { x: m.x, y: m.y }, item.kind !== "image" && m.h ? { h: m.h } : {}, item.kind !== "image" && m.w ? { w: m.w } : {});
     }
   } else {
     const ids = new Set(e.ids);
@@ -321,6 +322,18 @@ export class CanvasStore {
     return { ...s, items: s.items.map((i) => (i.kind === "card" && this.live.has(i.id) ? { ...i, ...this.live.get(i.id) } : i)) };
   }
 
+  /** The whole log, oldest first: for looking back at what happened (a note's history). */
+  async events(): Promise<LoggedEvent[]> {
+    await this.settled();
+    try {
+      const text = await readFile(this.logPath, "utf8");
+      return text.split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l) as LoggedEvent);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      return [];
+    }
+  }
+
   /** Resolves once every event already sent has been written. */
   settled(): Promise<void> {
     return this.queue.then(() => {});
@@ -375,7 +388,8 @@ export class CanvasStore {
       grew = false;
       for (const i of visible) {
         if (out.has(i.id)) continue;
-        const parent = i.kind === "region" ? i.imageId : i.kind === "card" ? i.parentId : undefined;
+        // A note goes with what it's about.
+        const parent = i.kind === "region" ? i.imageId : i.kind === "card" ? i.parentId : i.kind === "note" ? i.on?.id : undefined;
         const viaRelation = i.kind === "card" && i.relates?.some((r) => out.has(r));
         if ((parent && out.has(parent)) || viaRelation) {
           out.add(i.id);
@@ -397,7 +411,7 @@ export class CanvasStore {
       const item = items.find((i) => i.id === m.id);
       if (!item || item.kind === "region") return { ok: false, error: `can't move ${m.id}` };
       if (!Number.isFinite(m.x) || !Number.isFinite(m.y)) return { ok: false, error: "x and y must be numbers" };
-      if (m.w !== undefined && (item.kind !== "card" || !Number.isFinite(m.w))) return { ok: false, error: "only a card's width can be set" };
+      if (m.w !== undefined && (item.kind === "image" || !Number.isFinite(m.w))) return { ok: false, error: "only a card's or a note's width can be set" };
     }
     // Check every visible card whose own position or whose parent's position changes.
     for (const card of items) {

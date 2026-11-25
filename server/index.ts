@@ -19,6 +19,7 @@ import { CONFIG_PATH, diagramEndpoint, loadConfig, toPublic, updateConfig } from
 import { saveGoal } from "./goals.ts";
 import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, findFor, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
+import { addNote, editNote, noteHistory } from "./notes.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
 
@@ -328,6 +329,7 @@ app.post("/api/canvases/:cid/call", async (c) => {
       if (hidden.length) await store.record({ type: "hide", ids: hidden });
       return hidden;
     },
+    note: (text, on) => addNote(store, { text, by: "librarian", via: "call", on, said: body.text }),
     descend: async (card, phrase) => {
       const cards = (await store.getState()).items.filter((i): i is CardItem => i.kind === "card" && !i.hidden);
       const at = besideOf(cards, card, (x) => x.h ?? (x.sem ? 900 : 300));
@@ -878,6 +880,31 @@ app.post("/api/canvases/:cid/videos/:id/moments", async (c) => {
 });
 
 // Removing is a hide event: the log keeps everything, so any removal can be undone.
+// Notes: words left on the canvas as they are, with who, when, about what and after what.
+app.post("/api/canvases/:cid/notes", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const b = (await c.req.json()) as { text?: string; x?: number; y?: number; w?: number; on?: { id: string; key?: string; quote?: string } };
+  const note = await addNote(store, { text: b.text ?? "", by: "you", via: "canvas", on: b.on?.id ? b.on : undefined, x: b.x, y: b.y, w: b.w });
+  return note ? c.json({ note }) : c.json({ error: "text is required" }, 400);
+});
+
+app.patch("/api/canvases/:cid/notes/:id", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const { text } = (await c.req.json()) as { text?: string };
+  if (!text?.trim()) return c.json({ error: "text is required" }, 400);
+  const note = await editNote(store, c.req.param("id"), text, "you");
+  return note ? c.json({ note }) : c.json({ error: "unknown note" }, 404);
+});
+
+app.get("/api/canvases/:cid/notes/:id/history", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const h = await noteHistory(store, c.req.param("id"));
+  return h ? c.json(h) : c.json({ error: "unknown note" }, 404);
+});
+
 app.post("/api/canvases/:cid/hide", async (c) => {
   const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
