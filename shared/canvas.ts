@@ -510,7 +510,14 @@ export interface CardItem extends ItemState {
   climb?: number;
   rewritten?: boolean;
   error?: string;
+  /** Tries made again by themselves after failing (up to RETRY_TRIES), and when the next one is due ("" when none is). */
+  retries?: number;
+  retryAt?: string;
 }
+
+/** How many times a failed card tries again by itself, waiting 2, 4, 8, 16, then 32 seconds. */
+export const RETRY_TRIES = 5;
+export const retryDelay = (n: number) => 2000 * 2 ** (n - 1);
 
 export type Item = ImageItem | RegionItem | CardItem | NoteItem;
 

@@ -13,6 +13,7 @@ import {
   type Rect,
   paragraphs,
   REGISTERS,
+  RETRY_TRIES,
   type RegisterNote,
   type Sem,
 } from "../shared/canvas.ts";
@@ -329,9 +330,12 @@ export function Card(props: {
       )}
       {card.stage === "failed" && (
         <div className="card-error">
-          <p className="fail small">{card.error ?? "Something went wrong."}</p>
-          <button type="button" className="secondary" onClick={props.onRetry}>
-            ↻ Retry
+          <p className="fail small">
+            {card.error ?? "Something went wrong."}
+            <RetryNote card={card} />
+          </p>
+          <button type="button" className="secondary" onClick={props.onRetry} title={card.retryAt ? "Try again now, without waiting" : "Try again"}>
+            ↻ {card.retryAt ? "Retry now" : "Retry"}
           </button>
         </div>
       )}
@@ -1026,4 +1030,24 @@ function SourceView({ card, onReread, onShowPiece }: { card: CardItem; onReread:
       )}
     </div>
   );
+}
+
+/** When a failed card will try again by itself, counting down; or that it has stopped trying. */
+function RetryNote({ card }: { card: CardItem }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!card.retryAt) return;
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, [card.retryAt]);
+  if (card.retryAt) {
+    const s = Math.max(0, Math.ceil((Date.parse(card.retryAt) - now) / 1000));
+    return (
+      <span className="retry-note muted">
+        {" "}
+        {s > 0 ? `Trying again in ${s} s` : "Trying again…"} (try {card.retries ?? 1} of {RETRY_TRIES}).
+      </span>
+    );
+  }
+  return (card.retries ?? 0) >= RETRY_TRIES ? <span className="retry-note muted"> Tried {RETRY_TRIES} times; Retry to try again.</span> : null;
 }

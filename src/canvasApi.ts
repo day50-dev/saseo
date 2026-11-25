@@ -111,8 +111,9 @@ export function canvasApi(cid: string) {
     saveNotebook: (cardId: string, cells: NotebookCell[]) => send("PUT", `${base}/cards/${cardId}/notebook`, { cells }).then((r) => json<{ ok: true }>(r)),
     look: (cardId: string) => post(`${base}/cards/${cardId}/look`, {}).then((r) => json<{ ok: true }>(r)),
     answer: (cardId: string, answer: string) => post(`${base}/cards/${cardId}/answer`, { answer }).then((r) => json<{ ok: true }>(r)),
-    retry: (cardId: string, images?: { marked: string; crop: string }) =>
-      post(`${base}/cards/${cardId}/retry`, images ?? {}).then((r) => json<{ ok: true }>(r)),
+    /** `auto`: the page trying again by itself (a box on a slide), which keeps the count of tries. */
+    retry: (cardId: string, images?: { marked: string; crop: string }, auto = false) =>
+      post(`${base}/cards/${cardId}/retry`, { ...(images ?? {}), ...(auto ? { auto } : {}) }).then((r) => json<{ ok: true }>(r)),
 
     /** Adds a message to a card's conversation; the answer arrives in the canvas state. */
     chat: (cardId: string, text: string) => post(`${base}/cards/${cardId}/chat`, { text }).then((r) => json<{ ok: true }>(r)),

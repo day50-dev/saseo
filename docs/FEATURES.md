@@ -119,6 +119,12 @@ Each feature has an ID. The tests carry the same ID in their `describe` names, s
 |---|---|---|
 | F-GOALS | A card the librarian makes is placed under a goal. You can add your own goals, with subgoals. Rewording a goal keeps what it was, and a goal can be marked done. A goal never goes under itself or one of its own. A card works toward one goal at a time: giving it to another moves it. Undo puts a goal back exactly as it was. | `api/grow-goals` |
 
+## F-RETRY: failed work tries again by itself
+
+| ID | Feature | Checked by |
+|---|---|---|
+| F-RETRY | A card that fails tries again by itself, waiting longer each time (2, 4, 8, 16, then 32 seconds), up to 5 tries. The card counts down to the next try ("Trying again in 6 s, try 2 of 5"). After the last, it says so and waits for **↻ Retry**, which tries at once and gives back all 5 tries. A card a server restart interrupted starts over by itself within a second, and a card waiting for your answer to its question just keeps waiting. Tries that were due when the server stopped are picked up again when it starts. A box on a slide is retried by the page, which draws its crop. | `api/retry` |
+
 ## F-NOTES: notes, from you or the librarian
 
 | ID | Feature | Checked by |

@@ -1,7 +1,7 @@
 // The librarian's loop for one card: read the region, go fish, write a descending
 // explanation from what was found, then check that it doesn't climb.
 import { addNote } from "./notes.ts";
-import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
+import { CARD_WIDTH, EXTENSION_SHAPES, RETRY_TRIES, retryDelay, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { execFile } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
@@ -372,16 +372,73 @@ async function guard(store: CanvasStore, cardId: string, run: () => Promise<void
   const limit = (await loadConfig()).llm.timeoutSeconds;
   try {
     await run();
+    // It worked: a later failure gets all its tries again.
+    const now = await store.findItem(cardId);
+    if (now?.kind === "card" && now.retries && now.stage !== "failed") await store.update(cardId, { retries: 0, retryAt: "" });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const timedOut = err instanceof Error && (err.name === "TimeoutError" || /aborted due to timeout/.test(message));
-    await store.update(cardId, {
-      stage: "failed",
-      error: timedOut
-        ? `The language model didn't answer within ${limit} seconds. Retry, or raise the timeout in Settings.`
-        : message,
-    });
+    await failCard(
+      store,
+      cardId,
+      timedOut ? `The language model didn't answer within ${limit} seconds. Retry, or raise the timeout in Settings.` : message,
+    );
   }
+}
+
+// ---- Trying again by itself ----
+// A failed card tries again, waiting longer each time (2, 4, 8, 16, 32 s), up to RETRY_TRIES. Its
+// retryAt says when, so the canvas can count down, and a restart can pick the timer up again.
+
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Records a failure, and when tries are left, when the next one is. */
+export async function failCard(store: CanvasStore, cardId: string, error: string) {
+  const card = await store.findItem(cardId);
+  if (card?.kind !== "card") return;
+  const tries = card.retries ?? 0;
+  if (tries >= RETRY_TRIES) return void (await store.update(cardId, { stage: "failed", error, retryAt: "" }));
+  const ms = retryDelay(tries + 1);
+  await store.update(cardId, { stage: "failed", error, retries: tries + 1, retryAt: new Date(Date.now() + ms).toISOString() });
+  scheduleRetry(store, cardId, ms);
+}
+
+/** Whether the server can start a card over on its own: a box on a slide needs its crop drawn by the page. */
+async function restartable(store: CanvasStore, card: CardItem): Promise<boolean> {
+  if (card.origin || card.objectKind || card.relates) return true;
+  return (await store.findItem(card.parentId))?.kind !== "region";
+}
+
+function scheduleRetry(store: CanvasStore, cardId: string, ms: number) {
+  const key = `${store.id}/${cardId}`;
+  clearTimeout(retryTimers.get(key));
+  retryTimers.set(
+    key,
+    setTimeout(async () => {
+      retryTimers.delete(key);
+      const card = await store.findItem(cardId);
+      if (card?.kind !== "card" || card.hidden || card.stage !== "failed" || !card.retryAt) return;
+      if (await restartable(store, card)) await restartCard(store, cardId);
+    }, Math.max(0, ms)),
+  );
+}
+
+/**
+ * Starts a card's work over. `manual`: the reader pressed Retry, so it gets all its tries back.
+ * Returns false for a box on a slide, which needs its crop from the page (the retry route takes it).
+ */
+export async function restartCard(store: CanvasStore, cardId: string, manual = false): Promise<boolean> {
+  const card = await store.findItem(cardId);
+  if (card?.kind !== "card" || !(await restartable(store, card))) return false;
+  clearTimeout(retryTimers.get(`${store.id}/${cardId}`));
+  // A linked page that already worked is read again fresh; a failed one may retry from what's stored.
+  const reread = card.origin?.kind === "page" && card.stage === "done";
+  await store.update(cardId, { stage: "reading", error: "", retryAt: "", ...(manual ? { retries: 0 } : {}) });
+  if (card.origin?.kind === "page") void readSource(store, cardId, reread);
+  else if (card.objectKind) void makeObject(store, cardId);
+  else if (card.relates) void explainRelation(store, cardId);
+  else void explainSelection(store, cardId);
+  return true;
 }
 
 /**
@@ -476,6 +533,10 @@ async function finishRegion(store: CanvasStore, cardId: string) {
 // growing a piece) is marked "working" while it runs. A restart in the middle used to leave it
 // "working" for good, so it never finished or saved. Now each is started again.
 onResume((store, items) => {
+  // Tries that were due, or waiting, when the server stopped.
+  for (const c of items) {
+    if (c.kind === "card" && !c.hidden && c.stage === "failed" && c.retryAt) scheduleRetry(store, c.id, Date.parse(c.retryAt) - Date.now());
+  }
   for (const c of items) {
     if (c.kind !== "card" || c.hidden || c.stage !== "done") continue;
     // Pages finished before the page store existed go into it, so they're never redone; and
@@ -1456,6 +1517,14 @@ async function addObject(store: CanvasStore, from: CardItem | undefined, kind: O
 
 /** Finds videos, reading or papers (or draws a diagram) for a request, beside a card; the search runs on. */
 export async function findFor(store: CanvasStore, from: CardItem | undefined, kind: ObjectKind, request: string, focus?: string): Promise<CardItem> {
+  // Never hung from something removed (a call can remove a failed card and ask again in one turn):
+  // it goes on what that card came from, and the removed card's words aren't its focus.
+  let near = from ? await store.findItem(from.id) : undefined;
+  for (let i = 0; near?.hidden && i < 50; i++) {
+    focus = undefined;
+    near = near.kind === "card" ? await store.findItem(near.parentId) : undefined;
+  }
+  from = near?.kind === "card" ? near : undefined;
   const object = await addObject(store, from, kind, request, focus);
   void makeObject(store, object.id);
   return object;

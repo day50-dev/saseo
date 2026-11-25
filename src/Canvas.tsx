@@ -1026,21 +1026,38 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     }
   };
 
-  const retry = async (card: CardItem) => {
+  const retry = async (card: CardItem, auto = false) => {
     try {
       const parent = byId.get(card.parentId);
       if (parent?.kind === "region") {
         const el = imgRefs.current[parent.imageId];
         if (!el) throw new Error("its image isn't on the canvas");
-        await api.retry(card.id, renderRegion(el, parent.rect));
+        await api.retry(card.id, renderRegion(el, parent.rect), auto);
       } else {
-        await api.retry(card.id);
+        await api.retry(card.id, undefined, auto);
       }
       await refresh();
     } catch (e) {
-      setError(`Couldn't retry: ${e}`);
+      if (!auto) setError(`Couldn't retry: ${e}`);
     }
   };
+
+  // The server tries failed cards again by itself; a box on a slide needs its crop from here, so
+  // when one's next try is due, the page makes it.
+  const autoTried = useRef(new Set<string>());
+  useEffect(() => {
+    const due = cards.filter((c) => c.stage === "failed" && c.retryAt && byId.get(c.parentId)?.kind === "region" && !c.origin && !c.objectKind && !c.relates);
+    if (!due.length) return;
+    const timers = due.map((c) =>
+      setTimeout(() => {
+        const key = `${c.id}@${c.retryAt}`;
+        if (autoTried.current.has(key)) return;
+        autoTried.current.add(key);
+        void retry(c, true);
+      }, Math.max(0, Date.parse(c.retryAt!) - Date.now())),
+    );
+    return () => timers.forEach(clearTimeout);
+  });
 
   // ---- Collapsing ----
   // A collapsed image or card keeps its place and shows only its title; everything hanging off

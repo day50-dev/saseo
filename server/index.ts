@@ -17,7 +17,7 @@ import { besideOf, type CallContext, callTurn, listen, type Pointing, say, SPEEC
 import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, diagramEndpoint, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { saveGoal } from "./goals.ts";
-import { continueAfterAnswer, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, findFor, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
+import { continueAfterAnswer, restartCard, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, findFor, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { addNote, editNote, noteHistory } from "./notes.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
@@ -555,28 +555,15 @@ app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
   // A linked page can be read again at any time (it may have changed); anything else only after failing.
   const reread = card.origin?.kind === "page" && card.stage === "done";
   if (card.stage !== "failed" && !reread) return c.json({ error: "only a failed card can be retried" }, 409);
-  const parent = await store.findItem(card.parentId);
-  if (card.origin?.kind === "page") {
-    await store.update(card.id, { stage: "reading", error: "" });
-    // "Read again" fetches the page anew; a failed read may just retry from what's stored.
-    void readSource(store, card.id, reread);
-  } else if (card.objectKind) {
-    await store.update(card.id, { stage: "reading", error: "" });
-    void makeObject(store, card.id);
-  } else if (card.relates) {
-    await store.update(card.id, { stage: "reading", error: "" });
-    void explainRelation(store, card.id);
-  } else if (parent?.kind === "region") {
-    const body = (await c.req.json().catch(() => ({}))) as { marked?: string; crop?: string };
-    if (!body.marked?.startsWith("data:image/") || !body.crop?.startsWith("data:image/")) {
-      return c.json({ error: "marked and crop must be image data URLs" }, 400);
-    }
-    await store.update(card.id, { stage: "reading", error: "" });
-    void explainRegion(store, card.id, { marked: body.marked, crop: body.crop });
-  } else {
-    await store.update(card.id, { stage: "reading", error: "" });
-    void explainSelection(store, card.id);
+  // The page retries a box on a slide by itself too (`auto`): that keeps the count of tries.
+  const body = (await c.req.json().catch(() => ({}))) as { marked?: string; crop?: string; auto?: boolean };
+  if (await restartCard(store, card.id, !body.auto)) return c.json({ ok: true });
+  // A box on a slide: its crop comes from the page.
+  if (!body.marked?.startsWith("data:image/") || !body.crop?.startsWith("data:image/")) {
+    return c.json({ error: "marked and crop must be image data URLs" }, 400);
   }
+  await store.update(card.id, { stage: "reading", error: "", retryAt: "", ...(body.auto ? {} : { retries: 0 }) });
+  void explainRegion(store, card.id, { marked: body.marked, crop: body.crop });
   return c.json({ ok: true });
 });
 

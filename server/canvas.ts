@@ -16,6 +16,7 @@ import {
   MIN_CHILD_GAP,
   type Move,
   type ReaderNote,
+  RETRY_TRIES,
 } from "../shared/canvas.ts";
 
 export const DATA_DIR = process.env.LIBRARIAN_DATA ?? path.resolve("data");
@@ -224,7 +225,8 @@ const UNKNOWN_HEIGHT = 200;
 /** An item's rectangle after `moves`, for checking that a card doesn't sit on its source. */
 function bounds(items: Item[], id: string, moved: Map<string, Move>): Box | null {
   const item = items.find((i) => i.id === id);
-  if (!item) return null;
+  // A removed thing isn't drawn, so there's nothing there to sit on.
+  if (!item || item.hidden) return null;
   if (item.kind === "card") {
     const m = moved.get(id);
     const x = m?.x ?? item.x;
@@ -233,7 +235,7 @@ function bounds(items: Item[], id: string, moved: Map<string, Move>): Box | null
   }
   if (item.kind === "region") {
     const img = items.find((i) => i.id === item.imageId);
-    if (img?.kind !== "image") return null;
+    if (img?.kind !== "image" || img.hidden) return null;
     const k = img.w / img.naturalW;
     const m = moved.get(img.id);
     const x = (m?.x ?? img.x) + item.rect.x * k;
@@ -266,16 +268,18 @@ export class CanvasStore {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
-    // Background work on cards that a restart interrupted (shapes, sections, crops, growth) is
-    // picked up again by whoever registered to resume it (explain.ts), once this state is set.
-    if (resumeWork) {
-      const resume = resumeWork;
-      setTimeout(() => resume(this, s.items), 0);
-    }
-    // A card left mid-flight by a restart can't finish; record that rather than spin forever.
-    const stuck = s.items.filter((i): i is CardItem => i.kind === "card" && i.stage !== "done" && i.stage !== "failed");
+    // A card left mid-flight by a restart starts over by itself in a moment (one of its tries), rather
+    // than spin forever. One waiting for the reader's answer to a question just goes on waiting.
+    const stuck = s.items.filter((i): i is CardItem => i.kind === "card" && !i.hidden && i.stage !== "done" && i.stage !== "failed" && i.stage !== "asking");
     this.state = s;
-    for (const card of stuck) await this.update(card.id, { stage: "failed", error: "Interrupted by a server restart" });
+    for (const card of stuck) {
+      const tries = card.retries ?? 0;
+      await this.update(card.id, {
+        stage: "failed",
+        error: "Interrupted by a server restart",
+        ...(tries < RETRY_TRIES ? { retries: tries + 1, retryAt: new Date(Date.now() + 1000).toISOString() } : { retryAt: "" }),
+      });
+    }
     // Same for a copy of a video being fetched; it can be asked for again.
     for (const img of s.items) {
       if (img.kind === "image" && img.video?.hosted === "downloading") await this.update(img.id, { video: { ...img.video, hosted: "failed" } });
@@ -284,6 +288,12 @@ export class CanvasStore {
       if (card.kind !== "card" || !card.chatPending) continue;
       await this.record({ type: "chat", id: card.id, message: { role: "assistant", text: "(Interrupted by a server restart; ask again.)", at: new Date().toISOString() } });
       await this.update(card.id, { chatPending: false });
+    }
+    // Background work a restart interrupted (shapes, sections, crops, growth, retries due) is picked
+    // up again by whoever registered to resume it (explain.ts), now that the state is settled.
+    if (resumeWork) {
+      const resume = resumeWork;
+      setTimeout(() => resume(this, s.items), 0);
     }
     return s;
   }

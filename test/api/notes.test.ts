@@ -206,3 +206,35 @@ describe("F-CALL-7: things typed into a call", () => {
     assert.deepEqual(made.relates, ["det", "eig"]);
   });
 });
+
+describe("F-DESK: removed things don't get in the way", () => {
+  test("on a call, removing a failed card and asking again hangs the new card from what the failed one came from", async () => {
+    // A failed videos card, hung from det, with its error showing.
+    llm.on(/.*/, { kind: "answer", request: "x" });
+    llm.on(/voice call/, { say: "Finding some.", actions: [{ kind: "find", find: "videos", request: "lectures" }] }, 1);
+    const first = await s.api("POST", `${C}/call`, { text: "find lectures on this", pointing: { cardId: "det" } });
+    const madeId = /\((\w{8})\)/.exec(first.body.did)![1];
+    llm.on(/voice call/, { say: "Trying again.", actions: [{ kind: "remove", ids: [madeId] }, { kind: "find", find: "videos", request: "lectures on the BPS bound" }] });
+    const r = await s.api("POST", `${C}/call`, { text: "that failed, get rid of it and try again", pointing: { cardId: madeId, pieceText: "Interrupted by a server restart" } });
+    assert.deepEqual(r.body.removed, [madeId], JSON.stringify(r.body));
+    const items = (await state()).items.filter((i): i is CardItem => i.kind === "card");
+    const again = items.filter((c) => c.objectKind === "videos" && c.id !== madeId).at(-1)!;
+    assert.equal(again.parentId, "det", "hung from det, not the removed card");
+    assert.equal(again.selection, undefined, "the removed card's words aren't its focus");
+  });
+
+  test("a card can be moved onto where a removed card it hangs from used to be", async () => {
+    llm.on(/.*/, { kind: "answer", request: "x" });
+    llm.on(/voice call/, { say: "Finding some.", actions: [{ kind: "find", find: "papers", request: "papers" }] });
+    const r = await s.api("POST", `${C}/call`, { text: "find papers on this", pointing: { cardId: "det" } });
+    const child = /\((\w{8})\)/.exec(r.body.did)![1];
+    // Its source is removed; the card stays (it was made after, or brought back on its own).
+    await s.api("POST", `${C}/hide`, { ids: ["det"] });
+    await s.api("POST", `${C}/show`, { ids: [child] });
+    const det = (await state()).items.find((i) => i.id === "det") as CardItem;
+    const moved = await s.api("POST", `${C}/move`, { moves: [{ id: child, x: det.x + 10, y: det.y + 10, h: 200 }] });
+    assert.equal(moved.status, 200, JSON.stringify(moved.body));
+    await s.api("POST", `${C}/show`, { ids: ["det"] });
+  });
+});
+
