@@ -197,7 +197,7 @@ describe("F-CALL-5: when it could be more than one thing, it numbers them and as
     llm.on(/voice call/, (a) => (a.messages.length === 2 ? { look: [{ tool: "cards" }] } : { say: "Removing it.", actions: [{ kind: "remove", ids: ["g2"] }] }));
     const history = [{ role: "you" as const, text: "get rid of the other graph" }, { role: "librarian" as const, text: "Which one? I've numbered them." }];
     const r = await turn("two", {}, { picked: 2, marks: [{ n: 1, cardId: "g1", label: "K4" }, { n: 2, cardId: "g2", label: "Petersen" }] }, history);
-    assert.match(glance(), /They picked number 2: the card "Petersen" \(graph card\) \(card id g2\)\. That is the thing their earlier request was about/);
+    assert.match(glance(), /They picked number 2: the card "Petersen" \(graph card\) \(id g2\)\. That is the thing their earlier request was about/);
     assert.doesNotMatch(glance(), /Numbered on screen from your last turn/);
     assert.match(llm.askedFor(/voice call/)[1].user, /g2: graph card, "Petersen" \(the one they picked\)/);
     assert.deepEqual(r.removed, ["g2"]);
