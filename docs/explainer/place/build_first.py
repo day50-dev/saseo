@@ -1,9 +1,9 @@
 """The opening: 1994 web footage (DEC, "Glimpse of the Future", from 0:43) with its own narrator
-for four seconds, who then fades under ours: "The web was supposed to be...". Builds the scene's
+for six seconds, who then fades under ours: "The web was supposed to be...". Builds the scene's
 picture (clips/d0-promise.webm, pillarboxed) and sound (audio/d0-promise.wav)."""
 import json, os, subprocess
 D = os.path.dirname(os.path.abspath(__file__))
-SRC, AT, OWN = f"{D}/first/src.mp4", 43.0, 4.0  # where it starts, and how long it speaks alone
+SRC, AT, OWN = f"{D}/first/src.mp4", 43.0, 6.0  # where it starts, and how long it speaks alone (to "...easy-to-use form.")
 LEAD, TAIL = 0.45, 0.65
 sec = lambda f: float(subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","csv=p=0",f],capture_output=True,text=True).stdout)
 R = f"{D}/v4fast"
