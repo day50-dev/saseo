@@ -180,7 +180,7 @@ describe("F-CALL-7: things typed into a call", () => {
   test("an open with nothing to open fails out loud", async () => {
     llm.on(/voice call/, { say: "Opening it.", actions: [{ kind: "open", text: "text 3" }] });
     const r = await s.api("POST", `${C}/call`, { text: "open text three", context: { sent: [{ n: 1, text: "a" }, { n: 2, text: "b" }] } });
-    assert.match(r.body.say, /didn't work/);
+    assert.match(r.body.say, /I couldn't tell what to open/);
     assert.equal(r.body.opened, undefined);
   });
 

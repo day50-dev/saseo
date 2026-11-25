@@ -148,6 +148,39 @@ Reply with JSON only: {"look": [...]} to look something up, or {"say": "...", "a
 
 const DEICTIC = /^(this|that|these|those|here|there)$/i;
 
+/** What a card holds, in the words someone might use for it. */
+const KIND_WORDS: Record<string, string[]> = {
+  papers: ["papers", "paper", "arxiv"],
+  links: ["reading", "links", "link", "articles"],
+  videos: ["videos", "video", "lectures"],
+  diagram: ["diagram", "drawing"],
+  notebook: ["notebook", "code"],
+  table: ["table", "data"],
+  plot: ["plot", "chart"],
+  graph: ["graph", "network"],
+  map: ["map"],
+};
+
+/**
+ * The card or note a model's reference means: its id, or (when it wrote something else, like
+ * "papers" or a title) the one card of that kind, or the one whose title contains it. Undefined
+ * when nothing, or more than one thing, fits.
+ */
+export function resolveRef(ref: string, cards: CardItem[], notes: NoteItem[] = []): string | undefined {
+  const r = ref.trim();
+  if (!r) return undefined;
+  if (cards.some((c) => c.id === r) || notes.some((n) => n.id === r)) return r;
+  const low = r.toLowerCase().replace(/\s+card$/, "");
+  const kind = Object.entries(KIND_WORDS).find(([, words]) => words.includes(low))?.[0];
+  const of = kind ? cards.filter((c) => c.objectKind === kind) : [];
+  if (of.length === 1) return of[0].id;
+  if (of.length > 1) return undefined;
+  const titled = cards.filter((c) => (c.subject ?? c.selection ?? c.request ?? "").toLowerCase().includes(low));
+  if (titled.length === 1) return titled[0].id;
+  const noted = notes.filter((n) => n.text.toLowerCase().includes(low));
+  return !titled.length && noted.length === 1 ? noted[0].id : undefined;
+}
+
 /** One line for a thing pointed at: its card's title, and the piece or figure part. */
 /** One line for a note: who wrote it, what it's about, and its words. */
 export function noteContent(n: NoteItem, cards: CardItem[] = []): string {
@@ -300,9 +333,11 @@ export async function callTurn(
   const tool = (t: Record<string, unknown>): string => {
     switch (t.tool) {
       case "card": {
-        const n = canvasNotes.find((x) => x.id === String(t.id ?? "")) ?? (t.id ? undefined : note);
+        const id = t.id ? resolveRef(String(t.id), cards, canvasNotes) : undefined;
+        if (t.id && !id) return `No card or note "${String(t.id)}": look up the ids with {"tool": "cards"}.`;
+        const n = canvasNotes.find((x) => x.id === id) ?? (t.id ? undefined : note);
         if (n) return noteContent(n, cards);
-        const c = cards.find((x) => x.id === String(t.id ?? "")) ?? card;
+        const c = cards.find((x) => x.id === id) ?? card;
         return c ? cardContent(c) : "No such card.";
       }
       case "cards": {
@@ -362,6 +397,9 @@ export async function callTurn(
   let marks: Mark[] = [];
   let opened: string | undefined;
   let failed = false;
+  // What didn't work, in words, to say and to log.
+  const problems: string[] = [];
+  const refs = (v: unknown) => (Array.isArray(v) ? v : typeof v === "string" ? [v] : []).map((x) => resolveRef(String(x), cards, canvasNotes));
   for (const a of actions) {
     try {
       if (a.kind === "grow" && card?.sem && pointing.key) {
@@ -392,17 +430,17 @@ export async function callTurn(
           const made = await hooks.open(input.slice(0, 2000), card);
           opened = made.id;
           done.push(`opened ${made.what}`);
-        } else failed = true;
+        } else problems.push("I couldn't tell what to open");
       } else if (a.kind === "relate" && hooks.relate) {
         const known = new Set(state.items.filter((i) => !i.hidden && (i.kind === "card" || i.kind === "image")).map((i) => i.id));
-        let ids = (Array.isArray(a.ids) ? a.ids : []).map(String).filter((id) => known.has(id));
+        let ids = (Array.isArray(a.ids) ? a.ids : []).map((x) => resolveRef(String(x), cards) ?? String(x)).filter((id) => known.has(id));
         // "These two": what they pointed at while saying it.
         if (ids.length < 2) ids = [...new Set([...ids, ...said.map((d) => d.p.cardId!).filter((id) => known.has(id))])];
         const made = ids.length >= 2 ? await hooks.relate(ids[0], ids[1]) : null;
         if (made) {
           opened = made.id;
           done.push(`related two things on a new card (${made.id})`);
-        } else failed = true;
+        } else problems.push("I couldn't tell which two things to connect");
       } else if (a.kind === "note" && hooks.note) {
         const words = String(a.text ?? "").trim().slice(0, 2000);
         if (words) {
@@ -412,27 +450,31 @@ export async function callTurn(
           done.push(`left a note: ${words.slice(0, 80)}`);
         } else failed = true;
       } else if (a.kind === "mark") {
-        const known = new Set([...cards.map((c) => c.id), ...canvasNotes.map((n) => n.id)]);
-        const list = (Array.isArray(a.marks) ? a.marks : []) as Record<string, unknown>[];
+        const list = ((Array.isArray(a.marks) ? a.marks : []) as Record<string, unknown>[]).map((m): Record<string, unknown> => ({ ...m, card: resolveRef(String(m.card ?? ""), cards, canvasNotes) }));
         marks = list
-          .filter((m) => known.has(String(m.card ?? "")))
+          .filter((m) => m.card)
           .slice(0, 5)
           .map((m, i) => ({ n: i + 1, cardId: String(m.card), ...(m.piece ? { key: String(m.piece) } : {}), label: String(m.label ?? "").slice(0, 40) || `option ${i + 1}` }));
         if (marks.length) done.push(`numbered ${marks.length} on screen`);
       } else if (a.kind === "remove") {
-        const known = new Set([...cards.map((c) => c.id), ...canvasNotes.map((n) => n.id)]);
-        const ids = (Array.isArray(a.ids) ? a.ids : []).map(String).filter((id) => known.has(id));
+        const asked = Array.isArray(a.ids) ? a.ids : typeof a.ids === "string" ? [a.ids] : [];
+        const ids = [...new Set(refs(a.ids).filter((x): x is string => Boolean(x)))];
         if (ids.length) {
           const gone = await hooks.remove(ids);
           removed.push(...gone);
           done.push(`removed ${ids.length} card${ids.length > 1 ? "s" : ""}`);
-        } else failed = true;
+        }
+        if (ids.length < asked.length) problems.push(`I couldn't tell which card to take off${asked.length ? ` (${asked.map(String).join(", ")})` : ""}`);
       }
-    } catch {
-      failed = true;
+    } catch (err) {
+      problems.push(`${a.kind ?? "something"} went wrong: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  if (failed) spoken += " Something I tried on the canvas didn't work, though.";
+  if (failed) problems.push("something I tried on the canvas didn't work");
+  if (problems.length) {
+    console.warn(`call actions failed: ${problems.join("; ")} (actions: ${JSON.stringify(actions).slice(0, 600)})`);
+    spoken += ` Though ${problems.join(", and ")}.`;
+  }
   const did = done.length ? done.join("; ") : undefined;
   return { say: spoken, did, ...(removed.length ? { removed } : {}), ...(marks.length ? { marks } : {}), ...(looked.length ? { looked } : {}), ...(opened ? { opened } : {}) };
 }

@@ -162,7 +162,14 @@ describe("F-CALL-4: what it does on the canvas", () => {
     llm.on(/voice call/, { say: "Taking it off.", actions: [{ kind: "remove", ids: ["ghost"] }] }, 1);
     const r2 = await turn("get rid of the ghost");
     assert.equal(r2.removed, undefined);
-    assert.match(r2.say, /didn't work/);
+    assert.match(r2.say, /I couldn't tell which card to take off \(ghost\)/, "it says what didn't work");
+  });
+
+  test("a card named by its kind, not its id (\"map\"), is the one card of that kind", async () => {
+    llm.on(/voice call/, { say: "Taking the map off.", actions: [{ kind: "remove", ids: ["map"] }] }, 1);
+    const r = await turn("take the map off");
+    assert.deepEqual(r.removed, ["map1"]);
+    assert.doesNotMatch(r.say, /couldn't/);
   });
 
   test("at most three actions", async () => {

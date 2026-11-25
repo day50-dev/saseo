@@ -38,6 +38,9 @@ export async function fakeLlm() {
   const spoken: string[] = [];
   let transcript = "what is an eigenvector";
   let refuseJson = false;
+  // The decision model (System One): answers a yes/no question about a state.
+  let decide: ((state: Record<string, unknown>, instructions: string) => number) | null = null;
+  const decided: Record<string, unknown>[] = [];
 
   const server = createServer(async (req, res) => {
     const raw = await body(req);
@@ -54,6 +57,12 @@ export async function fakeLlm() {
       spoken.push(String(JSON.parse(raw.toString() || "{}").input ?? ""));
       res.writeHead(200, { "content-type": "audio/wav" });
       return res.end(Buffer.from("RIFF0000WAVEfake"));
+    }
+    if (req.url === "/v1/systemone") {
+      const b = JSON.parse(raw.toString());
+      decided.push(b.state);
+      if (!decide) return json(500, { error: "fake decision model has no rule" });
+      return json(200, { answers: { q: { noul: decide(b.state, b.questions.q.instructions) } } });
     }
     if (req.url !== "/v1/chat/completions") return json(404, { error: "not here" });
     const b = JSON.parse(raw.toString());
@@ -101,7 +110,15 @@ export async function fakeLlm() {
     reset() {
       rules.length = 0;
       asked.length = 0;
+      decide = null;
+      decided.length = 0;
     },
+    /** Answers the decision model's yes/no questions: the probability of yes, from the state. */
+    onDecide(fn: (state: Record<string, unknown>, instructions: string) => number) {
+      decide = fn;
+    },
+    /** States the decision model was asked about. */
+    decided,
     /** Requests whose system prompt or user message matches. */
     askedFor(match: RegExp) {
       return asked.filter((a) => match.test(`${a.system}\n${a.user}`));

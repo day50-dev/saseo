@@ -1,7 +1,7 @@
 // The librarian's loop for one card: read the region, go fish, write a descending
 // explanation from what was found, then check that it doesn't climb.
 import { addNote } from "./notes.ts";
-import { CARD_WIDTH, EXTENSION_SHAPES, RETRY_TRIES, retryDelay, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
+import { CARD_WIDTH, EXTENSION_SHAPES, RETRY_TRIES, retryDelay, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Paper, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { execFile } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
@@ -382,6 +382,7 @@ async function guard(store: CanvasStore, cardId: string, run: () => Promise<void
       store,
       cardId,
       timedOut ? `The language model didn't answer within ${limit} seconds. Retry, or raise the timeout in Settings.` : message,
+      err instanceof Permanent,
     );
   }
 }
@@ -393,11 +394,11 @@ async function guard(store: CanvasStore, cardId: string, run: () => Promise<void
 const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** Records a failure, and when tries are left, when the next one is. */
-export async function failCard(store: CanvasStore, cardId: string, error: string) {
+export async function failCard(store: CanvasStore, cardId: string, error: string, permanent = false) {
   const card = await store.findItem(cardId);
   if (card?.kind !== "card") return;
   const tries = card.retries ?? 0;
-  if (tries >= RETRY_TRIES) return void (await store.update(cardId, { stage: "failed", error, retryAt: "" }));
+  if (tries >= RETRY_TRIES || permanent) return void (await store.update(cardId, { stage: "failed", error, retryAt: "" }));
   const ms = retryDelay(tries + 1);
   await store.update(cardId, { stage: "failed", error, retries: tries + 1, retryAt: new Date(Date.now() + ms).toISOString() });
   scheduleRetry(store, cardId, ms);
@@ -1349,9 +1350,23 @@ export function makeObject(store: CanvasStore, cardId: string) {
         ]);
         q = str(r.query) || q;
       } catch {}
-      const { papers } = await searchArxiv(q, { max: 8 });
-      if (!papers.length) throw new Error(`arXiv found nothing for "${q}".`);
-      await store.update(cardId, { stage: "done", subject: `Papers: ${request}`, object: { type: "papers", papers } });
+      const found = (await searchArxiv(q, { max: 8 })).papers;
+      // arXiv falls back to any word matching, which for a topic it barely covers (history, law,
+      // most humanities) brings back nonsense: only papers actually about it are kept.
+      const papers = await onTopic(found, `${request} (${about.name})`);
+      if (papers.length) {
+        await store.update(cardId, { stage: "done", subject: `Papers: ${request}`, object: { type: "papers", papers } });
+      } else {
+        // arXiv is physics, maths and computing; for anything else, scholarly reading from the web.
+        await store.update(cardId, { stage: "searching" });
+        const links = await search(`${request} scholarly article journal pdf`);
+        if (!links.length) throw new Permanent(`arXiv has no papers on this, and the web search found no scholarly reading either.`);
+        await store.update(cardId, {
+          stage: "done",
+          subject: `Papers: ${request} (arXiv had none on this; scholarly reading from the web instead)`,
+          object: { type: "links", links },
+        });
+      }
     } else if (card.objectKind === "diagram") {
       await store.update(cardId, { stage: "writing" });
       // Draw it as it streams: each frame is the SVG so far, closed and cleaned, shown to viewers
@@ -1454,6 +1469,46 @@ async function refineRequest(card: CardItem, message: string): Promise<string | 
     return null;
   }
 }
+
+const ON_TOPIC =
+  "Is this research paper genuinely about the topic the reader asked for? Sharing a word (\"federal\", a place name, a common term) is not enough: it must actually study that topic.";
+
+/**
+ * Keeps the papers that are really about `topic`. A yes or no per paper is the decision model's
+ * call, when there is one; otherwise the language model judges them all at once.
+ */
+export async function onTopic(papers: Paper[], topic: string): Promise<Paper[]> {
+  if (!papers.length) return papers;
+  const config = await loadConfig();
+  if (systemOneConfigured(config.systemOne)) {
+    try {
+      const yes = await Promise.all(
+        papers.map((p) => decideYesNo(config.systemOne, { topic, title: p.title, category: p.category, abstract: p.summary.replace(/\s+/g, " ").slice(0, 800) }, ON_TOPIC)),
+      );
+      return papers.filter((_, i) => yes[i] >= 0.5);
+    } catch {
+      // Fall through to the language model.
+    }
+  }
+  try {
+    const r = await chatJson<{ keep?: unknown }>((await loadConfig()).llm, [
+      {
+        role: "system",
+        content: `A reader asked for research papers on a topic. Here are search results. Keep only those genuinely about the topic (a paper that merely shares a word, like "federal" or a place name, is not). Return JSON only: {"keep": [numbers of the papers to keep]} ([] when none are).`,
+      },
+      { role: "user", content: `Topic: ${topic}\n\n${papers.map((p, i) => `${i + 1}. ${p.title} (${p.category})\n${p.summary.replace(/\s+/g, " ").slice(0, 300)}`).join("\n\n")}` },
+    ]);
+    if (!Array.isArray(r.keep)) return papers;
+    const keep = new Set(r.keep.map(Number));
+    return papers.filter((_, i) => keep.has(i + 1));
+  } catch {
+    // Can't judge: show what was found rather than nothing.
+    return papers;
+  }
+}
+
+/** A failure trying again won't fix (nothing exists to find): the card says so and doesn't retry by itself. */
+export class Permanent extends Error {}
 
 const PAPER_QUERY = `Write an arXiv search for research papers on what the reader asked for, given the card it was asked about.
 Use 2-5 precise technical keywords that would appear in paper titles or abstracts (names of equations, objects, methods).
