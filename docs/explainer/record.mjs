@@ -1,5 +1,6 @@
 // Records the explainer's app footage, one clip per scene, from the demo canvases prep.mjs built.
 // Usage: node record.mjs [scene ...]   (default: all app scenes)
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 
@@ -36,7 +37,18 @@ const newScene = async () => {
   return ctx;
 };
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Waits in a scene are stretched to its narration: scenes were timed against the narration in
+// audio-before/ (when there is one), and run longer or shorter as the narration in audio/ does.
+let PACE = 1;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms * PACE));
+const seconds = (file) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]).toString());
+function paceFor(id) {
+  try {
+    return (seconds(`${DIR}audio/${id}.wav`) + 1.1) / (seconds(`${DIR}audio-before/${id}.wav`) + 1.1);
+  } catch {
+    return 1;
+  }
+}
 
 // When each shot really starts, in seconds into its clip (after the page has loaded and been framed).
 let t0 = 0;
@@ -410,9 +422,21 @@ const scenes = {
     // Seconds into the shot, by the narration (segments: hook 15.2 s, climb 14.6 s, idea 13.2 s, descend 15.4 s).
     start();
     const t0 = Date.now();
+    // The times below were set against the first narration's segments; each is stretched to fit
+    // the narration now in audio/, segment by segment, so the shot keeps time with any voice.
+    const OLD = [15.175, 14.625, 13.15, 15.425];
+    const NEW = ["01-hook", "02-climb", "03-idea", "04-descend"].map((id) => 0.45 + seconds(`${DIR}audio/${id}.wav`) + 0.65);
+    const map = (t) => {
+      let o = 0, n = 0;
+      for (let i = 0; i < 4; i++) {
+        if (t <= o + OLD[i] || i === 3) return n + ((t - o) * NEW[i]) / OLD[i];
+        o += OLD[i];
+        n += NEW[i];
+      }
+    };
     const at = async (t) => {
-      const wait = t0 + t * 1000 - Date.now();
-      if (wait > 0) await sleep(wait);
+      const wait = t0 + map(t) * 1000 - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     };
     const reg = await page.evaluate(() => {
       const r = document.querySelector(".region").getBoundingClientRect();
@@ -569,13 +593,25 @@ const scenes = {
     await sleep(200);
     await step.hover();
     await sleep(600);
+    // Close in on the piece with the canvas's own zoom, so the menu that opens from it can be read.
+    // Anchored on the +, which stays put while everything grows around it: the menu opens from it.
+    const pb = await step.locator(".grow-btn").first().boundingBox();
+    const anchor = { x: Math.min(pb.x, 760), y: pb.y - 80 };
+    await zoom(page, anchor, -5, 1200);
+    // Then slid left until the menu, which opens to the right of the +, fits in the frame.
+    const pz = await step.locator(".grow-btn").first().boundingBox();
+    if (pz && pz.x > 1000) await glide(page, { x: pz.x, y: pz.y }, { x: 1000, y: Math.min(pz.y, 260) }, 700);
+    await sleep(300);
+    await step.hover();
+    await sleep(300);
     await step.locator(".grow-btn").first().click();
-    await sleep(1200);
+    await sleep(900);
     for (const label of ["Why?", "Steps", "Break it down", "Two ways"]) {
       await hover(page, `.grow-shapes button:text-is("${label}")`, 400);
       await sleep(700);
     }
     await page.keyboard.press("Escape");
+    await zoom(page, anchor, 5, 900);
     await page.mouse.click(60, 1000);
     await sleep(600);
     const g = await box(page, `${first} .grown`);
@@ -755,8 +791,10 @@ for (const id of want) {
   const page = await ctx.newPage();
   t0 = Date.now();
   current = id;
+  // The opening keeps time by its own map of the narration; the others stretch every wait.
+  PACE = id === "00-open" ? 1 : paceFor(id);
   page.setDefaultTimeout(20_000);
-  log("recording", id);
+  log("recording", id, PACE === 1 ? "" : `at ${PACE.toFixed(2)}× the first timing`);
   try {
     await scenes[id](page);
   } catch (err) {
