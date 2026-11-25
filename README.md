@@ -28,13 +28,13 @@ Bring whatever stopped you:
 
 - **A screenshot** of a slide, a page or a figure: drop or paste it, then drag a box over the part you don't get.
 - **A link** to a Wikipedia page or an article: it's read whole and drawn as shapes. First an overview of the whole page, then **the whole page, section by section**, restructured into shapes without losing anything: every claim, number, name and example is carried by some piece, each piece points at the paragraphs it came from (¶), the page's figures sit with the text they illustrate, and anything the restructuring missed is kept as written. You can flip to the page's own text at any time.
-- **An arXiv paper:** search arXiv from the toolbar and lay its pages out on the canvas.
+- **An arXiv paper:** paste its link, or search arXiv from **+ Add**, and lay its pages out on the canvas.
 - **A question** typed in your own words.
 - **A YouTube lecture**, which plays right on the canvas (see below).
 
 The home page has one-click examples: a 3Blue1Brown lecture on eigenvectors, Wikipedia's eigenvectors page, a tutorial on spectral clustering, the Hamiltonian, the breakup of Yugoslavia, and the synaptic vesicle cycle.
 
-The librarian may first ask one short question about where you're coming from and what you're after, and pitches everything after to your answer. Then it **looks for introductory material first** (lecture notes, textbook chapters, Khan Academy, Britannica) and draws an explanation beside what you pointed at, starting with *why the thing exists* and citing what it found.
+The librarian may first ask one short question about where you're coming from and what you're after, and pitches everything after to your answer. Then it **looks for introductory material first** (lecture notes, textbook chapters, Khan Academy, Britannica) and draws an explanation beside what you pointed at, starting with *why the thing exists* and citing what it found. Each page it found has a **+ Add** button that puts the page itself on the canvas, beside the card.
 
 Explanations are drawn as diagrams, not paragraphs: why it exists as a chain of steps, what it is, a formula split into its parts and joined back together, how it's used on this page (or, for a question, how it unfolds), and what its name means. Math is rendered properly, and selecting a formula sends its LaTeX.
 
@@ -56,6 +56,12 @@ Paste a YouTube link and the video plays on the canvas. When something goes by t
 
 Paste a link to a PDF (an arXiv paper, or any `.pdf`) and its pages land on the canvas, ten to a row, up to the first 80. Each is that page alone, as a single-page PDF sliced from the original with poppler: drawn sharp at any zoom, with its real text. Drag across words to select a paragraph and explain it, worded exactly as the PDF has it; drag around a figure or an equation to box it, as on any image. Each page links back to the PDF at that page.
 
+### Card sets
+
+![A card set: nine British post-punk bands, three across, each with its Wikipedia photo, a line on who they were, and why they matter](docs/screenshots/set.png)
+
+Ask for a collection to look through ("who were the top talents of the era? list some so I can look at them", "the key albums", "the main figures") and it comes as a **set of cards**: tiles three across, up to nine. The model picks the entries and says why each belongs; each is then checked against its Wikipedia article, which supplies the picture, the description, the opening paragraph (on hover) and the link. One with no article stays, marked "Not checked". **Explain** on a tile opens an explanation of it. Videos are a set too: the same grid, where each tile plays in place.
+
 ### Notebooks
 
 Ask for an example in a notebook ("can you give me an example of this in a Jupyter notebook?", in a card's chat or out loud on a call) and a notebook opens beside the canvas. The librarian looks for a real one first: notebooks people wrote and ran, found on GitHub, course sites and nbviewer, of which it keeps the cells that make a focused example, word for word, credited and linked. Only if none fits does it write one, and the notebook says so.
@@ -64,7 +70,11 @@ Python notebooks run right there, in the browser (Pyodide: numpy, scipy, matplot
 
 ### Call the librarian
 
-Press **Call** and just talk while you work: there's no button to hold. The microphone stays open and hears when you start and stop speaking, so your hand stays on the canvas. Point at any piece of a diagram, a card, or words you've selected while you ask out loud: "break this down", "why is that?", "what does this word mean?". The librarian answers in a sentence or three, out loud, and changes the canvas as it talks: it grows the piece you're pointing at in the shape your question calls for, opens a deeper card on a phrase, finds videos, reading, papers or an example notebook (or draws a diagram) and puts them beside what you're on, or takes cards off the canvas ("get rid of those two diagrams"; Undo brings them back), several of these in one go if you ask for several ("can you find some videos about eigenvectors?"). Select words and "this part right here" means them: the selection goes over with the sentence it's in, even if a click cleared it just before you spoke. The piece you're pointing at is outlined while you're on a call, so "this" is never ambiguous. Talking over the librarian stops it, and **M** mutes.
+Press **Call** and just talk while you work: there's no button to hold. The microphone stays open and hears when you start and stop speaking, so your hand stays on the canvas. Point at any piece of a diagram, a card, or words you've selected while you ask out loud: "break this down", "why is that?", "what does this word mean?". The librarian answers in a sentence or three, out loud, and changes the canvas as it talks: it grows the piece you're pointing at in the shape your question calls for, opens a deeper card on a phrase, finds videos, reading, papers, a set or an example notebook (or draws a diagram) and puts them beside what you're on, connects two cards with a relation card ("connect these two"), leaves a note, or takes cards off the canvas ("get rid of those two diagrams"; Undo brings them back), several of these in one go if you ask for several ("can you find some videos about eigenvectors?"). When something it tried doesn't work, it says what. Select words and "this part right here" means them: the selection goes over with the sentence it's in, even if a click cleared it just before you spoke. The piece you're pointing at is outlined while you're on a call, so "this" is never ambiguous; notes count too, so it can read yours. Talking over the librarian stops it, and **M** mutes.
+
+Your words show in the call bar as you say them, and go to the librarian only once you've paused. A bar beside **Mute** runs down over that pause; keep talking and it waits, and **−** and **+** make it shorter or longer (half a second to ten) for when you need to think mid-question. Click the bar to send at once.
+
+To show it something you can't say, like a link, type or paste it into the box in the call bar. It appears as `[text 1: …]` and goes along with the next thing you say, so you can then say "I sent you a link, can you open it as a new card?". It opens links (pages, PDFs, YouTube) and questions as **+ Add** does.
 
 Calls use the browser's own speech recognition and voice where it has them (Chrome, Edge and Safari do): words show as you say them and the answer starts speaking at once. A natural voice can be picked in the call bar when the server has one, and browsers without recognition (Firefox) send audio to the server's. Those speech servers are optional, set with `LIBRARIAN_TTS_URL` (an OpenAI-compatible `/v1/audio/speech`, such as [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M)) and `LIBRARIAN_STT_URL` (a `/transcribe` endpoint that takes raw audio and returns `{"text"}`, such as [faster-whisper](https://github.com/SYSTRAN/faster-whisper) behind a few lines of Python). `LIBRARIAN_VOICE` picks the voice (`af_heart` by default). Without them, calls use only the browser's speech.
 
@@ -98,6 +108,8 @@ Every card has an "Ask about this" box. The conversation stays on that card, and
 
 - **Nothing moves unless you move it.** The canvas never reshuffles. Drag cards and images anywhere, and everything hanging off them comes along. An explanation can sit on any side of what it explains, just not on top of it.
 - **Nothing is lost.** Every change is an event in an append-only log. Undo and Redo cover adding, moving, removing, collapsing and restacking. Removing hides; it never deletes.
+- **Failures fix themselves when they can.** A card that fails tries again by itself, up to five times, waiting longer each time (2 seconds, then 4, 8, 16, 32), and counts down to the next try; **Retry now** doesn't wait. Work a server restart interrupts starts over by itself.
+- **Notes.** Press **N** (or **✎ Note**) to leave a note: about the selected card or image, joined to it by a dotted line, or loose on the canvas. The librarian leaves them too, when you ask it to note something on a call or in a card's chat. A note is just words, but it remembers who left it, when, what it's about and what led to it: **History** shows its earlier wordings, what happened on the canvas before it was left, and what has happened since.
 - **Goals (experimental).** What you're after, kept as a tree beside the canvas: each card the librarian makes is placed under the goal it serves, under a subgoal (something that goal turned out to need), or under a detour (curiosity off to the side). Click a goal to walk through its cards; reword one (what it was is kept), mark it done, or clear it.
 - **Figures.** Ask a card (or a call) for data, a plot or a graph. Data becomes a table read off real pages, credited, flagged when any of it came from the model's memory; it charts itself and copies as CSV. A plot draws functions, curves in t and points on axes, with the key points called out and values under the cursor. A graph draws nodes and edges: layered when it's a hierarchy, in its standard drawing when it's a named graph, and you can drag the nodes. The model writes each as data and the math is parsed, never run. Asking again on the card ("log scale", "add cos x") changes it, and the earlier one can be brought back.
 - **Maps.** Ask for a map ("map the places in Lagrange's life, in order"). The model only names the places, says why each matters, and picks countries or regions to outline; OpenStreetMap's geocoder places them and its boundaries draw the outlines. A place the geocoder can't find, or finds far from where the model expected, is put where the model thought and marked "roughly placed". Routes are numbered and joined in order; click a place in the list to go to it.
@@ -111,7 +123,7 @@ Every card has an "Ask about this" box. The conversation stays on that card, and
 ![Settings: an OpenAI-compatible language model, a System One decision model, and web searchers](docs/screenshots/settings.png)
 
 - **Language model:** any OpenAI-compatible endpoint, such as OpenAI, Anthropic, OpenRouter, LiteLLM, Ollama or vLLM. It needs to read images.
-- **Decision model (optional):** a System One endpoint such as TypeSafe's Jev, for the fast typed checks: does this climb, is this word strict or casual.
+- **Decision model (optional):** a System One endpoint such as TypeSafe's Jev, for the fast typed checks: does this climb, is this word strict or casual, is this paper actually about what was asked. arXiv answers a search it can't match with anything sharing a word, so papers it returns are kept only when they're on the topic. When none are (arXiv barely covers history or law), the card offers scholarly reading from the web instead.
 - **Diagram model (optional):** another model to draw the SVG diagrams you ask for, since some models draw far better than they write. Leave its base URL blank to use the language model's server and key with just a different model name.
 - **Searchers:** Keenable works with no key. SearXNG, Brave, Exa, Perplexity Sonar, Parallel, You.com and Tavily take your keys.
 
@@ -130,7 +142,7 @@ Then open http://localhost:5173, set up a model under **Settings**, and press **
 
 Tests: `npm test` runs the unit, API and browser tests (headless Chrome), all against a fake model, so nothing leaves the machine. `npm run test:live` checks the real model's judgment. What each feature does, and which test checks it, is in [docs/FEATURES.md](docs/FEATURES.md).
 
-Shortcuts: **/** to start something new, **V** for select and **H** for pan. Hold **Space** to pan. Ctrl+scroll zooms. **Ctrl+Z** and **Ctrl+Shift+Z** undo and redo. **Ctrl+]** and **Ctrl+[** restack, and adding Shift goes all the way to the front or back.
+Shortcuts: **/** to start something new, **N** for a note, **V** for select and **H** for pan, **M** to mute on a call. Hold **Space** to pan. Ctrl+scroll zooms. **Ctrl+Z** and **Ctrl+Shift+Z** undo and redo. **Ctrl+]** and **Ctrl+[** restack, and adding Shift goes all the way to the front or back.
 
 ## Hosting it for other people
 
