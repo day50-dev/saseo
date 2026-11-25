@@ -125,6 +125,8 @@ export function Card(props: {
   onFocus: (id: string) => void;
   /** Adds the first pages of a paper from a papers card to the canvas. */
   onAddPaper: (paper: Paper) => Promise<void>;
+  /** Puts a linked page on the canvas, beside this card, read and drawn as shapes. */
+  onAddLink?: (url: string) => Promise<void>;
   /** Brings back what an object card held before a message redid it. */
   onObjectBack: () => void;
   /** Opens this card's notebook in the panel beside the canvas. */
@@ -363,7 +365,7 @@ export function Card(props: {
       {card.objectKind === "notebook" ? (
         <NotebookCard card={card} onOpen={props.onOpenNotebook} />
       ) : (
-        card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} onExplain={props.onDescend} />
+        card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} onExplain={props.onDescend} onAddLink={props.onAddLink} />
       )}
       {card.replaced && card.stage === "done" && (
         <button type="button" className="link small object-back" onPointerDown={(e) => e.stopPropagation()} onClick={props.onObjectBack}>
@@ -425,9 +427,7 @@ export function Card(props: {
                 <a href={s.url} target="_blank" rel="noreferrer">
                   {s.title || domain(s.url)}
                 </a>{" "}
-                <span className="muted small">
-                  {domain(s.url)} · {s.searcher}
-                </span>
+                <span className="muted small">{domain(s.url)}</span> <AddLink url={s.url} onAdd={props.onAddLink} />
               </li>
             ))}
           </ol>
@@ -621,7 +621,17 @@ function NotebookCard({ card, onOpen }: { card: CardItem; onOpen: () => void }) 
   );
 }
 
-function ObjectView({ card, onAddPaper, onExplain }: { card: CardItem; onAddPaper: (paper: Paper) => Promise<void>; onExplain?: (text: string, context: string, clientY: number) => void }) {
+function ObjectView({
+  card,
+  onAddPaper,
+  onExplain,
+  onAddLink,
+}: {
+  card: CardItem;
+  onAddPaper: (paper: Paper) => Promise<void>;
+  onExplain?: (text: string, context: string, clientY: number) => void;
+  onAddLink?: (url: string) => Promise<void>;
+}) {
   const [playing, setPlaying] = useState<string | null>(null);
   const o = card.object!;
   if (o.type === "notebook") return null;
@@ -700,7 +710,7 @@ function ObjectView({ card, onAddPaper, onExplain }: { card: CardItem; onAddPape
           <a href={l.url} target="_blank" rel="noreferrer">
             {l.title || domain(l.url)}
           </a>{" "}
-          <span className="muted small">{domain(l.url)}</span>
+          <span className="muted small">{domain(l.url)}</span> <AddLink url={l.url} onAdd={onAddLink} />
           {l.snippet && <p className="small">{l.snippet.slice(0, 180)}…</p>}
         </li>
       ))}
@@ -1131,5 +1141,31 @@ function CardSet({ tiles, caption }: { tiles: Tile[]; caption?: string }) {
         )}
       </div>
     </>
+  );
+}
+
+/** "Add": puts a found page on the canvas, beside its card, read and drawn as shapes. */
+function AddLink({ url, onAdd }: { url: string; onAdd?: (url: string) => Promise<void> }) {
+  const [state, setState] = useState<"idle" | "adding" | "added">("idle");
+  if (!onAdd) return null;
+  return (
+    <button
+      type="button"
+      className="link small add-link"
+      disabled={state !== "idle"}
+      title="Put this page on the canvas, beside this card"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={async () => {
+        setState("adding");
+        try {
+          await onAdd(url);
+          setState("added");
+        } catch {
+          setState("idle");
+        }
+      }}
+    >
+      {state === "added" ? "Added ✓" : state === "adding" ? "Adding…" : "+ Add"}
+    </button>
   );
 }

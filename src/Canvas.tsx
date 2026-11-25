@@ -453,11 +453,12 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   // ---- Starting from a link or a statement ----
 
   /** Puts a source card in clear space to the right of everything and brings it into view. */
-  const startFrom = async (input: string) => {
+  /** Starts from a link or words: to the right of everything, or at `at` (beside the card it came from). */
+  const startFrom = async (input: string, at?: { x: number; y: number }) => {
     const r = stageRef.current!.getBoundingClientRect();
     const right = Math.max(0, ...shown.filter((i) => i.kind !== "region").map((i) => i.x + i.w));
-    const x = shown.length ? right + 120 : 40;
-    const y = Math.round(toWorld(r.left, r.top + 60).y);
+    const x = at?.x ?? (shown.length ? right + 120 : 40);
+    const y = at?.y ?? Math.round(toWorld(r.left, r.top + 60).y);
     // A PDF takes a while: it's fetched and sliced into its pages.
     const pdf = /\.pdf($|[?#])|arxiv\.org\/(abs|pdf)\//i.test(input);
     const done = pdf ? expect({ x, y, label: "", text: "Fetching the PDF and slicing it into pages…" }) : () => {};
@@ -471,6 +472,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       if (res.total && res.images && res.total > res.images.length) setError(`That PDF has ${res.total} pages; the first ${res.images.length} are on the canvas.`);
     } catch (e) {
       setError(`Couldn't start from that: ${e}`);
+      // Asked for from a card ("+ Add" on a found page): its button goes back to Add.
+      if (at) throw e;
     } finally {
       done();
     }
@@ -1787,6 +1790,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               onFocus={focusOn}
               onObjectBack={() => api.objectBack(c.id).then(refresh, (e) => setError(`Couldn't bring that back: ${e}`))}
               onAddPaper={(paper) => addPaperPages(paper, "1-2", { x: c.x + c.w + GAP, y: c.y })}
+              onAddLink={(url) => startFrom(url, { x: c.x + c.w + GAP, y: slotY(c.x + c.w + GAP, c.y) })}
               onOpenNotebook={() => setNotebook({ id: c.id, autoRun: false })}
               onAsk={async (text) => {
                 try {

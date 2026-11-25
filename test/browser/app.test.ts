@@ -33,6 +33,7 @@ before(async () => {
         objectCard("s1", { type: "set", title: "Post-punk", caption: "The bands.", entries: ["Joy Division", "The Fall", "Siouxsie and the Banshees", "Wire", "Gang of Four", "Magazine"].map((t, i) => ({ title: t, subtitle: "band", note: `Reason ${i + 1}`, url: `https://en.wikipedia.org/wiki/${t.replace(/ /g, "_")}`, ...(i === 5 ? { unverified: true, url: undefined } : {}) })) }, 0, 0, { w: 960 }),
       ],
     },
+    { id: "srcs0001", name: "Sources", items: [explained("w1", "The Smiths", 0, 0, { sources: [{ n: 1, url: "http://127.0.0.1:9/no-such-page", title: "The Smiths", snippet: "", searcher: "keenable" }] })] },
     { id: "note0001", name: "Notes", items: [explained("n1", "Bialgebras", 0, 0)] },
     {
       id: "cnot0001",
@@ -425,6 +426,22 @@ describe("F-SET: a card set", () => {
     await set.locator(".set-tile").filter({ hasText: "Wire" }).getByRole("button", { name: "Explain" }).click();
     const made = await until(async () => (await state("set00001")).find((i) => i.kind === "card" && (i as CardItem).selection === "Wire"), 5000, "a card on Wire");
     assert.equal((made as CardItem).parentId, "s1");
+    await p.context().close();
+  });
+});
+
+describe("F-START: adding a found page", () => {
+  test("found pages show their site, not the searcher; + Add puts one on the canvas beside the card", async () => {
+    const p = await open("/c/srcs0001");
+    const c = p.locator(cardSel("w1"));
+    await c.locator(".found").waitFor();
+    assert.doesNotMatch(await c.locator(".found").innerText(), /keenable/);
+    await c.locator(".found li").first().getByRole("button", { name: "+ Add" }).click();
+    await c.locator(".found li").first().getByRole("button", { name: "Added ✓" }).waitFor();
+    const page = await until(async () => (await state("srcs0001")).find((i) => i.kind === "card" && (i as CardItem).origin?.kind === "page"), 5000, "the page card");
+    const pc = page as CardItem;
+    assert.equal(pc.origin?.kind === "page" && pc.origin.url, "http://127.0.0.1:9/no-such-page");
+    assert.ok(pc.x >= 720, `beside the card: x=${pc.x}`);
     await p.context().close();
   });
 });
