@@ -26,9 +26,15 @@ export interface Pointing {
 /** A thing the librarian numbered on screen for you to pick. */
 type Mark = { n: number; cardId: string; key?: string; label: string };
 
+/** Things on the canvas a call can point at: cards, and notes (a note's id travels as `cardId`). */
+const ITEM = '.card-item, .note-item:not([data-note-id="draft"])';
+const itemEl = (id: string) => document.querySelector<HTMLElement>(`.card-item[data-card-id="${id}"], .note-item[data-note-id="${id}"]`);
+const itemId = (el: HTMLElement) => el.dataset.cardId ?? el.dataset.noteId;
+
 /** A pointing in a few words, for what you did lately ("looked at …", "clicked …"). */
 function describe(p: Pointing): string {
-  const card = p.cardId ? document.querySelector<HTMLElement>(`.card-item[data-card-id="${p.cardId}"]`) : null;
+  const card = p.cardId ? itemEl(p.cardId) : null;
+  if (card?.classList.contains("note-item")) return `the note "${card.querySelector(".note-text")?.textContent?.trim().slice(0, 80) ?? ""}"`;
   const title = card?.querySelector(".sem-title, .card-head h3")?.textContent?.replace(/^[▾▸]\s*/, "").trim().slice(0, 80) || "a card";
   const what = p.figure ?? (p.pieceText ? `"${p.pieceText.slice(0, 80)}"` : "");
   return what ? `${what} on "${title}"` : `the card "${title}"`;
@@ -54,16 +60,21 @@ function pointingAt(hovered: Element | null): Pointing {
   const line = anchor?.closest(".sem-step, .sem-desc, .sem-part, .sem-together, .sem-aside, .facet p, .chat-text, .source-para, p, li");
   const context = line ? plain(line).slice(0, 800) : "";
   const el = (text ? anchor : null) ?? hovered;
-  const card = el?.closest<HTMLElement>(".card-item");
+  const card = el?.closest<HTMLElement>(ITEM);
   const selected = text ? { selection: text, ...(context && context !== text ? { selectionContext: context } : {}) } : {};
   if (!card) return selected;
+  // A note is read whole: its words are what's pointed at.
+  if (card.classList.contains("note-item")) {
+    const words = card.querySelector(".note-text")?.textContent?.trim() ?? "";
+    return { cardId: itemId(card), ...(words ? { pieceText: words.slice(0, 500) } : {}), ...selected };
+  }
   const figure = el?.closest<HTMLElement>("[data-f]")?.dataset.f;
   const piece = el?.closest<HTMLElement>(PIECE);
   const key = piece?.dataset.a ?? piece?.dataset.x;
   // Section headings ("cat-why") count as pieces; the title and decorations don't.
   const usable = key && key !== "title" && key !== "aside" ? key : undefined;
   return {
-    cardId: card.dataset.cardId,
+    cardId: itemId(card),
     ...(usable ? { key: usable, pieceText: plain(piece!).slice(0, 500) } : {}),
     ...(figure ? { figure: figure.slice(0, 300) } : {}),
     ...selected,
@@ -208,12 +219,12 @@ export function CallBar({
     // The spot under the pointer as they began, then every change while they spoke.
     const before = [...tl].reverse().find((e) => e.t <= start);
     const during = tl.filter((e) => e.t > start && e.t <= end);
-    const visible = [...document.querySelectorAll<HTMLElement>(".card-item")]
+    const visible = [...document.querySelectorAll<HTMLElement>(ITEM)]
       .filter((el) => {
         const r = el.getBoundingClientRect();
         return r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
       })
-      .map((el) => el.dataset.cardId!)
+      .map((el) => itemId(el)!)
       .filter(Boolean);
     return {
       timeline: [...(before ? [{ at: 0, p: before.p }] : []), ...during.map((e) => ({ at: e.t - start, p: e.p }))].slice(-12),
@@ -230,8 +241,8 @@ export function CallBar({
   useEffect(() => {
     let lit: Element | null = null;
     const move = (e: PointerEvent) => {
-      const t = (e.target as Element | null)?.closest?.(PIECE) ?? (e.target as Element | null)?.closest?.(".card-item") ?? null;
-      if (!t || !t.closest(".card-item")) return;
+      const t = (e.target as Element | null)?.closest?.(PIECE) ?? (e.target as Element | null)?.closest?.(ITEM) ?? null;
+      if (!t || !t.closest(ITEM)) return;
       hovered.current = e.target as Element;
       if (lit !== t) {
         lit?.classList.remove("call-pointed");
@@ -252,7 +263,7 @@ export function CallBar({
     // Clicks anywhere on a card, even where the card keeps the click to itself.
     const down = (e: PointerEvent) => {
       const el = e.target as Element | null;
-      if (!el?.closest?.(".card-item") || el.closest(".call-bar")) return;
+      if (!el?.closest?.(ITEM) || el.closest(".call-bar")) return;
       const p = pointingAt(el);
       const what = (el.closest("button, a") as HTMLElement | null)?.innerText?.trim().slice(0, 60);
       note(`clicked ${what ? `"${what}" on ` : ""}${describe(p)}`);
@@ -656,7 +667,7 @@ function Marks({ marks, onPick }: { marks: Mark[]; onPick: (m: Mark) => void }) 
     let raf = 0;
     const outlined: Element[] = [];
     const find = (m: Mark) => {
-      const card = document.querySelector<HTMLElement>(`.card-item[data-card-id="${m.cardId}"]`);
+      const card = itemEl(m.cardId);
       if (!card) return null;
       return (m.key && card.querySelector(`[data-a="${m.key}"], [data-x="${m.key}"]`)) || card;
     };

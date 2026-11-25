@@ -28,6 +28,14 @@ before(async () => {
     { id: "chat0001", name: "Chat", items: [explained("c1", "Eigenvalues", 0, 0)] },
     { id: "note0001", name: "Notes", items: [explained("n1", "Bialgebras", 0, 0)] },
     {
+      id: "cnot0001",
+      name: "Call notes",
+      items: [
+        explained("q1", "Solitons", 0, 0),
+        { kind: "note", id: "bps1", text: "Bogomol'nyi–Prasad–Sommerfield bound", by: "you", at: "2026-11-24T10:00:00Z", x: 900, y: 0, w: 340, context: { via: "canvas", seq: 1 } },
+      ],
+    },
+    {
       id: "call0001",
       name: "Call",
       items: [
@@ -275,7 +283,30 @@ describe("F-CALL: a call that numbers things and takes a pick", () => {
     assert.equal((await state("call0001")).find((i) => i.id === "k2")!.hidden, true);
     assert.equal(await p.locator(".call-mark").count(), 0, "the numbers go once answered");
     await p.getByText("Taking off the Petersen graph.").waitFor();
-    assert.match(llm.askedFor(/voice call/).at(-1)!.user, /\(card id k2\)/);
+    assert.match(llm.askedFor(/voice call/).at(-1)!.user, /\(id k2\)/);
+    await p.context().close();
+  });
+});
+
+describe("F-NOTES: a call reads notes", () => {
+  test("pointing at a note on a call sends the note, and its words", async () => {
+    llm.reset();
+    llm.on(/voice call/, { say: "Your note says the BPS bound.", actions: [] });
+    const p = await open("/c/cnot0001", 1600, 1000);
+    const note = p.locator('.note-item[data-note-id="bps1"]');
+    await note.waitFor();
+    await p.click(".call-btn");
+    await p.waitForFunction(() => Boolean((window as unknown as { __rec?: unknown }).__rec));
+    await p.waitForTimeout(500);
+    await note.locator(".note-text").hover();
+    await p.waitForTimeout(300);
+    await p.evaluate(() => {
+      const rec = (window as unknown as { __rec: Record<string, (e: unknown) => void> }).__rec;
+      rec.onspeechstart?.({});
+      rec.onresult({ resultIndex: 0, results: [Object.assign({ 0: { transcript: "can you read my note" } }, { isFinal: true })] });
+    });
+    await p.getByText("Your note says the BPS bound.").waitFor({ timeout: 10000 });
+    assert.match(llm.askedFor(/voice call/).at(-1)!.user, /their note, which says "Bogomol'nyi–Prasad–Sommerfield bound"/);
     await p.context().close();
   });
 });

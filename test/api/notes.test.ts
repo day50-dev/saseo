@@ -128,4 +128,26 @@ describe("F-NOTES: notes the librarian leaves", () => {
     assert.equal(card.chat!.at(-1)!.objectId, n.id);
     assert.equal(llm.askedFor(/talking with a curious/).length, 0, "nothing was answered");
   });
+
+  test("on a call, it reads a note you select words in or point at", async () => {
+    const n = (await s.api("POST", `${C}/notes`, { text: "Bogomol'nyi–Prasad–Sommerfield bound", x: 3000, y: 0 })).body.note as NoteItem;
+    llm.on(/voice call/, { say: "It's a lower bound on a soliton's energy.", actions: [] });
+    await s.api("POST", `${C}/call`, { text: "can you see my note", pointing: { cardId: n.id, selection: "Prasad–Sommerfield", pieceText: n.text } });
+    let asked = llm.askedFor(/voice call/).at(-1)!;
+    assert.match(asked.user, /SELECTED: "Prasad–Sommerfield".*in their note, which says "Bogomol'nyi–Prasad–Sommerfield bound"/);
+    await s.api("POST", `${C}/call`, { text: "what is this about", pointing: { cardId: n.id, pieceText: n.text } });
+    asked = llm.askedFor(/voice call/).at(-1)!;
+    assert.match(asked.user, /Pointing at: their note, which says "Bogomol'nyi–Prasad–Sommerfield bound"/);
+  });
+
+  test("on a call, notes can be looked up: listed with the cards, and read by id", async () => {
+    const n = (await s.api("POST", `${C}/notes`, { text: "Read Manton–Sutcliffe chapter 4", x: 3000, y: 400 })).body.note as NoteItem;
+    let round = 0;
+    llm.on(/voice call/, () => (round++ === 0 ? { look: [{ tool: "cards" }, { tool: "card", id: n.id }] } : { say: "Your note says to read chapter 4.", actions: [] }));
+    const r = await s.api("POST", `${C}/call`, { text: "what did I write in my note about the book" });
+    assert.equal(r.body.say, "Your note says to read chapter 4.");
+    const answers = llm.askedFor(/voice call/).at(-1)!.user;
+    assert.match(answers, new RegExp(`${n.id}: note by them, "Read Manton–Sutcliffe chapter 4"`));
+    assert.match(answers, /a note they wrote, at .*It says: "Read Manton–Sutcliffe chapter 4"/);
+  });
 });

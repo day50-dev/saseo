@@ -2,7 +2,7 @@
 // and changes the canvas as it goes (grows a piece, opens a deeper card). Speech runs on
 // OpenAI-compatible servers you point it at: Kokoro for speaking, a /transcribe endpoint
 // (faster-whisper) for listening. See docs/DESIGN.md, "A call with the librarian".
-import { CARD_WIDTH, type CardItem, EXTENSION_SHAPES, type Extension, type ExtensionShape, type ObjectKind } from "../shared/canvas.ts";
+import { CARD_WIDTH, type CardItem, EXTENSION_SHAPES, type Extension, type ExtensionShape, type NoteItem, type ObjectKind } from "../shared/canvas.ts";
 import { type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { chat, type Message } from "./llm.ts";
@@ -100,8 +100,11 @@ enough: answer about that thing. Don't speculate about the rest of the canvas.
 Only when their words refer to something you can't identify from that ("the other one", "the map from before", "what I was
 just looking at", "those two"), or you need a card's content to answer, look it up first: reply
 {"look": [{"tool": "...", ...}]} and you'll get the answers. Tools:
-- {"tool": "card", "id": "..."}: what a card holds, with its pieces' keys (or the pointed card, without an id).
-- {"tool": "cards"}: every card on the canvas: id, kind, title, and which are on screen.
+- {"tool": "card", "id": "..."}: what a card or note holds, with its pieces' keys (or the pointed card, without an id).
+- {"tool": "cards"}: every card and note on the canvas: id, kind, title (a note's words), and which are on screen.
+The canvas also holds notes: free-form words the reader (or you) wrote, read as they are. "My note", "what I wrote"
+mean one of those; when they point at or select in a note, you're told what it says. Never claim to see something you
+weren't told or didn't look up.
 - {"tool": "recent"}: what they did lately: what they looked at and clicked, newest last.
 - {"tool": "goals"}: what they're after on this canvas.
 If, even so, it could be more than one thing, don't guess: number the candidates on screen and ask, with the "mark" action,
@@ -136,7 +139,16 @@ Reply with JSON only: {"look": [...]} to look something up, or {"say": "...", "a
 const DEICTIC = /^(this|that|these|those|here|there)$/i;
 
 /** One line for a thing pointed at: its card's title, and the piece or figure part. */
-export function describePointing(p: Pointing, cards: CardItem[]): string {
+/** One line for a note: who wrote it, what it's about, and its words. */
+export function noteContent(n: NoteItem, cards: CardItem[] = []): string {
+  const on = n.on ? cards.find((c) => c.id === n.on!.id) : undefined;
+  const about = on ? ` beside the card "${on.subject ?? on.selection ?? on.request ?? "a card"}"${n.on?.quote ? ` (about "${n.on.quote.slice(0, 200)}")` : ""}` : "";
+  return `${n.id}: a note ${n.by === "you" ? "they wrote" : "you left"}${about}, at ${n.at}. It says: "${n.text.slice(0, 2000)}"`;
+}
+
+export function describePointing(p: Pointing, cards: CardItem[], notes: NoteItem[] = []): string {
+  const note = p.cardId ? notes.find((n) => n.id === p.cardId) : undefined;
+  if (note) return `${note.by === "you" ? "their" : "your"} note, which says "${note.text.slice(0, 1500)}"`;
   const card = p.cardId ? cards.find((c) => c.id === p.cardId) : undefined;
   if (!card) return "";
   const title = `"${card.subject ?? card.selection ?? card.request ?? "a card"}"${card.objectKind ? ` (${card.objectKind === "links" ? "reading" : card.objectKind} card)` : ""}`;
@@ -237,6 +249,8 @@ export async function callTurn(
   const said = pointing.selection ? [] : deixis(text, ctx);
   if (said.length && !pick) pointing = said[0].p;
   const card = pointing.cardId ? cards.find((c) => c.id === pointing.cardId) : undefined;
+  const canvasNotes = state.items.filter((i): i is NoteItem => i.kind === "note" && !i.hidden);
+  const note = pointing.cardId ? canvasNotes.find((n) => n.id === pointing.cardId) : undefined;
   const info = await getCanvasInfo(store.id);
   const notes = (info?.reader ?? []).map((n) => n.a).filter(Boolean);
 
@@ -245,15 +259,15 @@ export async function callTurn(
   const lines = [
     notes.length ? `About them: ${notes.join("; ")}` : "",
     pointing.selection
-      ? `They have SELECTED: "${pointing.selection}"${pointing.selectionContext ? ` (in: "${pointing.selectionContext}")` : ""}${card ? `, on "${card.subject ?? card.selection}"` : ""}`
+      ? `They have SELECTED: "${pointing.selection}"${pointing.selectionContext ? ` (in: "${pointing.selectionContext}")` : ""}${card ? `, on "${card.subject ?? card.selection}"` : note ? `, in ${describePointing(pointing, cards, canvasNotes)}` : ""}`
       : "",
     pick
-      ? `You asked them which one they meant and numbered the candidates. They picked number ${pick.n}: ${describePointing(pointing, cards)} (card id ${pick.cardId}). That is the thing their earlier request was about: do it to this one.`
+      ? `You asked them which one they meant and numbered the candidates. They picked number ${pick.n}: ${describePointing(pointing, cards, canvasNotes)} (id ${pick.cardId}). That is the thing their earlier request was about: do it to this one.`
       : "",
     !pick && distinct.length > 1
-      ? `As they spoke they pointed at, in order: ${distinct.map((d) => `"${d.word}" = ${describePointing(d.p, cards)}`).join("; ")}`
-      : !pick && !pointing.selection && card
-        ? `Pointing at: ${describePointing(pointing, cards)}`
+      ? `As they spoke they pointed at, in order: ${distinct.map((d) => `"${d.word}" = ${describePointing(d.p, cards, canvasNotes)}`).join("; ")}`
+      : !pick && !pointing.selection && (card || note)
+        ? `Pointing at: ${describePointing(pointing, cards, canvasNotes)}`
         : !pick && !pointing.selection
           ? "Not pointing at anything."
           : "",
@@ -266,6 +280,8 @@ export async function callTurn(
   const tool = (t: Record<string, unknown>): string => {
     switch (t.tool) {
       case "card": {
+        const n = canvasNotes.find((x) => x.id === String(t.id ?? "")) ?? (t.id ? undefined : note);
+        if (n) return noteContent(n, cards);
         const c = cards.find((x) => x.id === String(t.id ?? "")) ?? card;
         return c ? cardContent(c) : "No such card.";
       }
@@ -274,6 +290,7 @@ export async function callTurn(
         return cards
           .slice(-60)
           .map((c) => `${c.id}: ${c.objectKind ? `${c.objectKind === "links" ? "reading" : c.objectKind} card, ` : ""}"${c.subject ?? c.selection ?? c.request ?? "a card"}"${vis.has(c.id) ? " (on screen)" : ""}${c.id === pointing.cardId ? (pick ? " (the one they picked)" : " (pointed at)") : ""}`)
+          .concat(canvasNotes.slice(-40).map((n) => `${n.id}: note by ${n.by === "you" ? "them" : "you"}, "${n.text.replace(/\s+/g, " ").slice(0, 160)}"${vis.has(n.id) ? " (on screen)" : ""}${n.id === pointing.cardId ? " (pointed at)" : ""}`))
           .join("\n");
       }
       case "recent":
@@ -348,11 +365,12 @@ export async function callTurn(
         const words = String(a.text ?? "").trim().slice(0, 2000);
         if (words) {
           const quote = pointing.selection || pointing.pieceText || pointing.figure;
-          await hooks.note(words, card ? { id: card.id, ...(pointing.key ? { key: pointing.key } : {}), ...(quote ? { quote } : {}) } : undefined);
+          const about = card ?? note;
+          await hooks.note(words, about ? { id: about.id, ...(pointing.key ? { key: pointing.key } : {}), ...(quote ? { quote } : {}) } : undefined);
           done.push(`left a note: ${words.slice(0, 80)}`);
         } else failed = true;
       } else if (a.kind === "mark") {
-        const known = new Set(cards.map((c) => c.id));
+        const known = new Set([...cards.map((c) => c.id), ...canvasNotes.map((n) => n.id)]);
         const list = (Array.isArray(a.marks) ? a.marks : []) as Record<string, unknown>[];
         marks = list
           .filter((m) => known.has(String(m.card ?? "")))
@@ -360,7 +378,7 @@ export async function callTurn(
           .map((m, i) => ({ n: i + 1, cardId: String(m.card), ...(m.piece ? { key: String(m.piece) } : {}), label: String(m.label ?? "").slice(0, 40) || `option ${i + 1}` }));
         if (marks.length) done.push(`numbered ${marks.length} on screen`);
       } else if (a.kind === "remove") {
-        const known = new Set(cards.map((c) => c.id));
+        const known = new Set([...cards.map((c) => c.id), ...canvasNotes.map((n) => n.id)]);
         const ids = (Array.isArray(a.ids) ? a.ids : []).map(String).filter((id) => known.has(id));
         if (ids.length) {
           const gone = await hooks.remove(ids);
