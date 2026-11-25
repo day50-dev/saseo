@@ -26,6 +26,13 @@ before(async () => {
     { id: "map00001", name: "Map", items: [objectCard("m", { type: "map", title: "Lagrange", route: true, places: [{ name: "Turin", lat: 45.07, lon: 7.69, note: "born" }, { name: "Berlin", lat: 52.52, lon: 13.4 }, { name: "Paris", lat: 48.86, lon: 2.35, approximate: true }] })] },
     { id: "undo0001", name: "Undo", items: [explained("u1", "Keep me", 0, 0), explained("u2", "Remove me", 800, 0)] },
     { id: "chat0001", name: "Chat", items: [explained("c1", "Eigenvalues", 0, 0)] },
+    {
+      id: "set00001",
+      name: "Set",
+      items: [
+        objectCard("s1", { type: "set", title: "Post-punk", caption: "The bands.", entries: ["Joy Division", "The Fall", "Siouxsie and the Banshees", "Wire", "Gang of Four", "Magazine"].map((t, i) => ({ title: t, subtitle: "band", note: `Reason ${i + 1}`, url: `https://en.wikipedia.org/wiki/${t.replace(/ /g, "_")}`, ...(i === 5 ? { unverified: true, url: undefined } : {}) })) }, 0, 0, { w: 960 }),
+      ],
+    },
     { id: "note0001", name: "Notes", items: [explained("n1", "Bialgebras", 0, 0)] },
     {
       id: "cnot0001",
@@ -401,6 +408,23 @@ describe("F-START: arXiv from Add", () => {
     await p.getByRole("dialog", { name: "Add from arXiv" }).getByText("BPS monopoles", { exact: false }).first().waitFor();
     await until(() => asked === "BPS monopoles", 5000, "the search");
     assert.equal(await p.locator(".start-dock").count(), 0, "Add closed behind it");
+    await p.context().close();
+  });
+});
+
+describe("F-SET: a card set", () => {
+  test("six tiles, three across, each linked; the unchecked one says so; Explain opens a card on it", async () => {
+    const p = await open("/c/set00001");
+    const set = p.locator(`${cardSel("s1")} .card-set`);
+    await set.waitFor();
+    assert.equal(await set.locator(".set-tile").count(), 6);
+    const cols = await set.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
+    assert.equal(cols, 3);
+    assert.equal(await set.getByRole("link", { name: "Wikipedia ↗" }).count(), 5);
+    await set.locator(".set-tile.unverified").getByText("Not checked").waitFor();
+    await set.locator(".set-tile").filter({ hasText: "Wire" }).getByRole("button", { name: "Explain" }).click();
+    const made = await until(async () => (await state("set00001")).find((i) => i.kind === "card" && (i as CardItem).selection === "Wire"), 5000, "a card on Wire");
+    assert.equal((made as CardItem).parentId, "s1");
     await p.context().close();
   });
 });

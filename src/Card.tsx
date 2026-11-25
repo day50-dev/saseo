@@ -363,7 +363,7 @@ export function Card(props: {
       {card.objectKind === "notebook" ? (
         <NotebookCard card={card} onOpen={props.onOpenNotebook} />
       ) : (
-        card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} />
+        card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} onExplain={props.onDescend} />
       )}
       {card.replaced && card.stage === "done" && (
         <button type="button" className="link small object-back" onPointerDown={(e) => e.stopPropagation()} onClick={props.onObjectBack}>
@@ -575,7 +575,7 @@ function ChatBox({
         className="chat-input"
         rows={1}
         value={draft}
-        placeholder={messages.length ? "Ask a follow-up, or ask for videos, reading, a diagram, data, a plot, a map…" : "Ask about this, or ask for videos, reading, a diagram, data, a plot, a map…"}
+        placeholder={messages.length ? "Ask a follow-up, or ask for videos, reading, a set to look through, a diagram, data, a plot, a map…" : "Ask about this, or ask for videos, reading, a set to look through, a diagram, data, a plot, a map…"}
         disabled={card.chatPending}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
@@ -621,7 +621,7 @@ function NotebookCard({ card, onOpen }: { card: CardItem; onOpen: () => void }) 
   );
 }
 
-function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: Paper) => Promise<void> }) {
+function ObjectView({ card, onAddPaper, onExplain }: { card: CardItem; onAddPaper: (paper: Paper) => Promise<void>; onExplain?: (text: string, context: string, clientY: number) => void }) {
   const [playing, setPlaying] = useState<string | null>(null);
   const o = card.object!;
   if (o.type === "notebook") return null;
@@ -642,31 +642,48 @@ function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: 
         {o.caption && <figcaption className="facet-text">{o.caption}</figcaption>}
       </figure>
     );
-  if (o.type === "videos")
+  if (o.type === "set")
     return (
-      <div className="object-videos">
-        {o.videos.map((v) =>
-          playing === v.videoId ? (
-            <div key={v.videoId} className="video playing">
+      <CardSet
+        caption={o.caption}
+        tiles={o.entries.map((e, i) => ({
+          key: `${i}-${e.title}`,
+          title: e.title,
+          subtitle: e.subtitle,
+          note: e.note,
+          image: e.image,
+          url: e.url,
+          more: e.extract,
+          unverified: e.unverified,
+          openLabel: "Explain",
+          onOpen: (ev) => onExplain?.(e.title, [e.title, e.subtitle, e.note].filter(Boolean).join(": "), ev.clientY),
+        }))}
+      />
+    );
+  if (o.type === "videos")
+    // A set of videos: each tile plays in place.
+    return (
+      <CardSet
+        tiles={o.videos.map((v) => ({
+          key: v.videoId,
+          title: v.title,
+          subtitle: v.channel,
+          image: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+          wide: true,
+          url: v.url,
+          openLabel: "▶ Play here",
+          onOpen: () => setPlaying(v.videoId),
+          playing:
+            playing === v.videoId ? (
               <iframe
                 src={`https://www.youtube-nocookie.com/embed/${v.videoId}?autoplay=1`}
                 title={v.title}
                 allow="autoplay; encrypted-media; picture-in-picture"
                 allowFullScreen
               />
-              <a href={v.url} target="_blank" rel="noreferrer" className="small">
-                {v.title}
-              </a>
-            </div>
-          ) : (
-            <button key={v.videoId} type="button" className="video" onClick={() => setPlaying(v.videoId)} title="Play here">
-              <img src={`https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`} alt="" loading="lazy" draggable={false} />
-              <span className="video-title">{v.title}</span>
-              {v.channel && <span className="video-channel">{v.channel}</span>}
-            </button>
-          ),
-        )}
-      </div>
+            ) : undefined,
+        }))}
+      />
     );
   if (o.type === "papers")
     return (
@@ -678,7 +695,7 @@ function ObjectView({ card, onAddPaper }: { card: CardItem; onAddPaper: (paper: 
     );
   return (
     <ol className="object-links">
-      {o.links.map((l) => (
+      {(o as { links: FoundSource[] }).links.map((l) => (
         <li key={l.n}>
           <a href={l.url} target="_blank" rel="noreferrer">
             {l.title || domain(l.url)}
@@ -1050,4 +1067,69 @@ function RetryNote({ card }: { card: CardItem }) {
     );
   }
   return (card.retries ?? 0) >= RETRY_TRIES ? <span className="retry-note muted"> Tried {RETRY_TRIES} times; Retry to try again.</span> : null;
+}
+
+interface Tile {
+  key: string;
+  title: string;
+  subtitle?: string;
+  note?: string;
+  image?: string;
+  /** A 16:9 picture (a video's) rather than a portrait or a photo. */
+  wide?: boolean;
+  url?: string;
+  /** More about it, shown on hover. */
+  more?: string;
+  unverified?: boolean;
+  openLabel?: string;
+  onOpen?: (e: React.MouseEvent) => void;
+  /** Shown in place of the tile, across the whole row (a video playing). */
+  playing?: ReactNode;
+}
+
+/**
+ * A card set: things to look through, as a grid of tiles, three across (2×3, 3×3). Videos are one
+ * kind of set (each plays in place); a collection of people, groups or works is another (each
+ * checked against its Wikipedia article, and opened as an explanation of its own).
+ */
+function CardSet({ tiles, caption }: { tiles: Tile[]; caption?: string }) {
+  return (
+    <>
+      {caption && <p className="set-caption muted small">{caption}</p>}
+      <div className={`card-set ${tiles.length <= 4 ? "two" : ""}`} onPointerDown={(e) => e.stopPropagation()}>
+        {tiles.map((t) =>
+          t.playing ? (
+            <div key={t.key} className="set-tile playing">
+              {t.playing}
+              <a href={t.url} target="_blank" rel="noreferrer" className="small">
+                {t.title}
+              </a>
+            </div>
+          ) : (
+            <div key={t.key} className={`set-tile ${t.unverified ? "unverified" : ""}`} title={t.more}>
+              <button type="button" className={`set-pic ${t.wide ? "wide" : ""}`} onClick={t.onOpen} title={t.openLabel} disabled={!t.onOpen}>
+                {t.image ? <img src={t.image} alt="" loading="lazy" draggable={false} /> : <span className="set-initial">{t.title.slice(0, 1)}</span>}
+              </button>
+              <span className="set-title">{t.title}</span>
+              {t.subtitle && <span className="set-subtitle">{t.subtitle}</span>}
+              {t.note && <span className="set-note">{t.note}</span>}
+              <span className="set-actions">
+                {t.onOpen && (
+                  <button type="button" className="link small" onClick={t.onOpen}>
+                    {t.openLabel ?? "Open"}
+                  </button>
+                )}
+                {t.url && (
+                  <a href={t.url} target="_blank" rel="noreferrer" className="small">
+                    {/wikipedia\.org/.test(t.url) ? "Wikipedia ↗" : "Open ↗"}
+                  </a>
+                )}
+                {t.unverified && <span className="small fail" title="No article could be found for it: the model's say-so, to be checked">Not checked</span>}
+              </span>
+            </div>
+          ),
+        )}
+      </div>
+    </>
+  );
 }

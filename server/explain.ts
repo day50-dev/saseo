@@ -1,7 +1,8 @@
 // The librarian's loop for one card: read the region, go fish, write a descending
 // explanation from what was found, then check that it doesn't climb.
 import { addNote } from "./notes.ts";
-import { CARD_WIDTH, EXTENSION_SHAPES, RETRY_TRIES, retryDelay, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Paper, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
+import { makeSet } from "./sets.ts";
+import { CARD_WIDTH, SOURCE_WIDTH, EXTENSION_SHAPES, RETRY_TRIES, retryDelay, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Paper, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { execFile } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
@@ -1146,12 +1147,13 @@ const INTENT_CRITERIA: Record<Intent, string> = {
   plot: "A request to plot or graph a function, equation or curve, or data points, on axes.",
   graph: "A request for a network of nodes and edges: a graph in graph theory, a tree, a map of how things connect.",
   map: "A request for a geographic map: where places are, a route, countries or regions.",
+  set: "A request for a collection to look through: the top, main or notable people, groups, works or things of something, as a list.",
 };
 const isIntent = (v: unknown): v is Intent => typeof v === "string" && v in INTENT_CRITERIA;
 
 const INTENT = `A reader typed a message in the conversation box on a card about a topic they are studying.
 Decide what they want: an answer in words, or an object made for them.
-Return JSON only: {"kind": "answer" | "note" | "videos" | "links" | "diagram" | "papers" | "notebook" | "table" | "plot" | "graph" | "map", "request": "what they asked for, restated in a few words"}
+Return JSON only: {"kind": "answer" | "note" | "set" | "videos" | "links" | "diagram" | "papers" | "notebook" | "table" | "plot" | "graph" | "map", "request": "what they asked for, restated in a few words"}
 - "videos": they ask for videos, lectures or talks to watch.
 - "links": they ask for things to read: articles, notes, papers, textbook chapters.
 - "diagram": they ask you to draw, sketch, picture or diagram something.
@@ -1161,6 +1163,8 @@ Return JSON only: {"kind": "answer" | "note" | "videos" | "links" | "diagram" | 
 - "plot": they ask to plot or graph a function, an equation, a curve, or data on x and y axes.
 - "graph": they ask for nodes and edges: a graph in graph theory, a tree, a network, a map of how things connect.
 - "map": they ask for a geographic map, or where places are on the earth: cities, battles, routes, countries.
+- "set": they ask for a collection to look through: the top, main, best-known or notable people, bands, works, books,
+  places or things of a subject ("who were the big names", "list the key albums", "show me some of them").
   ("graph y = x^2" is a plot; "draw K4" or "how are these ideas connected" is a graph; a picture or sketch is a diagram.)
 - "note": they ask you to note, jot down or remember something for later ("note that…", "remind me to check this",
   "remember: the 1 is the unit"). "request" is then the note itself, as it should read (their point, in their words).
@@ -1195,6 +1199,7 @@ async function decideIntent(text: string, about: string): Promise<{ kind: Intent
 /** A card's likely height before it has ever been measured: object cards vary by what they hold. */
 function expectedHeight(c: CardItem): number {
   if (c.objectKind === "videos") return 1150;
+  if (c.objectKind === "set") return 1300;
   if (c.objectKind === "diagram") return 1100;
   if (c.objectKind === "links") return 900;
   if (c.objectKind === "table" || c.objectKind === "plot" || c.objectKind === "graph" || c.objectKind === "map") return 800;
@@ -1333,6 +1338,10 @@ export function makeObject(store: CanvasStore, cardId: string) {
       await store.update(cardId, { stage: "writing" });
       const judged = await judgeVideos(await withChannels(videos.slice(0, 15)), request, about.name);
       await store.update(cardId, { stage: "done", subject: `Videos: ${request}`, object: { type: "videos", videos: judged.slice(0, 6) } });
+    } else if (card.objectKind === "set") {
+      await store.update(cardId, { stage: "writing" });
+      const set = await makeSet(request, about.text.slice(0, 1500));
+      await store.update(cardId, { stage: "done", subject: set.title, object: { type: "set", ...set } });
     } else if (card.objectKind === "links") {
       await store.update(cardId, { stage: "searching" });
       const q = await queryFor(request, about.text, `${about.name} introduction`);
@@ -1424,6 +1433,7 @@ export function makeObject(store: CanvasStore, cardId: string) {
 }
 
 const MADE: Record<ObjectKind, string> = {
+  set: "Putting together a set",
   videos: "Finding videos",
   links: "Finding reading",
   diagram: "Drawing a diagram",
@@ -1436,6 +1446,7 @@ const MADE: Record<ObjectKind, string> = {
 };
 
 const REDOING: Record<ObjectKind, string> = {
+  set: "Putting together another set",
   videos: "Finding other videos",
   links: "Finding other reading",
   diagram: "Drawing it again",
@@ -1562,7 +1573,8 @@ async function addObject(store: CanvasStore, from: CardItem | undefined, kind: O
     ...(from && focus ? { selection: focus } : {}),
     x: at.x,
     y: at.y,
-    w: CARD_WIDTH,
+    // A set is a grid of tiles, three across: it needs the room.
+    w: kind === "set" ? SOURCE_WIDTH : CARD_WIDTH,
     stage: "reading",
     subject: request,
   };

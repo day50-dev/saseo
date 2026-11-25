@@ -319,7 +319,28 @@ export interface NotebookSource {
   binder?: string;
 }
 
+/**
+ * One tile of a card set: a person, a band, a work, a place, a video. Whatever can be checked is
+ * from a real page (its picture, its one-line description, its link); `note` says why it's in the set.
+ */
+export interface SetEntry {
+  title: string;
+  /** Who or what it is, in a few words: "band, 1976–1982", "singer". */
+  subtitle?: string;
+  /** Why it's in this set. */
+  note?: string;
+  /** A picture: the article's thumbnail. */
+  image?: string;
+  /** The page it was checked against. */
+  url?: string;
+  /** The opening of that page, for a closer look. */
+  extract?: string;
+  /** No page could be found for it: it's the model's say-so, to be checked. */
+  unverified?: boolean;
+}
+
 export type CardObject =
+  | { type: "set"; title: string; caption?: string; entries: SetEntry[] }
   | { type: "notebook"; title: string; cells: NotebookCell[]; source?: NotebookSource; why?: string; language?: string }
   | { type: "videos"; videos: Video[] }
   | { type: "links"; links: FoundSource[] }

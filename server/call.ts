@@ -119,8 +119,9 @@ You can change the canvas while you talk, with up to three actions:
   canvas, or when a diagram would help more than talk.
 - {"kind": "descend", "phrase": "..."}: open a new card that explains a phrase (they selected it, or it's in the piece
   they point at). Use it when they ask what a term means and it deserves a full explanation.
-- {"kind": "find", "find": "videos" | "links" | "papers" | "diagram" | "notebook" | "table" | "plot" | "graph" | "map", "request": "..."}:
-  put something new on the canvas: videos (lectures, explainers), links (reading), papers (arXiv), diagram (draw one),
+- {"kind": "find", "find": "set" | "videos" | "links" | "papers" | "diagram" | "notebook" | "table" | "plot" | "graph" | "map", "request": "..."}:
+  put something new on the canvas: set (a collection to look through as a grid of cards: the top artists, key works,
+  notable people or places of something; "list", "the top", "the main ones", "show me some"), videos (lectures, explainers), links (reading), papers (arXiv), diagram (draw one),
   notebook (a runnable example), table (figures and data, read off real pages), plot (functions, curves or data on
   x-y axes), graph (nodes and edges: graph theory, a network) or map (places, routes, countries). "request" says what,
   in a few words.
@@ -159,6 +160,7 @@ const KIND_WORDS: Record<string, string[]> = {
   plot: ["plot", "chart"],
   graph: ["graph", "network"],
   map: ["map"],
+  set: ["set", "list", "collection", "catalog"],
 };
 
 /**
@@ -242,6 +244,8 @@ export const objectSummary = (c: CardItem): string => {
       return `A diagram. ${o.caption}`;
     case "notebook":
       return `A notebook: ${o.title}`;
+    case "set":
+      return `A set of cards, "${o.title}": ${o.entries.map((e, i) => `${i + 1}. ${e.title}${e.subtitle ? ` (${e.subtitle})` : ""}`).join("; ")}`;
   }
 };
 
@@ -414,7 +418,7 @@ export async function callTurn(
           done.push(`opened a card on "${phrase}"`);
         }
       } else if (a.kind === "find") {
-        const what = (["videos", "links", "papers", "diagram", "notebook", "table", "plot", "graph", "map"] as const).find((k) => k === a.find) ?? "videos";
+        const what = (["set", "videos", "links", "papers", "diagram", "notebook", "table", "plot", "graph", "map"] as const).find((k) => k === a.find) ?? "videos";
         const request = (a.request || pointing.selection || text).trim().slice(0, 300);
         const focus = card ? pointing.selection || (pointing.pieceText && pointing.pieceText.length <= 240 ? pointing.pieceText : undefined) : undefined;
         // Beside what they're pointing at, else beside the newest card.

@@ -41,6 +41,9 @@ export async function fakeLlm() {
   // The decision model (System One): answers a yes/no question about a state.
   let decide: ((state: Record<string, unknown>, instructions: string) => number) | null = null;
   const decided: Record<string, unknown>[] = [];
+  // A stand-in Wikipedia: article summaries by title, and what a search finds.
+  const wiki = new Map<string, object>();
+  const wikiSearch = new Map<string, string>();
 
   const server = createServer(async (req, res) => {
     const raw = await body(req);
@@ -57,6 +60,16 @@ export async function fakeLlm() {
       spoken.push(String(JSON.parse(raw.toString() || "{}").input ?? ""));
       res.writeHead(200, { "content-type": "audio/wav" });
       return res.end(Buffer.from("RIFF0000WAVEfake"));
+    }
+    if (req.url?.startsWith("/api/rest_v1/page/summary/")) {
+      const title = decodeURIComponent(req.url.slice("/api/rest_v1/page/summary/".length)).replace(/_/g, " ");
+      const page = wiki.get(title);
+      return page ? json(200, page) : json(404, { type: "https://mediawiki.org/wiki/HyperSwitch/errors/not_found" });
+    }
+    if (req.url?.startsWith("/w/api.php")) {
+      const q = new URL(req.url, "http://x").searchParams.get("srsearch") ?? "";
+      const hit = [...wikiSearch].find(([k]) => q.toLowerCase().includes(k.toLowerCase()))?.[1];
+      return json(200, { query: { search: hit ? [{ title: hit }] : [] } });
     }
     if (req.url === "/v1/systemone") {
       const b = JSON.parse(raw.toString());
@@ -112,6 +125,11 @@ export async function fakeLlm() {
       asked.length = 0;
       decide = null;
       decided.length = 0;
+    },
+    /** Adds an article to the stand-in Wikipedia; `found by` words that search finds it with. */
+    wikiPage(title: string, page: object, foundBy?: string) {
+      wiki.set(title, { type: "standard", title, ...page });
+      if (foundBy) wikiSearch.set(foundBy, title);
     },
     /** Answers the decision model's yes/no questions: the probability of yes, from the state. */
     onDecide(fn: (state: Record<string, unknown>, instructions: string) => number) {
