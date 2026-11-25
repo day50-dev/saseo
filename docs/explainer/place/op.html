@@ -1,0 +1,359 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>opener</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1110px; overflow: hidden; background: #000; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .layer { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; display: none; overflow: hidden; }
+  /* A clock strip below the picture: 1 marker + 16 bits of 10 ms ticks, read back to retime the clip. */
+  #tc { position: absolute; left: 0; top: 1080px; height: 30px; width: 1920px; background: #000; display: flex; z-index: 999; }
+  #tc i { width: 24px; height: 30px; background: #000; }
+  #tc i.on { background: #fff; }
+  .layer.on { display: block; }
+
+  /* ---- A: the web as it was promised ---- */
+  #oldweb { background: #fff; font-family: "Times New Roman", Times, serif; color: #000; }
+  #oldweb .page { width: 900px; margin: 110px auto 0; transform-origin: 50% 0; animation: slowzoom 14s linear forwards; }
+  @keyframes slowzoom { from { transform: scale(1); } to { transform: scale(1.06); } }
+  #oldweb h1 { font-size: 64px; font-weight: bold; margin: 0 0 18px; }
+  #oldweb p { font-size: 30px; line-height: 1.45; margin: 0 0 22px; }
+  #oldweb hr { border: 0; border-top: 2px solid #888; margin: 26px 0; }
+  #oldweb ul { font-size: 30px; line-height: 1.7; margin: 0; padding-left: 40px; }
+  #oldweb a { color: #0000ee; text-decoration: underline; }
+  #oldweb a.v { color: #551a8b; }
+  #oldweb address { font-size: 22px; margin-top: 28px; }
+  .pop { position: absolute; opacity: 0; transform: scale(.9) translateY(20px); transition: opacity 120ms, transform 160ms cubic-bezier(.2,1.6,.4,1); font-family: Inter, system-ui, sans-serif; }
+  .pop.in { opacity: 1; transform: none; }
+  #cookie { left: 0; right: 0; bottom: 0; background: #1d1f27; color: #fff; padding: 30px 60px; display: flex; align-items: center; gap: 30px; font-size: 24px; }
+  #cookie .grow { flex: 1; }
+  .btn { display: inline-block; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 22px; }
+  .btn.blue { background: #2a6df4; color: #fff; }
+  .btn.ghost { border: 2px solid #aaa; color: #ddd; }
+  #news { left: 560px; top: 250px; width: 800px; background: #fff; border-radius: 22px; padding: 46px; box-shadow: 0 30px 90px rgba(0,0,0,.45); text-align: center; }
+  #news h2 { font-size: 46px; margin: 0 0 12px; }
+  #news p { font-size: 24px; color: #555; margin: 0 0 26px; }
+  #news .in2 { display: flex; gap: 12px; }
+  #news .field { flex: 1; border: 2px solid #ccc; border-radius: 10px; padding: 16px; font-size: 22px; color: #999; text-align: left; }
+  #news .x { position: absolute; right: 20px; top: 14px; font-size: 30px; color: #999; }
+  #news small { display: block; margin-top: 18px; color: #999; font-size: 18px; text-decoration: underline; }
+  #notif { left: 40px; top: 30px; width: 520px; background: #fff; border-radius: 14px; padding: 26px; box-shadow: 0 12px 40px rgba(0,0,0,.35); font-size: 22px; }
+  #notif b { display: block; margin-bottom: 18px; }
+  #notif .row { display: flex; gap: 12px; justify-content: flex-end; }
+  #notif .btn { font-size: 20px; padding: 10px 22px; }
+  #ad { right: 40px; bottom: 150px; width: 480px; height: 290px; border-radius: 12px; overflow: hidden; box-shadow: 0 14px 40px rgba(0,0,0,.45);
+    background: linear-gradient(135deg, #ff3d6e, #ffb000); color: #fff; }
+  #ad .big { position: absolute; left: 24px; top: 30px; font: 900 46px/1 Inter, sans-serif; text-shadow: 0 3px 0 rgba(0,0,0,.25); }
+  #ad .tag { position: absolute; left: 12px; bottom: 12px; background: rgba(0,0,0,.6); padding: 4px 10px; border-radius: 6px; font-size: 18px; }
+  #ad .mute { position: absolute; right: 12px; bottom: 12px; font-size: 26px; }
+  #sale { left: 0; right: 0; top: 0; background: #e8002d; color: #fff; text-align: center; padding: 18px; font: 800 30px Inter, sans-serif; letter-spacing: .02em; }
+
+  /* ---- B: the noise ---- */
+  #reel { background: #0b0b0d; }
+  .phone { position: absolute; left: 50%; top: 40px; width: 560px; height: 1000px; margin-left: -280px; border-radius: 40px; overflow: hidden; background: #111; }
+  .clip { position: absolute; inset: 0; display: grid; place-items: center; transition: transform 260ms cubic-bezier(.6,0,.3,1); }
+  .clip .emoji { font-size: 300px; filter: drop-shadow(0 20px 30px rgba(0,0,0,.4)); }
+  .clip .cap { position: absolute; left: 40px; right: 120px; top: 170px; font: 900 54px/1.1 Inter, sans-serif; color: #fff; text-shadow: 0 4px 0 #000, 0 0 18px rgba(0,0,0,.6); text-transform: uppercase; }
+  .clip .who { position: absolute; left: 34px; bottom: 120px; color: #fff; font-size: 28px; font-weight: 700; }
+  .clip .who span { font-weight: 400; opacity: .85; }
+  .clip .song { position: absolute; left: 34px; bottom: 80px; color: #fff; font-size: 22px; opacity: .9; }
+  .rail { position: absolute; right: 22px; bottom: 170px; display: flex; flex-direction: column; gap: 30px; align-items: center; color: #fff; font-weight: 700; font-size: 22px; text-align: center; }
+  .rail div { font-size: 54px; line-height: 1; }
+  .bar { position: absolute; left: 0; bottom: 0; height: 6px; background: #fff; width: 0; }
+  .tabsr { position: absolute; top: 40px; left: 0; right: 0; text-align: center; color: #fff; font: 700 30px Inter, sans-serif; }
+  .tabsr span { opacity: .55; margin: 0 18px; }
+  .tabsr b { border-bottom: 4px solid #fff; padding-bottom: 6px; margin: 0 18px; }
+
+  #grid { background: #0f0f0f; color: #fff; }
+  #grid .top { height: 110px; display: flex; align-items: center; padding: 0 50px; gap: 40px; }
+  #grid .logo { font: 800 34px Inter, sans-serif; color: #fff; }
+  #grid .search { flex: 1; max-width: 900px; height: 60px; border-radius: 30px; background: #222; border: 1px solid #333; color: #777; font-size: 24px; display: flex; align-items: center; padding: 0 30px; }
+  #grid .bell { position: relative; font-size: 40px; }
+  .badge { position: absolute; right: -14px; top: -10px; background: #e8002d; color: #fff; font: 800 18px Inter; padding: 2px 8px; border-radius: 12px; }
+  #grid .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 34px 26px; padding: 20px 50px; transition: transform 300ms; }
+  .tile .th { position: relative; aspect-ratio: 16/9; border-radius: 14px; overflow: hidden; display: grid; place-items: center; }
+  .tile .th .e { font-size: 120px; }
+  .tile .th .t { position: absolute; left: 14px; right: 14px; bottom: 16px; font: 900 34px/1 Inter, sans-serif; color: #ffe600; -webkit-text-stroke: 2px #000; text-transform: uppercase; }
+  .tile .th .d { position: absolute; right: 10px; bottom: 10px; background: rgba(0,0,0,.8); font-size: 18px; padding: 2px 7px; border-radius: 5px; }
+  .tile .th .arrow { position: absolute; right: 30px; top: 18px; font-size: 70px; color: #ff1a1a; transform: rotate(20deg); }
+  .tile .nm { margin-top: 12px; font-size: 22px; font-weight: 600; line-height: 1.25; }
+  .tile .mt { color: #aaa; font-size: 18px; margin-top: 4px; }
+  #upnext { position: absolute; right: 60px; bottom: 60px; width: 520px; background: #222; border-radius: 16px; padding: 24px; display: flex; gap: 20px; align-items: center; font-size: 22px; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+  #upnext .ring { width: 80px; height: 80px; border-radius: 50%; border: 6px solid #fff; display: grid; place-items: center; font: 800 36px Inter; }
+
+  #feed { background: #f0f2f5; }
+  #feed .col { position: absolute; left: 50%; width: 760px; margin-left: -380px; top: 0; }
+  .post { background: #fff; border-radius: 16px; margin: 22px 0; padding: 26px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .post .h { display: flex; gap: 16px; align-items: center; font-size: 24px; font-weight: 700; }
+  .post .av { width: 60px; height: 60px; border-radius: 50%; }
+  .post .h span { color: #888; font-weight: 400; font-size: 20px; }
+  .post .tx { font-size: 30px; line-height: 1.35; margin: 18px 0; }
+  .post .im { height: 300px; border-radius: 12px; display: grid; place-items: center; font-size: 150px; }
+  .post .en { display: flex; gap: 40px; color: #555; font-size: 22px; margin-top: 16px; }
+  #newposts { position: absolute; left: 50%; top: 30px; transform: translateX(-50%); background: #2a6df4; color: #fff; font: 800 26px Inter; padding: 14px 30px; border-radius: 30px; box-shadow: 0 8px 24px rgba(42,109,244,.5); animation: bob .6s ease-in-out infinite alternate; }
+  @keyframes bob { to { transform: translateX(-50%) translateY(8px); } }
+
+  #toasts { display: block; pointer-events: none; z-index: 50; }
+  .toast { position: absolute; right: 40px; width: 560px; background: rgba(28,28,32,.96); color: #fff; border-radius: 18px; padding: 22px 26px; font-size: 24px; display: flex; gap: 18px; align-items: center;
+    box-shadow: 0 12px 40px rgba(0,0,0,.5); transform: translateX(640px); transition: transform 220ms cubic-bezier(.2,1.3,.4,1), top 220ms; }
+  .toast.in { transform: none; }
+  .toast .ic { font-size: 40px; }
+  .toast b { display: block; font-size: 20px; opacity: .7; font-weight: 600; margin-bottom: 4px; }
+  .toast.left { left: 40px; right: auto; transform: translateX(-640px); }
+  .toast.left.in { transform: none; }
+  #slot { position: absolute; left: 60px; bottom: 60px; width: 420px; background: linear-gradient(#ffcf3a, #ff8a00); border-radius: 24px; padding: 20px; text-align: center; font: 900 30px Inter; color: #3b1500; box-shadow: 0 12px 40px rgba(0,0,0,.5); display: none; z-index: 60; }
+  #slot .reels { display: flex; gap: 10px; justify-content: center; margin: 12px 0; }
+  #slot .reels div { width: 100px; height: 110px; background: #fff; border-radius: 12px; font-size: 70px; display: grid; place-items: center; }
+  #slot.on { display: block; }
+
+  #calm { background: #f6f5f1; background-image: radial-gradient(#d9d7cf 1.4px, transparent 1.4px); background-size: 28px 28px; }
+
+  /* ---- C: what exploring takes ---- */
+  #browser { background: #dfe1e5; }
+  #browser .tabs { position: absolute; left: 0; right: 0; top: 0; height: 64px; display: flex; align-items: flex-end; padding: 0 10px; gap: 2px; background: #dfe1e5; }
+  .tab { flex: 0 1 300px; min-width: 18px; height: 50px; background: #c9ccd1; border-radius: 12px 12px 0 0; padding: 0 14px; display: flex; align-items: center; gap: 10px; font-size: 19px; color: #333; overflow: hidden; white-space: nowrap; animation: tabin 180ms ease-out; }
+  .tab.cur { background: #fff; }
+  .tab i { flex: none; width: 20px; height: 20px; border-radius: 4px; background: #555; color: #fff; font: 700 13px serif; font-style: normal; display: grid; place-items: center; }
+  @keyframes tabin { from { flex-basis: 0; opacity: 0; } }
+  #browser .url { position: absolute; left: 0; right: 0; top: 64px; height: 64px; background: #fff; display: flex; align-items: center; padding: 0 30px; gap: 24px; font-size: 22px; color: #444; border-bottom: 1px solid #ddd; }
+  #browser .url .box { flex: 1; height: 44px; border-radius: 22px; background: #f1f3f4; display: flex; align-items: center; padding: 0 24px; }
+  #browser .view { position: absolute; left: 0; right: 0; top: 128px; bottom: 0; overflow: hidden; background: #fff; }
+  #browser .view img { position: absolute; left: 0; top: 0; width: 1920px; transition: transform 3.5s ease-in-out; }
+</style>
+</head>
+<body>
+<!-- A -->
+<div id="oldweb" class="layer on">
+  <div class="page">
+    <h1>The Web</h1>
+    <p>Everything people know, written down and linked together. Pick a subject and follow it as far as you like.</p>
+    <hr>
+    <ul>
+      <li><a href="#">Physics</a> and <a class="v" href="#">mathematics</a></li>
+      <li><a href="#">Libraries of the world</a></li>
+      <li><a href="#">Encyclopedias</a> and <a href="#">dictionaries</a></li>
+      <li><a class="v" href="#">University course notes</a></li>
+      <li><a href="#">Lectures</a> you can read at home</li>
+      <li><a href="#">How to find anything</a></li>
+    </ul>
+    <hr>
+    <address>Last changed: a long time ago</address>
+  </div>
+  <div id="sale" class="pop">🔥 FLASH SALE ENDS IN <span id="salet">04:59</span> 🔥</div>
+  <div id="notif" class="pop"><b>This site wants to show notifications</b><div class="row"><span class="btn ghost" style="color:#333;border-color:#ccc">Block</span><span class="btn blue">Allow</span></div></div>
+  <div id="ad" class="pop"><div class="big">YOU WON'T<br>BELIEVE<br>THIS DEAL</div><div class="tag">Ad · 0:15</div><div class="mute">🔇</div></div>
+  <div id="news" class="pop"><div class="x">×</div><h2>Wait! Don't go 👋</h2><p>Get the 10 things everyone is talking about, every morning.</p><div class="in2"><div class="field">your@email</div><span class="btn blue">Subscribe</span></div><small>No thanks, I don't like being informed</small></div>
+  <div id="cookie" class="pop"><div class="grow">We value your privacy. We and our 847 partners use cookies to personalise your experience.</div><span class="btn ghost">Manage</span><span class="btn blue">Accept all</span></div>
+</div>
+
+<!-- B -->
+<div id="reel" class="layer">
+  <div class="phone" id="phone"></div>
+</div>
+<div id="grid" class="layer">
+  <div class="top"><div class="logo">▶ Watch</div><div class="search">Search</div><div class="bell">🔔<span class="badge">99+</span></div></div>
+  <div class="tiles" id="tiles"></div>
+  <div id="upnext"><div class="ring" id="upn">5</div><div><div style="opacity:.7;font-size:18px">Up next</div><b>I didn't sleep for 3 days (gone wrong)</b></div></div>
+</div>
+<div id="feed" class="layer"><div class="col" id="col"></div><div id="newposts">↑ 24 new posts</div></div>
+<div id="calm" class="layer"></div>
+<div id="toasts" class="layer"></div>
+<div id="slot"><div>SPIN AGAIN!</div><div class="reels"><div id="s1">🍒</div><div id="s2">💎</div><div id="s3">7️⃣</div></div><div style="font-size:22px">Daily reward ready 🎁</div></div>
+
+<!-- C -->
+<div id="browser" class="layer">
+  <div class="tabs" id="btabs"></div>
+  <div class="url"><span>←  →  ⟳</span><div class="box" id="burl">en.wikipedia.org/wiki/Hamiltonian_mechanics</div><span>⋮</span></div>
+  <div class="view"><img id="bimg" src="ham-top.png"></div>
+</div>
+
+<div id="tc"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const show = (id) => { for (const l of document.querySelectorAll(".layer")) if (l.id !== "toasts") l.classList.toggle("on", l.id === id); };
+const P = JSON.parse(decodeURIComponent(location.hash.slice(1) || "{}"));
+
+// ---- the pieces of the noise ----
+const REELS = [
+  ["🤯", "wait for the end…", "#3a0ca3,#f72585", "@daily.dopamine"],
+  ["🍕", "pov: you said “just one more”", "#ff6d00,#ffd000", "@snackclips"],
+  ["🐈", "he did NOT expect that 😭", "#00b4d8,#3a86ff", "@catcontent"],
+  ["💸", "how I made $10k doing nothing", "#2d6a4f,#95d5b2", "@hustle.daily"],
+  ["😱", "part 7 👇", "#7209b7,#4361ee", "@storytime"],
+  ["🔥", "you've been doing it wrong", "#d00000,#ffba08", "@lifehacks"],
+  ["🏎️", "0 to 100 in 2 seconds", "#111,#555", "@fastthings"],
+  ["🧠", "this one trick…", "#ff006e,#8338ec", "@brainfacts"],
+];
+let reelN = 0, likes = 1200000;
+function nextReel() {
+  const phone = $("phone");
+  const [e, cap, g, who] = REELS[reelN++ % REELS.length];
+  const c = document.createElement("div");
+  c.className = "clip";
+  c.style.background = `linear-gradient(160deg,${g})`;
+  c.style.transform = "translateY(100%)";
+  c.innerHTML = `<div class="tabsr"><span>Following</span><b>For you</b></div><div class="emoji">${e}</div><div class="cap">${cap}</div>
+    <div class="rail"><div>❤️</div><span class="lk">${(likes / 1e6).toFixed(1)}M</span><div>💬</div><span>48.3K</span><div>↗</div><span>Share</span></div>
+    <div class="who">${who} <span>· Follow</span></div><div class="song">♫ original sound</div><div class="bar"></div>`;
+  phone.appendChild(c);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    for (const o of phone.querySelectorAll(".clip")) if (o !== c) o.style.transform = "translateY(-100%)";
+    c.style.transform = "none";
+  }));
+  setTimeout(() => { for (const o of [...phone.querySelectorAll(".clip")].slice(0, -2)) o.remove(); }, 600);
+}
+const TILES = [
+  ["😱", "you won't believe this", "#ff006e,#ffbe0b", "12:04", "I Tried It For 30 Days (Shocking Results)"],
+  ["🤑", "#7 will shock you", "#06d6a0,#118ab2", "9:41", "10 Secrets They Don't Want You To Know"],
+  ["🚫", "don't do this!!", "#e63946,#1d3557", "15:22", "STOP Doing This Immediately"],
+  ["🔥", "gone wrong", "#f77f00,#d62828", "21:09", "We Spent 24 Hours In A… (GONE WRONG)"],
+  ["😳", "reacting to…", "#7209b7,#f72585", "8:12", "Reacting To The Most Viral Video Ever"],
+  ["💥", "it exploded", "#ffd60a,#ff7b00", "4:33", "What Happens If You… (DON'T TRY)"],
+  ["👀", "they lied", "#3a86ff,#8338ec", "18:50", "The Truth Nobody Is Talking About"],
+  ["🤯", "mind blown", "#2ec4b6,#ff9f1c", "6:06", "This Changes Everything"],
+  ["😭", "i quit", "#495057,#e63946", "11:11", "Why I'm Finally Quitting (Emotional)"],
+  ["💰", "$1 vs $1,000,000", "#2b9348,#aacc00", "25:00", "$1 vs $1,000,000 Challenge"],
+  ["😂", "try not to laugh", "#ffbe0b,#fb5607", "13:37", "Try Not To Laugh Challenge #48"],
+  ["⚠️", "watch before deleted", "#d00000,#370617", "7:59", "Watch Before It Gets Deleted"],
+];
+$("tiles").innerHTML = TILES.map(([e, t, g, d, nm], i) => `<div class="tile"><div class="th" style="background:linear-gradient(135deg,${g})"><div class="e">${e}</div><div class="t">${t}</div><div class="d">${d}</div>${i % 3 === 0 ? '<div class="arrow">➜</div>' : ""}</div><div class="nm">${nm}</div><div class="mt">${(Math.random() * 9 + 1).toFixed(1)}M views · 2 hours ago</div></div>`).join("");
+const POSTS = [
+  ["#ff6b6b", "Jordan", "hot take: nobody reads anymore and honestly that's fine", "🔥", "#ffe5e5"],
+  ["#4dabf7", "Sam", "this changed my life 🙏 (link in bio)", "✨", "#e7f5ff"],
+  ["#51cf66", "Alex", "unpopular opinion thread 🧵 1/47", "🧵", "#ebfbee"],
+  ["#fcc419", "Riley", "can't believe this is real 😭😭😭", "😭", "#fff9db"],
+  ["#cc5de8", "Casey", "ratio + you fell off + L", "📉", "#f8f0fc"],
+  ["#ff922b", "Morgan", "only 90s kids will remember this", "📼", "#fff4e6"],
+];
+$("col").innerHTML = Array.from({ length: 12 }, (_, i) => POSTS[i % POSTS.length]).map(([c, n, t, e, bg]) => `<div class="post"><div class="h"><div class="av" style="background:${c}"></div>${n} <span>· ${Math.floor(Math.random() * 59) + 1}m</span></div><div class="tx">${t}</div><div class="im" style="background:${bg}">${e}</div><div class="en"><span>♥ ${Math.floor(Math.random() * 900) + 100}K</span><span>💬 ${Math.floor(Math.random() * 90) + 10}K</span><span>↻ ${Math.floor(Math.random() * 50) + 5}K</span></div></div>`).join("");
+const TOASTS = [
+  ["🔥", "Streak", "Your 212-day streak ends in 2 hours!"],
+  ["⭐", "Level up", "+50 XP. Keep going!"],
+  ["❤️", "Activity", "38 people liked your post"],
+  ["📣", "Trending", "Everyone is talking about this"],
+  ["👀", "Profile", "17 people viewed your profile"],
+  ["🎁", "Reward", "Your daily bonus is ready"],
+  ["💬", "Messages", "You have 12 unread messages"],
+  ["⏰", "Don't miss out", "Live now: 40K watching"],
+  ["🏆", "Leaderboard", "You dropped to #4. Win it back!"],
+  ["🔔", "Reminder", "You haven't checked in today"],
+];
+let toastN = 0;
+const live = [];
+function toast() {
+  const [ic, b, t] = TOASTS[toastN % TOASTS.length];
+  const left = toastN % 3 === 2;
+  toastN++;
+  const d = document.createElement("div");
+  d.className = `toast${left ? " left" : ""}`;
+  d.innerHTML = `<div class="ic">${ic}</div><div><b>${b}</b>${t}</div>`;
+  $("toasts").appendChild(d);
+  live.push(d);
+  const side = live.filter((x) => x.classList.contains("left") === left);
+  side.forEach((x, i) => (x.style.top = `${40 + (side.length - 1 - i) * 112}px`));
+  requestAnimationFrame(() => requestAnimationFrame(() => d.classList.add("in")));
+  for (const x of side.slice(0, -6)) { x.remove(); live.splice(live.indexOf(x), 1); }
+}
+function spinSlot() {
+  $("slot").classList.add("on");
+  const sym = ["🍒", "💎", "7️⃣", "🔔", "⭐", "🍋"];
+  for (const id of ["s1", "s2", "s3"]) $(id).textContent = sym[Math.floor(Math.random() * sym.length)];
+}
+function counters() {
+  likes += 37000;
+  for (const s of document.querySelectorAll(".lk")) s.textContent = `${(likes / 1e6).toFixed(1)}M`;
+}
+
+// ---- the timeline ----
+const at = (s, f) => setTimeout(f, Math.max(0, s * 1000));
+function go() {
+  const { a, b, c } = P;
+  // A: the promise, then buried.
+  show("oldweb");
+  let sl = 299;
+  const pops = ["sale", "notif", "ad", "news", "cookie"];
+  pops.forEach((id, i) => at(a.bury + i * 0.42, () => $(id).classList.add("in")));
+  at(a.bury, () => setInterval(() => { sl--; $("salet").textContent = `0${Math.floor(sl / 60)}:${String(sl % 60).padStart(2, "0")}`; }, 1000));
+
+  // B: the noise. Cuts come faster and faster; on the last line, silence.
+  const views = ["reel", "grid", "feed"];
+  let t = b.start, k = 0;
+  const end = b.calm;
+  while (t < end - 0.05) {
+    const view = views[k % 3];
+    const kk = k;
+    at(t, () => {
+      show(view);
+      if (view === "reel") nextReel();
+      if (view === "grid") { $("tiles").style.transform = `translateY(${-(kk % 4) * 120}px)`; $("upn").textContent = String(5 - (kk % 5)); }
+      if (view === "feed") $("col").style.transform = `translateY(${-((kk * 520) % 4200)}px)`;
+    });
+    const frac = (t - b.start) / (end - b.start);
+    t += Math.max(0.28, 1.0 - 0.75 * frac);
+    k++;
+  }
+  // Swipes within the reel, scrolling, notifications piling up, the slot machine.
+  for (let s = b.start + 0.3; s < end; s += 0.33) at(s, () => { counters(); if (document.getElementById("reel").classList.contains("on")) nextReel(); });
+  for (let s = b.start + 0.5, i = 0; s < end; s += Math.max(0.22, 0.75 - i * 0.05), i++) at(s, toast);
+  for (let s = b.start + 2.2; s < end; s += 0.5) at(s, spinSlot);
+  at(end, () => {
+    show("calm");
+    $("toasts").innerHTML = "";
+    $("slot").classList.remove("on");
+  });
+
+  // C: one page, then another, and another: tabs until they're slivers.
+  const PAGES = [
+    ["Hamiltonian mechanics", "Hamiltonian_mechanics", "ham-top.png"],
+    ["Hamiltonian mechanics", "Hamiltonian_mechanics", "ham-deriv.png"],
+    ["Legendre transformation", "Legendre_transformation", "legendre.png"],
+    ["Classical Mechanics | Lecture 2", null, null],
+    ["Phase space", "Phase_space", "phase.png"],
+    ["Lagrangian mechanics", "Lagrangian_mechanics", "lagrangian.png"],
+    ["Poisson bracket", "Poisson_bracket", "poisson.png"],
+    ["Symplectic matrix", null, null], ["Canonical coordinates", null, null], ["Liouville's theorem", null, null],
+    ["Generalized coordinates", null, null], ["Conjugate variables", null, null], ["Action (physics)", null, null],
+    ["Noether's theorem", null, null], ["Calculus of variations", null, null], ["Euler–Lagrange equation", null, null],
+    ["Hamilton–Jacobi equation", null, null], ["Canonical transformation", null, null], ["Symplectic manifold", null, null],
+    ["Cotangent bundle", null, null], ["Phase portrait", null, null], ["Harmonic oscillator", null, null],
+    ["Quantum harmonic oscillator", null, null], ["Hamiltonian (quantum mechanics)", null, null],
+  ];
+  const addTab = (title, cur) => {
+    for (const x of document.querySelectorAll(".tab")) x.classList.remove("cur");
+    const d = document.createElement("div");
+    d.className = `tab${cur ? " cur" : ""}`;
+    d.innerHTML = `<i>W</i>${title}`;
+    $("btabs").appendChild(d);
+  };
+  at(c.start, () => { show("browser"); addTab("Hamiltonian mechanics - Wikipedia", true); });
+  at(c.start + 0.8, () => ($("bimg").style.transform = "translateY(-260px)"));
+  at(c.start + 2.6, () => { $("bimg").style.transition = "none"; $("bimg").src = "ham-deriv.png"; $("bimg").style.transform = "none"; });
+  let ct = c.start + 3.4;
+  for (let i = 2; i < PAGES.length; i++) {
+    const [title, slug, img] = PAGES[i];
+    at(ct, () => {
+      addTab(`${title}${slug ? " - Wikipedia" : ""}`, true);
+      if (slug) $("burl").textContent = `en.wikipedia.org/wiki/${slug}`;
+      else if (title.startsWith("Classical")) $("burl").textContent = "watch?v=…";
+      if (img) $("bimg").src = img;
+    });
+    ct += i < 7 ? 0.9 : Math.max(0.18, 0.5 - (i - 7) * 0.03);
+    if (ct > c.end) break;
+  }
+}
+const tc = [...document.querySelectorAll("#tc i")];
+let goT = null;
+function tick() {
+  if (goT !== null) {
+    const v = Math.floor((performance.now() - goT) / 10);
+    tc[0].classList.add("on");
+    for (let i = 0; i < 16; i++) tc[i + 1].classList.toggle("on", Boolean((v >> (15 - i)) & 1));
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+window.__go = () => { goT = performance.now(); go(); };
+</script>
+</body>
+</html>
