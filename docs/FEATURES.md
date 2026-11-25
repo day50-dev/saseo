@@ -31,6 +31,7 @@ Each feature has an ID. The tests carry the same ID in their `describe` names, s
 | F-START-1 | A screenshot is stored once by its content hash and served back. Only image types are accepted, and paths can't escape the folder. Boxing part of it makes a region and a card, and the boxed crop goes to the model as an image. | `unit/store` F-DESK-4, `api/canvas` F-START-1 |
 | F-VIDEO | Moments in a lecture: clock times, and what was said around a moment (with what came after marked). | `unit/text` |
 | F-PDF | arXiv abs and pdf links, and links to `.pdf` files, are recognised; arXiv ids are read in both styles. | `unit/text` |
+| F-ARXIV | arXiv search is part of **+ Add**, not a button of its own. Under the box, "Search arXiv for papers" opens the search, already searching for whatever words you typed. A pasted arXiv link is just added, like any PDF. | `browser/app` |
 
 **Not covered automatically:** reading a linked page and restructuring it section by section; fetching a video, its captions and frames (needs yt-dlp and YouTube); slicing a PDF into pages (needs poppler); searching arXiv.
 
