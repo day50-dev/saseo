@@ -132,7 +132,7 @@ Reply with JSON only: {"look": [...]} to look something up, or {"say": "...", "a
 const DEICTIC = /^(this|that|these|those|here|there)$/i;
 
 /** One line for a thing pointed at: its card's title, and the piece or figure part. */
-function describePointing(p: Pointing, cards: CardItem[]): string {
+export function describePointing(p: Pointing, cards: CardItem[]): string {
   const card = p.cardId ? cards.find((c) => c.id === p.cardId) : undefined;
   if (!card) return "";
   const title = `"${card.subject ?? card.selection ?? card.request ?? "a card"}"${card.objectKind ? ` (${card.objectKind === "links" ? "reading" : card.objectKind} card)` : ""}`;
@@ -146,7 +146,7 @@ function describePointing(p: Pointing, cards: CardItem[]): string {
  * from where it falls in what they said. Different from the last thing pointed at, when the hand
  * moved on while they talked ("compare this … with that").
  */
-function deixis(text: string, ctx: CallContext): { word: string; p: Pointing }[] {
+export function deixis(text: string, ctx: CallContext): { word: string; p: Pointing }[] {
   const tl = ctx.timeline ?? [];
   if (!tl.length || !ctx.spoke) return [];
   const words = text.split(/\s+/).filter(Boolean);
@@ -161,7 +161,7 @@ function deixis(text: string, ctx: CallContext): { word: string; p: Pointing }[]
   return out;
 }
 
-const objectSummary = (c: CardItem): string => {
+export const objectSummary = (c: CardItem): string => {
   const o = c.object;
   if (!o) return "";
   switch (o.type) {
@@ -186,7 +186,7 @@ const objectSummary = (c: CardItem): string => {
   }
 };
 
-function cardContent(c: CardItem): string {
+export function cardContent(c: CardItem): string {
   const head = `${c.id}: "${c.subject ?? c.selection ?? c.request ?? "a card"}"`;
   if (c.sem) {
     const s = c.sem;

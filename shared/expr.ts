@@ -57,7 +57,7 @@ function splitName(name: string, vars: string[]): string[] | null {
 export function compile(src: string, vars: string[] = ["x"]): (...v: number[]) => number {
   let toks = lex(src);
   // Glued names: "xsin(x)" → x sin(x); "2pi" is fine already.
-  toks = toks.flatMap((t) => (t.k === "id" && !(t.v in FUNCS) && !(t.v in CONSTS) && !vars.includes(t.v) ? (splitName(t.v, vars)?.map((v) => ({ k: "id", v }) as Tok) ?? [t]) : [t]));
+  toks = toks.flatMap((t) => (t.k === "id" && !Object.hasOwn(FUNCS, t.v) && !Object.hasOwn(CONSTS, t.v) && !vars.includes(t.v) ? (splitName(t.v, vars)?.map((v) => ({ k: "id", v }) as Tok) ?? [t]) : [t]));
   let p = 0;
   const peek = () => toks[p];
   const isOp = (v: string) => peek()?.k === "op" && peek().v === v;
@@ -136,7 +136,8 @@ export function compile(src: string, vars: string[] = ["x"]): (...v: number[]) =
     if (t.k === "id") {
       const vi = vars.indexOf(t.v);
       if (vi >= 0) return (e) => e[vi];
-      const f = FUNCS[t.v];
+      // Own names only: "toString" or "constructor" must not reach Object.prototype.
+      const f = Object.hasOwn(FUNCS, t.v) ? FUNCS[t.v] : undefined;
       if (f) {
         // "sin x" without parentheses takes the next factor; "sin^2(x)" squares it.
         let pow: Node | null = null;
@@ -157,7 +158,7 @@ export function compile(src: string, vars: string[] = ["x"]): (...v: number[]) =
         const call: Node = (e) => f(...args.map((a) => a(e)));
         return pow ? (e) => Math.pow(call(e), pow!(e)) : call;
       }
-      if (t.v in CONSTS) return () => CONSTS[t.v];
+      if (Object.hasOwn(CONSTS, t.v)) return () => CONSTS[t.v];
       throw new Error(`Unknown name "${t.v}" in ${src}`);
     }
     throw new Error(`Unexpected "${t.v}" in ${src}`);
@@ -175,7 +176,8 @@ export function fnOf(src: string, v = "x"): Fn | null {
       const f = compile(src, [name]);
       return (x) => f(x);
     } catch (err) {
-      const other = err instanceof Error ? err.message.match(/^Unknown name "([a-zA-Zθφαβ]\w{0,5})"/)?.[1] : undefined;
+      // A variable is one letter or a Greek letter's name; "alert" is not a variable.
+      const other = err instanceof Error ? err.message.match(/^Unknown name "([a-zA-Zθφαβ]|theta|phi|alpha|beta|omega|lambda|mu|rho|sigma)"/)?.[1] : undefined;
       if (!other || other === name) return null;
       name = other;
     }

@@ -5,7 +5,12 @@
     "dev": "concurrently -k -n api,web -c blue,green \"tsx watch server/index.ts\" \"vite\"",
     "build": "vite build",
     "start": "tsx server/index.ts",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test": "npm run test:unit && npm run test:api && npm run build && npm run test:browser",
+    "test:unit": "node --import tsx --test test/unit/*.test.ts",
+    "test:api": "node --import tsx --test --test-concurrency=1 test/api/*.test.ts",
+    "test:browser": "node --import tsx --test --test-concurrency=1 test/browser/*.test.ts",
+    "test:live": "node --import tsx --test --test-concurrency=1 --test-timeout=600000 test/live/*.test.ts"
   },
   "author": "Chris McKenzie <kristopolous@yahoo.com> (http://9ol.es/)",
   "license": "MIT",
@@ -35,6 +40,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
     "concurrently": "^10.0.7",
+    "playwright-core": "^1.65.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tsx": "^4.23.15",

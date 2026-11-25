@@ -128,6 +128,8 @@ Videos need [yt-dlp](https://github.com/yt-dlp/yt-dlp) (a recent one: YouTube's 
 
 Then open http://localhost:5173, set up a model under **Settings**, and press **Test**. For a production build, run `npm run build && npm start`, which serves everything from port 8787.
 
+Tests: `npm test` runs the unit, API and browser tests (headless Chrome), all against a fake model, so nothing leaves the machine. `npm run test:live` checks the real model's judgment. What each feature does, and which test checks it, is in [docs/FEATURES.md](docs/FEATURES.md).
+
 Shortcuts: **/** to start something new, **V** for select and **H** for pan. Hold **Space** to pan. Ctrl+scroll zooms. **Ctrl+Z** and **Ctrl+Shift+Z** undo and redo. **Ctrl+]** and **Ctrl+[** restack, and adding Shift goes all the way to the front or back.
 
 ## Hosting it for other people
