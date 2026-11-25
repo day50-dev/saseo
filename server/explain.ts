@@ -2,7 +2,10 @@
 // explanation from what was found, then check that it doesn't climb.
 import { CARD_WIDTH, EXTENSION_SHAPES, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
-import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { assetPath, type CanvasStore, getCanvasInfo, newId, onResume } from "./canvas.ts";
 import { diagramEndpoint, loadConfig } from "./config.ts";
 import { logCourses } from "./curriculum.ts";
@@ -301,7 +304,43 @@ async function search(query: string): Promise<FoundSource[]> {
   const config = await loadConfig();
   const enabled = SEARCHER_IDS.filter((id) => config.searchers[id].enabled);
   if (!enabled.length) return [];
-  return mergeHits(await runSearch(config, query, enabled, 4));
+  const found = mergeHits(await runSearch(config, query, enabled, 4));
+  // A PDF often comes back titled with its own address; give it a title a person would recognize.
+  return Promise.all(found.map(async (f) => (untitled(f) ? { ...f, title: await pdfTitle(f.url) } : f)));
+}
+
+/** A hit whose "title" is only its address ("math.aalto.fi/~kk/files/Hopf-lecture_notes.pdf"). */
+export const untitled = (f: { title: string; url: string }) => {
+  const t = f.title.trim();
+  return !t || t === f.url || (!/\s/.test(t) && /[./]/.test(t)) || f.url.replace(/^https?:\/\//, "").startsWith(t.replace(/^https?:\/\//, ""));
+};
+
+/**
+ * A title for a linked PDF: what its first page says at the top ("Math 207A: Hopf Algebras"), else
+ * its file name made readable; with the site it's on.
+ */
+export async function pdfTitle(url: string): Promise<string> {
+  const u = new URL(url);
+  const site = u.hostname.replace(/^www\./, "");
+  const file = decodeURIComponent(u.pathname.split("/").filter(Boolean).pop() ?? "").replace(/\.pdf$/i, "");
+  const readable = file.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  const fallback = readable ? `${readable[0].toUpperCase()}${readable.slice(1)} (${site})` : site;
+  if (!/\.pdf($|[?#])/i.test(url)) return fallback;
+  const tmp = path.join(os.tmpdir(), `librarian-title-${newId()}.pdf`);
+  try {
+    const r = await fetch(url, { redirect: "follow", headers: { "user-agent": "Mozilla/5.0 (Librarian)" }, signal: AbortSignal.timeout(12000) });
+    const bytes = Buffer.from(await r.arrayBuffer());
+    if (!r.ok || bytes.length > 40 * 1024 * 1024) return fallback;
+    await writeFile(tmp, bytes);
+    const text = await new Promise<string>((resolve) => execFile("pdftotext", ["-q", "-f", "1", "-l", "1", tmp, "-"], { timeout: 8000 }, (_e, out) => resolve(String(out ?? ""))));
+    const first = text.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).find((l) => /[a-z]{3}/i.test(l) && l.length >= 6);
+    if (first && first.length <= 140) return `${first} (${site})`;
+  } catch {
+    // Unreachable, slow or not really a PDF: the file name will do.
+  } finally {
+    await rm(tmp, { force: true }).catch(() => {});
+  }
+  return fallback;
 }
 
 async function guard(store: CanvasStore, cardId: string, run: () => Promise<void>) {
