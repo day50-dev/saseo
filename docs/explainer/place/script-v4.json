@@ -3,7 +3,7 @@
  "scenes": [
   {
    "id": "d0-promise",
-   "hold": 0.2
+   "hold": 0
   },
   {
    "id": "d1-noise",
