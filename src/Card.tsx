@@ -20,6 +20,7 @@ import {
   type Sem,
 } from "../shared/canvas.ts";
 import { PaperRow } from "./ArxivPanel.tsx";
+import { colored } from "./NotebookPanel.tsx";
 import { type GrowRequest, GrowButton, Grown, ShapeBlock } from "./Grow.tsx";
 import { assetUrl } from "./canvasApi.ts";
 import { clearMarks, findPhrases, setMarks } from "./marks.ts";
@@ -627,9 +628,12 @@ function NotebookCard({ card, onOpen }: { card: CardItem; onOpen: () => void }) 
         <p className="small nb-written">Written by the librarian: no example online fit.</p>
       ) : null}
       {code.map((c) => (
-        <pre key={c.id} className="nb-preview">
-          {c.source.split("\n").slice(0, 8).join("\n")}
-        </pre>
+        <pre
+          key={c.id}
+          className="nb-preview nb-code-colors"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: Prism's output, from escaped source
+          dangerouslySetInnerHTML={{ __html: colored(c.source.split("\n").slice(0, 8).join("\n"), nb?.language ?? "python", false) }}
+        />
       ))}
       <button type="button" onClick={onOpen} onPointerDown={(e) => e.stopPropagation()}>
         {nb ? `Open the notebook (${nb.cells.length} cells)` : "Open the notebook"}

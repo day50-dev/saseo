@@ -120,10 +120,10 @@ function Output({ out }: { out: CellOutput | "running" | undefined }) {
 }
 
 /** The code, colored (HTML): Prism's grammar for the language, or plain text escaped. */
-function colored(source: string, language: string): string {
+export function colored(source: string, language: string, underTextarea = true): string {
   const grammar = Prism.languages[language];
-  // A trailing newline needs something after it, or the copy underneath ends a line short.
-  const text = `${source}\n`;
+  // Under a textarea, a trailing newline needs something after it, or the copy ends a line short.
+  const text = underTextarea ? `${source}\n` : source;
   return grammar ? Prism.highlight(text, grammar, language) : text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
 }
 
