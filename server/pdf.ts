@@ -6,7 +6,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { arxivPdf, parseArxivId } from "./arxiv.ts";
+import { arxivPaper, arxivPdf, parseArxivId } from "./arxiv.ts";
 import { saveAsset } from "./canvas.ts";
 
 const run = promisify(execFile);
@@ -80,6 +80,11 @@ export interface PdfPage {
 }
 
 /** Slices a linked PDF into its first pages. */
+/** The title pdfinfo reports, if it has one (an empty one is no title, not the next line). */
+export function titleIn(info: string): string | undefined {
+  return /^Title:[ \t]*(\S.*)$/m.exec(info)?.[1]?.trim() || undefined;
+}
+
 export async function slicePdf(link: { arxiv?: string; url: string }): Promise<{ title: string; total: number; pages: PdfPage[] }> {
   const bytes = link.arxiv ? await arxivPdf(link.arxiv) : await download(link.url);
   const dir = await mkdtemp(path.join(tmpdir(), "librarian-pdf-"));
@@ -90,7 +95,9 @@ export async function slicePdf(link: { arxiv?: string; url: string }): Promise<{
     const total = Number(/^Pages:\s+(\d+)/m.exec(info)?.[1] ?? 0);
     if (!total) throw new Error("Couldn't read that PDF.");
     const n = Math.min(total, PDF_PAGE_CAP);
-    const named = /^Title:\s+(.+)$/m.exec(info)?.[1]?.trim();
+    // The PDF's own title; an arXiv paper's comes from arXiv when the file has none.
+    let named = titleIn(info);
+    if (!named && link.arxiv) named = (await arxivPaper(link.arxiv).catch(() => null))?.title?.replace(/\s+/g, " ").trim();
     const title = link.arxiv ? `arXiv ${link.arxiv}${named ? `: ${named}` : ""}` : named || decodeURIComponent(link.url.split(/[?#]/)[0].split("/").pop() ?? "PDF");
     await quiet("pdfseparate", ["-f", "1", "-l", String(n), file, path.join(dir, "page-%d.pdf")]);
     // About 110 dpi: sharp enough to box a formula, small enough for 80 of them.

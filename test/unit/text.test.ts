@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { substantive, paragraphs } from "../../shared/canvas.ts";
 import { parseArxivId } from "../../server/arxiv.ts";
-import { pdfLink } from "../../server/pdf.ts";
+import { pdfLink, titleIn } from "../../server/pdf.ts";
 import { looksLikeLink } from "../../server/pages.ts";
 import { around, clock, youtubeId } from "../../server/video.ts";
 import { conceptKey } from "../../server/curriculum.ts";
@@ -30,6 +30,12 @@ describe("F-START: what someone typed", () => {
     ])
       assert.equal(youtubeId(u), "PFDu9oVAE-g", u);
     assert.equal(youtubeId("https://vimeo.com/123"), null);
+  });
+
+  test("F-PDF: a PDF's title, and an empty one read as none (not as the line after it)", () => {
+    assert.equal(titleIn("Title:          Judging LLM-as-a-Judge\nSubject:        \n"), "Judging LLM-as-a-Judge");
+    assert.equal(titleIn("Title:          \nSubject:        \nKeywords:\n"), undefined);
+    assert.equal(titleIn("Producer: pdfTeX\nPages: 29\n"), undefined);
   });
 
   test("F-PDF: arXiv and PDF links", () => {
