@@ -2013,7 +2013,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           onClose={() => setNotebook(null)}
         />
       )}
-      {calling && <CallBar canvasId={canvasId} serverVoice={!!me.speech?.tts}
+      {calling && <CallBar canvasId={canvasId} serverVoice={!!me.speech?.tts} serverEars={!!me.speech?.stt}
           onChanged={(removed) => {
             if (removed?.length) pushStep({ label: "remove (on the call)", undo: () => api.show(removed), redo: () => api.hide(removed) });
             void refresh();

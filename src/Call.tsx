@@ -164,12 +164,15 @@ function loadWait(): number {
 export function CallBar({
   canvasId,
   serverVoice,
+  serverEars = false,
   onChanged,
   onOpened,
   onClose,
 }: {
   canvasId: string;
   serverVoice: boolean;
+  /** The server can recognise speech: used when the browser can't (or its recognizer fails). */
+  serverEars?: boolean;
   /** The canvas changed; `removed` is what the librarian took off it (for Undo). */
   onChanged: (removed?: string[]) => void;
   /** The librarian put something new on the canvas: show it. */
@@ -445,13 +448,17 @@ export function CallBar({
     return said.length ? withoutEcho(heard, said) : heard.trim();
   };
   const [BrowserSTT] = useState(browserSTT);
+  // Who hears you: the browser's recognizer (it shows your words as you speak), or the server's.
+  // A browser that has one may still not be able to use it (Chromium without Google's speech
+  // service, many embedded browsers): then it says so with an error, and the server takes over.
+  const [ears, setEars] = useState<"browser" | "server">(BrowserSTT ? "browser" : "server");
   const [interim, setInterim] = useState("");
   // What you've said so far in this turn (the recognizer's finished phrases), held until the pause runs out.
   const [held, setHeld] = useState("");
 
   // The browser's recognizer, listening the whole call.
   useEffect(() => {
-    if (!BrowserSTT) return;
+    if (!BrowserSTT || ears !== "browser") return;
     let stopped = false;
     const rec = new BrowserSTT();
     rec.continuous = true;
@@ -529,9 +536,15 @@ export function CallBar({
       }
     };
     rec.onerror = (e) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      if (e.error === "not-allowed") {
         stopped = true;
         setError("The browser didn't allow the microphone.");
+      } else if (e.error === "network" || e.error === "service-not-allowed" || e.error === "language-not-supported") {
+        // Its recognizer can't work here: hand over to the server's, or say why nothing is heard.
+        stopped = true;
+        rec.abort();
+        if (serverEars) setEars("server");
+        else setError("This browser can't recognise speech here. Try Chrome or Edge.");
       }
     };
     // It stops by itself after a while; for the whole call it keeps being restarted.
@@ -547,11 +560,11 @@ export function CallBar({
       hush();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ears]);
 
-  // Without one: an open microphone, sent to the server's recognizer.
+  // Otherwise: an open microphone, sent to the server's recognizer.
   useEffect(() => {
-    if (BrowserSTT) return;
+    if (ears !== "server") return;
     let stopped = false;
     let ctx: AudioContext | null = null;
     let stream: MediaStream | null = null;
@@ -647,7 +660,7 @@ export function CallBar({
       hush();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ears]);
 
   const toggleMute = () => {
     muted.current = !muted.current;
