@@ -4,6 +4,7 @@ import { addNote } from "./notes.ts";
 import { makeSet } from "./sets.ts";
 import { CARD_WIDTH, SOURCE_WIDTH, EXTENSION_SHAPES, RETRY_TRIES, retryDelay, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Paper, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
+import { unescapeTwice } from "../shared/tex.ts";
 import { execFile } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -502,6 +503,7 @@ export function explainRegion(store: CanvasStore, cardId: string, images: { mark
       ],
     );
     if (card.selection) id.transcription = card.selection;
+    else if (typeof id.transcription === "string") id.transcription = unescapeTwice(id.transcription);
     const subject = id.subject?.trim() || "this";
     const pageText = str(id.pageText).slice(0, 6000) || undefined;
     const terms = cleanTerms(id.terms);

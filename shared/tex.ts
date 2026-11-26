@@ -20,3 +20,18 @@ export function repairTex(tex: string): string {
 
 /** Closing math delimiters with nothing to close, in text outside math ("…-dimensional)\)"), removed. */
 export const dropStrayCloses = (text: string): string => text.replace(/\\[)\]]/g, "");
+
+/**
+ * Text a model escaped twice reaches us with a literal backslash-n and backslash-quote in it, like
+ * metrics\n\nPass@k = \"…\". Undoes that one extra layer, only when a doubled \n\n or a \" gives it
+ * away: LaTeX itself has \nabla and \neq.
+ */
+export function unescapeTwice(t: string): string {
+  if (!/\\n\\n|\\"/.test(t)) return t;
+  try {
+    const out = JSON.parse(`"${t.replace(/(^|[^\\])"/g, '$1\\"')}"`);
+    return typeof out === "string" ? out : t;
+  } catch {
+    return t;
+  }
+}

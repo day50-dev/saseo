@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import katex from "katex";
-import { dropStrayCloses, repairTex } from "../../shared/tex.ts";
+import { dropStrayCloses, repairTex, unescapeTwice } from "../../shared/tex.ts";
 import { readTabular, splitTabulars } from "../../src/tabular.ts";
 
 const renders = (t: string) => {
@@ -86,5 +86,15 @@ The two largest numbers in each column are in bold.`;
 
   test("multicolumn cells keep their text", () => {
     assert.deepEqual(readTabular(String.raw`\multicolumn{2}{c}{Both} & x \\`).rows[0].cells.map((c) => c.text), ["Both", "x"]);
+  });
+});
+
+describe("text a model escaped twice", () => {
+  test("loses the extra layer: real line breaks and quotes, single backslashes", () => {
+    const raw = String.raw`Reasoning-based metrics\n\nPass@k = \"Probability that at least 1 of k attempts succeeds\"\n\nPass@1 = \\frac{c}{n}`;
+    assert.equal(unescapeTwice(raw), 'Reasoning-based metrics\n\nPass@k = "Probability that at least 1 of k attempts succeeds"\n\nPass@1 = \\frac{c}{n}');
+  });
+  test("LaTeX on its own is left alone", () => {
+    for (const t of [String.raw`\nabla f \neq 0`, String.raw`\frac{a}{b}`, "plain words"]) assert.equal(unescapeTwice(t), t);
   });
 });

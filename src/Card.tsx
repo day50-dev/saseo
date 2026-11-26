@@ -25,6 +25,7 @@ import { type GrowRequest, GrowButton, Grown, ShapeBlock } from "./Grow.tsx";
 import { assetUrl } from "./canvasApi.ts";
 import { clearMarks, findPhrases, setMarks } from "./marks.ts";
 import { looksLikeTex, selectedText, Tex, textWithTex, withMath } from "./MathText.tsx";
+import { unescapeTwice } from "../shared/tex.ts";
 import { SemShapes } from "./SemShapes.tsx";
 
 const STAGE_TEXT: Record<CardStage, string> = {
@@ -1033,6 +1034,7 @@ function AskView({ clarify, onAnswer }: { clarify: Clarify; onAnswer: (answer: s
 
 /** A transcription is LaTeX when it's math; otherwise words that may hold some. */
 function transcription(t: string): ReactNode {
+  t = unescapeTwice(t);
   // A table among the words is drawn as a table (KaTeX can't draw tabular); the words around it as usual.
   const parts = splitTabulars(t);
   if (parts.some((p) => p.kind === "table"))
