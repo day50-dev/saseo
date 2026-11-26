@@ -88,6 +88,7 @@ export function Home() {
           )}
         </span>
       </header>
+      <Intro open={list !== null && live.length === 0} />
       {anonymous && (
         <p className="muted small">
           Free, unlimited, no account needed. Your canvases are kept in this browser; sign in if you want to keep them for good.
@@ -231,6 +232,46 @@ function CanvasRow(props: {
         </button>
       </div>
     </li>
+  );
+}
+
+/**
+ * What Saseo is, for someone who has never seen it: what you bring, what happens to it, and what
+ * you can do from there. Open for a first visit; folded to its headline once there are canvases.
+ */
+function Intro({ open }: { open: boolean }) {
+  return (
+    <section className="intro">
+      <p className="intro-lead">A place to work through something hard, with a librarian who has all the time in the world.</p>
+      <p>
+        Bring what you're stuck on: a Wikipedia page, a paper, a lecture, a slide from a talk, or just a question. Saseo puts it on a canvas
+        that goes on forever, and explains it at your level, one piece at a time, from sources it finds.
+      </p>
+      <details open={open}>
+        <summary>How it works</summary>
+        <ul className="intro-list">
+          <li>
+            <b>Select any words you don't follow</b> and you get a card for them: why the idea exists, what it is, its parts and how it plays
+            out, drawn as a diagram. Select something inside that card to go a level deeper, as far down as you need.
+          </li>
+          <li>
+            <b>Call the librarian</b> and talk while you point at things on the canvas. Ask it to expand a step, show you examples, draw what it
+            means or find a lecture that covers it, and it puts the result on the canvas.
+          </li>
+          <li>
+            <b>Stop a video where it loses you</b> and ask about what's on the screen at that moment.
+          </li>
+          <li>
+            <b>Keep your bearings</b> with notes, goals and connections between cards. Nothing moves unless you move it, so when you come
+            back next week everything is where you left it.
+          </li>
+          <li>
+            <b>Share a canvas</b> with a colleague. What they add or change is marked as theirs, and you go through it when you come back.
+          </li>
+        </ul>
+        <p className="muted small">Start below: name a canvas, or try one of the examples.</p>
+      </details>
+    </section>
   );
 }
 
