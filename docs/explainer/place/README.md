@@ -1,6 +1,6 @@
 # "A place to think" (video 3)
 
-About a minute and a half (the fourth cut): the web's promise, the attention economy, the tabs it
+The product is now Saseo (사서), said "sah soe"; the narration spells it that way for the voice. About a minute and a half (the fourth cut): the web's promise, the attention economy, the tabs it
 takes to understand one subject, then Librarian named and a real call from an empty page on the
 Hamiltonian demo canvas (the first card building, expand, a set of examples, a phase-space diagram),
 the page filled in and opened again a week later, and the closing line.

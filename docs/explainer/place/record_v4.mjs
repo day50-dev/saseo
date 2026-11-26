@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node
 import { chromium } from "playwright-core";
 
 const DIR = new URL(".", import.meta.url).pathname;
-const SITE = "https://librarian.9ol.es";
+const SITE = "https://saseo.app";
 const ids = JSON.parse(readFileSync(`${DIR}canvases.json`, "utf8"));
 const CALL = JSON.parse(readFileSync(`${DIR}call4.json`, "utf8")).turns;
 const S = JSON.parse(readFileSync(`${DIR}call4-schedule.json`, "utf8"));
