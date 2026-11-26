@@ -149,6 +149,24 @@ function wav(chunks: Float32Array[], rate: number): Blob {
 
 type Voice = "server" | "browser";
 const VOICE_KEY = "librarian.callVoice";
+// A browser whose own recognizer failed here (often silently, as on Android Chrome) is remembered,
+// so later calls go straight to the server's and nothing said at the start is lost finding out.
+const EARS_KEY = "librarian.callEarsFailed";
+const EARS_MEMORY_MS = 30 * 24 * 3600 * 1000;
+function browserEarsFailedHere(): boolean {
+  try {
+    return Date.now() - Number(localStorage.getItem(EARS_KEY) ?? 0) < EARS_MEMORY_MS;
+  } catch {
+    return false;
+  }
+}
+function rememberBrowserEarsFailed() {
+  try {
+    localStorage.setItem(EARS_KEY, String(Date.now()));
+  } catch {}
+}
+/** Before listening for speech, this long measuring the room's own noise. */
+const SETTLE_MS = 500;
 const WAIT_KEY = "librarian.callWait";
 /** How long a pause before what you said is sent, in seconds: short for quick back-and-forth, longer to think. */
 export const WAITS = [0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 7, 10];
@@ -451,7 +469,14 @@ export function CallBar({
   // Who hears you: the browser's recognizer (it shows your words as you speak), or the server's.
   // A browser that has one may still not be able to use it (Chromium without Google's speech
   // service, many embedded browsers): then it says so with an error, and the server takes over.
-  const [ears, setEars] = useState<"browser" | "server">(BrowserSTT ? "browser" : "server");
+  const [ears, setEarsState] = useState<"browser" | "server">(BrowserSTT && !(serverEars && browserEarsFailedHere()) ? "browser" : "server");
+  // Said once, on the call where the browser's failed; later calls just use the server's.
+  const [switched, setSwitched] = useState(false);
+  const setEars = (e: "server") => {
+    rememberBrowserEarsFailed();
+    setSwitched(true);
+    setEarsState(e);
+  };
   const [interim, setInterim] = useState("");
   // What you've said so far in this turn (the recognizer's finished phrases), held until the pause runs out.
   const [held, setHeld] = useState("");
@@ -542,7 +567,7 @@ export function CallBar({
         stopped = true;
         stopMeter();
         setError("The browser didn't allow the microphone.");
-      } else if (e.error === "network" || e.error === "service-not-allowed" || e.error === "language-not-supported") {
+      } else if (e.error === "network" || e.error === "service-not-allowed" || e.error === "language-not-supported" || e.error === "audio-capture") {
         // Its recognizer can't work here: hand over to the server's, or say why nothing is heard.
         stopped = true;
         rec.abort();
@@ -642,6 +667,10 @@ export function CallBar({
       let quiet = 0;
       let speech: Float32Array[] | null = null;
       let shown = 0;
+      // The room's noise, measured before listening: the floor starts from it, not from a guess.
+      let settling = SETTLE_MS;
+      let settleSum = 0;
+      let settleN = 0;
       let forced = false;
       sendNow.current = () => {
         if (speech) forced = true;
@@ -655,6 +684,16 @@ export function CallBar({
         if (now - shown > 80) {
           shown = now;
           setLevel(Math.min(1, rms / 0.15));
+        }
+        if (settling > 0) {
+          settling -= frameMs;
+          settleSum += rms;
+          settleN++;
+          if (settling <= 0) {
+            floor = Math.max(0.002, settleSum / settleN);
+            setState("listening");
+          }
+          return;
         }
         if (muted.current || deaf.current) {
           speech = null;
@@ -705,8 +744,8 @@ export function CallBar({
       };
       src.connect(proc);
       // A ScriptProcessor only runs while connected to an output; it writes silence.
+      // It says it's listening once the room has been measured.
       proc.connect(ctx.destination);
-      setState("listening");
     })();
     return () => {
       stopped = true;
@@ -779,7 +818,7 @@ export function CallBar({
             </div>
           ),
         )}
-        {ears === "server" && BrowserSTT && (
+        {ears === "server" && switched && (
           <div className="muted small call-ears">This browser's speech recognition didn't work, so the server is listening instead: your words appear when you pause.</div>
         )}
         {(held || interim) && (
