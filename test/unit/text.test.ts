@@ -4,7 +4,7 @@ import { describe, test } from "node:test";
 import { substantive, paragraphs } from "../../shared/canvas.ts";
 import { parseArxivId } from "../../server/arxiv.ts";
 import { pdfLink, titleIn } from "../../server/pdf.ts";
-import { looksLikeLink } from "../../server/pages.ts";
+import { looksLikeLink, matchWikiLink } from "../../server/pages.ts";
 import { around, clock, youtubeId } from "../../server/video.ts";
 import { conceptKey } from "../../server/curriculum.ts";
 import { partialSvg, sanitizeSvg, svgLabels } from "../../server/svg.ts";
@@ -36,6 +36,20 @@ describe("F-START: what someone typed", () => {
     assert.equal(titleIn("Title:          Judging LLM-as-a-Judge\nSubject:        \n"), "Judging LLM-as-a-Judge");
     assert.equal(titleIn("Title:          \nSubject:        \nKeywords:\n"), undefined);
     assert.equal(titleIn("Producer: pdfTeX\nPages: 29\n"), undefined);
+  });
+
+  test("F-WIKI-LINK: selected words that are a link in the Wikipedia article lead to the linked article", () => {
+    const links = [
+      { text: "Bradley–Terry model", title: "Bradley–Terry model", url: "https://en.wikipedia.org/wiki/Bradley%E2%80%93Terry_model" },
+      { text: "Harkness", title: "Harkness rating system", url: "https://en.wikipedia.org/wiki/Harkness_rating_system" },
+      { text: "zero-sum games", title: "Zero-sum game", url: "https://en.wikipedia.org/wiki/Zero-sum_game" },
+    ];
+    assert.equal(matchWikiLink(links, "Bradley-Terry model")?.title, "Bradley–Terry model", "a hyphen for the en dash");
+    assert.equal(matchWikiLink(links, "  bradley–terry MODEL ")?.title, "Bradley–Terry model");
+    assert.equal(matchWikiLink(links, "Harkness rating system")?.title, "Harkness rating system", "by the article's title");
+    assert.equal(matchWikiLink(links, "zero-sum game")?.title, "Zero-sum game", "singular or plural");
+    assert.equal(matchWikiLink(links, "rating"), null, "words that aren't a link");
+    assert.equal(matchWikiLink(links, ""), null);
   });
 
   test("F-PDF: arXiv and PDF links", () => {

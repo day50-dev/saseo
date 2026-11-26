@@ -45,6 +45,7 @@ Each feature has an ID. The tests carry the same ID in their `describe` names, s
 | F-SHAPES | An explanation draws as a diagram of pieces (why, what, details, how it's used), each with a **+**. | `browser/app` |
 | F-COURSES | A concept is one key however it's written ("The Biot–Savart law", "biot-savart LAW"), so the course map gathers its sightings together. | `unit/text` |
 | F-DESCEND | Selected words become a new card hanging from the card they're in, carrying the sentence around them. An empty selection or an unknown card is refused. | `api/canvas` |
+| F-WIKI-LINK | Words picked from a Wikipedia article that are a link there (by the words, or by the linked article's title; dashes, case and plurals aside) lead to the linked article first: it heads the card's sources, with its opening lines, and can be put on the canvas with **+ Add** like any found page. | `unit/text` |
 | F-DESCEND-ROLE | Selecting a particular person, place, group, event or work frames the card as its role in what the page is about ("Slobodan Milošević's role in the breakup of Yugoslavia"), so the card's questions (why it exists, what it is, how it unfolds) make sense of it. The selection itself is still shown. | `api/canvas` |
 
 **Not covered automatically:** the quality of explanations; the register check (strict term, idiom, casual or notation); the System One climb check and its rewrite; pointing at the page (cropped spots shown under a piece); course sightings on cards. They need real model judgment, and none of them has a live test yet.

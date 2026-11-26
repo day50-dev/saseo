@@ -16,7 +16,7 @@ import { exampleNotebook } from "./notebooks.ts";
 import { bestRead, editVersion, hashText, pageVersion, readOf, remember } from "./pagecache.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
 import { arxivPaper, parseArxivId, searchArxiv } from "./arxiv.ts";
-import { readPage as readWebPage } from "./pages.ts";
+import { matchWikiLink, readPage as readWebPage, wikiLead, wikiLinks } from "./pages.ts";
 import { runSearch } from "./providers.ts";
 import { partialSvg, sanitizeSvg, svgLabels } from "./svg.ts";
 import { makeGraph, makePlot, makeTable } from "./figures.ts";
@@ -925,6 +925,19 @@ export function explainSelection(store: CanvasStore, cardId: string) {
   });
 }
 
+/**
+ * When the words were picked from a Wikipedia article and are a link there, the article they link
+ * to: the explanation crosses into it, the way the article itself would send a reader.
+ */
+async function linkedArticle(store: CanvasStore, card: CardItem): Promise<FoundSource | null> {
+  const parent = await store.findItem(card.parentId);
+  if (parent?.kind !== "card" || parent.origin?.kind !== "page" || !/(^|\.)wikipedia\.org\//.test(parent.origin.url.replace(/^https?:\/\//, ""))) return null;
+  const link = matchWikiLink(await wikiLinks(parent.origin.url), card.selection ?? "");
+  if (!link) return null;
+  const read = await wikiLead(link.url);
+  return { n: 1, url: link.url, title: `${read?.title ?? link.title} (Wikipedia)`, snippet: read?.lead ?? "", searcher: "wikipedia" };
+}
+
 /** Searches and writes the explanation of selected words, from what is stored on the card. */
 async function finishSelection(store: CanvasStore, cardId: string) {
   const card = (await store.findItem(cardId)) as CardItem;
@@ -934,7 +947,12 @@ async function finishSelection(store: CanvasStore, cardId: string) {
   const quoted = card.context ? `“${selection}” in: ${card.context}` : selection;
   const register = card.register;
   await store.update(cardId, { stage: "searching" });
-  const sources = await search(card.searchQuery ?? `${selection} explained introduction`);
+  const [linked, found] = await Promise.all([
+    linkedArticle(store, card).catch(() => null),
+    search(card.searchQuery ?? `${selection} explained introduction`),
+  ]);
+  // Words that are a link in the Wikipedia article they were picked from lead to that article first.
+  const sources = linked ? [linked, ...found.filter((f) => f.url !== linked.url)].map((s, i) => ({ ...s, n: i + 1 })) : found;
   await store.update(cardId, { stage: "writing", sources });
   const guidance = register ? `${REGISTER_GUIDANCE[register.register]}${register.means ? ` (${register.means})` : ""}` : "";
   // Explaining a question someone typed (a note at the root), not words picked from a page or card.

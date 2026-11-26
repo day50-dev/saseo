@@ -206,6 +206,68 @@ async function readWikipedia(url: URL): Promise<ReadPage | null> {
   return { url: `https://${url.hostname}/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`, title, site: "Wikipedia", text };
 }
 
+/** A link in a Wikipedia article: the words it's on, and the article it goes to. */
+export type WikiLink = { text: string; title: string; url: string };
+
+/** Words compared loosely: case, accents, kinds of dash and spacing don't matter. */
+const loose = (s: string) =>
+  s
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[\u2010-\u2015\u2212-]/g, "-")
+    .replace(/[^\p{L}\p{N}-]+/gu, " ")
+    .trim();
+
+/** The link a selection is: one whose words, or whose article's title, are the selected words. */
+export function matchWikiLink(links: WikiLink[], words: string): WikiLink | null {
+  const w = loose(words);
+  if (!w) return null;
+  const singular = (s: string) => s.replace(/s$/, "");
+  return (
+    links.find((l) => loose(l.text) === w) ??
+    links.find((l) => loose(l.title) === w) ??
+    links.find((l) => singular(loose(l.text)) === singular(w) || singular(loose(l.title)) === singular(w)) ??
+    null
+  );
+}
+
+const linkCache = new Map<string, WikiLink[]>();
+/** The links to other articles in a Wikipedia article (fetched once per article while the server runs). */
+export async function wikiLinks(article: string): Promise<WikiLink[]> {
+  const url = new URL(article);
+  const m = url.pathname.match(/^\/wiki\/(.+)$/);
+  if (!m || !/(^|\.)wikipedia\.org$/.test(url.hostname)) return [];
+  const hit = linkCache.get(url.toString());
+  if (hit) return hit;
+  const page = await fetchPublic(`https://${url.hostname}/api/rest_v1/page/html/${m[1]}`);
+  const { document } = parseHTML(page.body);
+  const links: WikiLink[] = [];
+  for (const a of [...document.querySelectorAll('a[rel~="mw:WikiLink"]')]) {
+    const href = a.getAttribute("href") ?? "";
+    const target = href.replace(/^\.\//, "").split("#")[0];
+    // Articles only: not files, categories, help pages and the like.
+    if (!target || /^[A-Za-z_]+:/.test(decodeURIComponent(target))) continue;
+    const title = decodeURIComponent(target).replace(/_/g, " ");
+    links.push({ text: (a.textContent ?? "").trim(), title, url: `https://${url.hostname}/wiki/${target}` });
+  }
+  linkCache.set(url.toString(), links);
+  return links;
+}
+
+/** The opening of a Wikipedia article, as plain words: what it is, in its own first lines. */
+export async function wikiLead(article: string): Promise<{ title: string; lead: string } | null> {
+  const page = await readWikipedia(new URL(article)).catch(() => null);
+  if (!page) return null;
+  const lead = page.text
+    .split(/\n\n+/)
+    .filter((p) => !p.startsWith("## ") && !p.startsWith("!["))
+    .slice(0, 3)
+    .join(" ")
+    .slice(0, 1200);
+  return { title: page.title, lead };
+}
+
 /** The readable text of a public web page: its title and main content, without navigation and ads. */
 export async function readPage(link: string): Promise<ReadPage> {
   const url = new URL(link.trim());
