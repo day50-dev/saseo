@@ -1209,3 +1209,6 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
   .intro-card .sem-part { overflow-wrap: break-word; hyphens: manual; padding: 6px 5px; font-size: 12.5px; }
   .intro-card .sem-parts { gap: 5px; }
 }
+/* 사서 drawn properly even where no Korean font is installed: a copy holding just those two glyphs. */
+@font-face { font-family: "Saseo KR"; src: url("/fonts/saseo-ko.woff2") format("woff2"); font-display: swap; unicode-range: U+C0AC, U+C11C; }
+[lang="ko"] { font-family: "Saseo KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; }
