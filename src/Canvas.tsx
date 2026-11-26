@@ -1884,23 +1884,17 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               {img.collapsed && <span className="folded-count">{cardsBelow(img.id)} cards folded</span>}
             </div>
           ))}
-          {/* Ports on a slide: drag from one to another slide or a card to ask how they relate. */}
-          {images.filter((img) => !img.collapsed).flatMap((img) =>
-            (["left", "right", "top", "bottom"] as const).map((side) => (
-              <div
-                key={`port-${img.id}-${side}`}
-                className={`port image-port port-${side}`}
-                title="Drag to another slide or card to ask how they are related"
-                // Centered on the edge point; drawn after the image at the same level, so on top of it.
-                style={{
-                  left: side === "left" ? img.x : side === "right" ? img.x + img.w : img.x + img.w / 2,
-                  top: side === "top" ? img.y : side === "bottom" ? img.y + img.h + (img.video ? STOP_BAR : 0) : img.y + 28,
-                  zIndex: rank.get(img.id),
-                }}
-                onPointerDown={(e) => startLink(img.id, side, e)}
-              />
-            )),
-          )}
+          {/* The circle on a slide's right edge: drag it to another slide or a card to ask how they relate. */}
+          {images.filter((img) => !img.collapsed).map((img) => (
+            <div
+              key={`port-${img.id}`}
+              className="port image-port port-right"
+              title="Drag to another slide or card to ask how they are related"
+              // Centered on the edge point; drawn after the image at the same level, so on top of it.
+              style={{ left: img.x + img.w, top: img.y + 28, zIndex: rank.get(img.id) }}
+              onPointerDown={(e) => startLink(img.id, "right", e)}
+            />
+          ))}
           {images.filter((img) => !img.collapsed).map((img) => (
             <button
               key={`x-${img.id}`}

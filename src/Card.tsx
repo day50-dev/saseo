@@ -448,7 +448,8 @@ export function Card(props: {
       {/* The right edge, and a grip at the bottom-right corner, drag the card wider. */}
       <div className="card-resize" title="Drag to make this card wider or narrower" onPointerDown={props.onResize} />
       <div className="card-resize-grip" title="Drag to make this card wider or narrower" onPointerDown={props.onResize} />
-      {(["left", "right", "top", "bottom"] as const).map((side) => (
+      {/* One circle, on the right: drag it to another card to ask how the two relate. */}
+      {(["right"] as const).map((side) => (
         <div
           key={side}
           className={`port port-${side}`}

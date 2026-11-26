@@ -565,6 +565,10 @@ describe("F-MOMENT: a stopped moment and what was said at it", () => {
     const w = await look.evaluate((el) => (el as HTMLElement).offsetWidth);
     assert.ok(w <= 431 * (640 / 1920) * 1.5 + 1, `a modest picture, not a banner (${w}px)`);
     assert.ok(w >= 150, `still big enough to read (${w}px)`);
+    // One circle to connect from, on the right edge, on a card and on a slide alike.
+    assert.equal(await p.locator('.card-item[data-card-id="lk1"] .port').count(), 1);
+    assert.equal(await p.locator('.card-item[data-card-id="lk1"] .port-right').count(), 1);
+    assert.equal(await p.locator(".image-port").count(), 1, "the frame's one circle");
     // A wide region (a whole diagram) is held to half the card.
     const wide = await p.locator('.card-item[data-card-id="lk1"] .look').nth(1).evaluate((el) => (el as HTMLElement).offsetWidth);
     assert.ok(wide <= 361, `a whole diagram is held to half the card (${wide}px)`);
