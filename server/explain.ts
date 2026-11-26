@@ -719,6 +719,7 @@ For each piece that clearly does, give the box around that thing on the page.
 Boxes are [x0, y0, x1, y1] in thousandths of the image's width and height (0 to 1000), measured from the top-left corner.
 Make each box snug, but include all of the thing: the whole equation, the whole diagram.
 Leave out pieces that are general background and point at nothing in particular here. Never box the whole page.
+Never box the page's title or a heading: it only names the topic, which the reader already knows.
 Return JSON only, no prose: {"boxes": {"<key>": [x0, y0, x1, y1]}}`;
 
 /** The keys and texts of a Sem's pieces, as SemShapes draws them. */

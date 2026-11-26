@@ -61,7 +61,7 @@ before(async () => {
       name: "Look",
       items: [
         { kind: "image", id: "fr2", asset: "", name: "45:45 · A lecture", x: 0, y: 0, w: 640, h: 360, naturalW: 1920, naturalH: 1080, topic: "A lecture" },
-        explained("lk1", "Position bias", 720, 0, { parentId: "fr2", lookImage: "fr2", looking: "done", looks: { "what-0": { x: 75, y: 25, w: 431, h: 84 } } }),
+        explained("lk1", "Position bias", 720, 0, { parentId: "fr2", lookImage: "fr2", looking: "done", looks: { "what-0": { x: 75, y: 25, w: 431, h: 84 }, "here-0": { x: 100, y: 200, w: 1700, h: 400 } } }),
       ],
     },
     {
@@ -565,6 +565,9 @@ describe("F-MOMENT: a stopped moment and what was said at it", () => {
     const w = await look.evaluate((el) => (el as HTMLElement).offsetWidth);
     assert.ok(w <= 431 * (640 / 1920) * 1.5 + 1, `a modest picture, not a banner (${w}px)`);
     assert.ok(w >= 150, `still big enough to read (${w}px)`);
+    // A wide region (a whole diagram) is held to half the card.
+    const wide = await p.locator('.card-item[data-card-id="lk1"] .look').nth(1).evaluate((el) => (el as HTMLElement).offsetWidth);
+    assert.ok(wide <= 361, `a whole diagram is held to half the card (${wide}px)`);
     await p.close();
   });
 

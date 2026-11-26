@@ -926,9 +926,10 @@ function Look({ image, rect, onPeek }: { image: ImageItem; rect: Rect; onPeek: (
   // column is narrower than that the whole picture shrinks with it instead of being cut off.
   // Sized from how big the image is on the canvas, not its full resolution: a 1920-pixel video
   // frame shown 640 wide would otherwise blow a slide's title up into a banner. A little larger
-  // than on the canvas, to be readable; never taller than 220.
+  // than on the canvas, to be readable; never taller than 220 or wider than half a card, so a
+  // picture never outweighs the words it illustrates.
   const onCanvas = image.naturalW ? image.w / image.naturalW : 1;
-  const k = Math.min(1.5 * onCanvas, 1.25, 220 / rect.h);
+  const k = Math.min(1.5 * onCanvas, 1.25, 220 / rect.h, 360 / rect.w);
   const pct = (at: number, size: number, whole: number) => (whole > size ? (at / (whole - size)) * 100 : 0);
   return (
     <span
