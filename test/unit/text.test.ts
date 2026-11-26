@@ -167,3 +167,26 @@ describe("F-ARCHIVE: a page that can't be reached is read from its archived copy
     assert.equal(archivedCopy(null, original), null);
   });
 });
+
+describe("F-PAGE-TEX: a page's own LaTeX commands are expanded as it's read", () => {
+  test("definitions are collected, expanded with their arguments (nested too), and dropped from the text", async () => {
+    const { texMacros, withPageMacros } = await import("../../server/pages.ts");
+    const page = String.raw`\(\newcommand{\twovec}[2]{\left[\begin{array}{r}#1 \\ #2 \end{array}\right]}\) \(\newcommand{\real}{\mathbb R}\) \(\newcommand\vv{\mathbf v}\) \(\DeclareMathOperator{\Span}{span}\)`;
+    const macros = texMacros(page);
+    assert.equal(macros.get("twovec")?.args, 2);
+    const text = String.raw`Defs: \(\newcommand{\real}{\mathbb R}\) Let \(\vv=\twovec{2}{-1}\) in \(\real^2\), Figure \(\PageIndex{1}\), \(\PageIndex{2 & 3}\), \(\Span\{\vv\}\).`;
+    assert.equal(
+      withPageMacros(text, macros),
+      String.raw`Defs: Let \(\mathbf v=\left[\begin{array}{r}2 \\ -1 \end{array}\right]\) in \(\mathbb R^2\), Figure \(1\), \(2 \& 3\), \(\operatorname{span}\{\mathbf v\}\).`,
+    );
+  });
+
+  test("a bare display environment goes between \\[ \\], with its commands expanded", async () => {
+    const { texMacros, withPageMacros } = await import("../../server/pages.ts");
+    const macros = texMacros(String.raw`\newcommand{\twovec}[2]{\begin{pmatrix}#1\\#2\end{pmatrix}}`);
+    assert.equal(
+      withPageMacros(String.raw`We find \begin{equation*} A = \twovec{1}{2} \end{equation*} and so on.`, macros),
+      String.raw`We find \[\begin{equation*} A = \begin{pmatrix}1\\2\end{pmatrix} \end{equation*}\] and so on.`,
+    );
+  });
+});

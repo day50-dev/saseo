@@ -123,7 +123,7 @@ export function Grown({
   return (
     <>
       {here.map((e) => (
-        <div key={e.id} className={`grown grown-${e.shape} ${e.status}`}>
+        <div key={e.id} className={`grown grown-shape-${e.shape} ${e.status}`}>
           <button type="button" className="grown-remove" title="Take this away" onClick={() => onRemove(e.id)}>
             ×
           </button>
@@ -203,7 +203,7 @@ export function ShapeBlock({
   );
   const below = (key: string, name: string) => <Grown ext={ext} at={key} from={name} render={render} onGrow={onGrow} onRemove={onRemove} onShow={onShow} />;
   return (
-    <div className={`grown grown-${block.shape} page-block`}>
+    <div className={`grown grown-shape-${block.shape} page-block`}>
       {extra}
       <Shape e={block} piece={piece} below={below} render={render} />
     </div>

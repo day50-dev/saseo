@@ -82,6 +82,119 @@ async function fetchPublic(start: string): Promise<{ url: URL; type: string; bod
   throw new Error("That link redirects too many times.");
 }
 
+// ---- A page's own LaTeX shorthands ----
+// Books written for MathJax define their own commands on the page (\newcommand{\twovec}[2]{…}) and
+// use them everywhere. KaTeX on the canvas has never seen them, so they're expanded as the page is
+// read: the text then holds plain LaTeX, and the definitions themselves are dropped.
+
+type Macro = { args: number; body: string };
+
+/** The {…} group starting at `i` (which must be "{"): its inside and where it ends. */
+function group(s: string, i: number): { inside: string; end: number } | null {
+  if (s[i] !== "{") return null;
+  let depth = 0;
+  for (let j = i; j < s.length; j++) {
+    if (s[j] === "\\") {
+      j++;
+      continue;
+    }
+    if (s[j] === "{") depth++;
+    else if (s[j] === "}" && --depth === 0) return { inside: s.slice(i + 1, j), end: j + 1 };
+  }
+  return null;
+}
+
+/** Every \newcommand, \renewcommand and \DeclareMathOperator in a page's text. */
+export function texMacros(text: string): Map<string, Macro> {
+  const macros = new Map<string, Macro>();
+  const re = /\\(?:re)?newcommand\*?\s*(?:\{\s*\\([A-Za-z]+)\s*\}|\\([A-Za-z]+))\s*(?:\[(\d)\])?\s*(?=\{)|\\DeclareMathOperator\*?\s*\{\s*\\([A-Za-z]+)\s*\}\s*(?=\{)/g;
+  for (const m of text.matchAll(re)) {
+    const body = group(text, m.index + m[0].length);
+    if (!body) continue;
+    if (m[4]) macros.set(m[4], { args: 0, body: `\\operatorname{${body.inside}}` });
+    else macros.set(m[1] ?? m[2], { args: Number(m[3] ?? 0), body: body.inside });
+  }
+  return macros;
+}
+
+/** LaTeX with a page's own commands replaced by what they stand for (nested ones too, a few levels deep). */
+export function expandTex(tex: string, macros: Map<string, Macro>): string {
+  if (!macros.size) return tex;
+  let out = tex;
+  for (let pass = 0; pass < 6; pass++) {
+    let changed = false;
+    let res = "";
+    let i = 0;
+    while (i < out.length) {
+      const m = /\\([A-Za-z]+)/.exec(out.slice(i));
+      if (!m) {
+        res += out.slice(i);
+        break;
+      }
+      const start = i + m.index;
+      const def = macros.get(m[1]);
+      res += out.slice(i, start);
+      let j = start + m[0].length;
+      if (!def || /[A-Za-z]/.test(out[j] ?? "")) {
+        res += m[0];
+        i = j;
+        continue;
+      }
+      // Its arguments: braced groups, or single characters, as TeX reads them.
+      const args: string[] = [];
+      let ok = true;
+      for (let a = 0; a < def.args; a++) {
+        while (out[j] === " ") j++;
+        const g = group(out, j);
+        if (g) {
+          args.push(g.inside);
+          j = g.end;
+        } else if (j < out.length) {
+          const tok = out[j] === "\\" ? (/^\\([A-Za-z]+|.)/.exec(out.slice(j))?.[0] ?? "\\") : out[j];
+          args.push(tok);
+          j += tok.length;
+        } else ok = false;
+      }
+      if (!ok) {
+        res += m[0];
+        i = start + m[0].length;
+        continue;
+      }
+      res += def.body.replace(/#(\d)/g, (_, n: string) => args[Number(n) - 1] ?? "");
+      // A command ending in a letter mustn't run into the next word.
+      if (/\\[A-Za-z]+$/.test(def.body) && /[A-Za-z]/.test(out[j] ?? "")) res += " ";
+      i = j;
+      changed = true;
+    }
+    out = res;
+    if (!changed) break;
+  }
+  return out;
+}
+
+/**
+ * A page's text with its math ready for the canvas: its own commands expanded, math that only
+ * defined them dropped, and bare display environments (\begin{equation*}…, as MathJax pages
+ * write them) put between \[ \], which is what the canvas draws.
+ */
+export function withPageMacros(text: string, macros: Map<string, Macro>): string {
+  return text
+    // LibreTexts numbers figures and examples with \PageIndex{…} ("2 & 3" for two), never defined.
+    .replace(/\\PageIndex\{([^{}]*)\}/g, (_, n: string) => n.replace(/&/g, "\\&"))
+    .replace(
+      /\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]|\\begin\{((?:equation|align|gather|multline|eqnarray)\*?)\}([\s\S]*?)\\end\{\3\}/g,
+      (whole, inline: string | undefined, display: string | undefined, env: string | undefined, body: string | undefined) => {
+        if (env !== undefined) return `\\[\\begin{${env}}${expandTex(body ?? "", macros)}\\end{${env}}\\]`;
+        const tex = inline ?? display ?? "";
+        if (/^\s*\\(re)?newcommand|^\s*\\DeclareMathOperator/.test(tex)) return "";
+        const out = expandTex(tex, macros);
+        return inline !== undefined ? `\\(${out}\\)` : `\\[${out}\\]`;
+      },
+    )
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
 // ---- When a page can't be reached: an archived copy ----
 // Sites go down (a 502 for hours), time out, or move pages away. The Internet Archive usually has
 // the page as it was; its "id_" form gives the original HTML, without the archive's own toolbar.
@@ -321,11 +434,13 @@ export async function readPage(link: string): Promise<ReadPage> {
     return { url: page.url.toString(), title: page.url.pathname.split("/").pop() || page.url.hostname, site: page.url.hostname + archivedNote, text: tidy(page.body) };
   }
   const { document } = parseHTML(page.body);
+  // The page's own LaTeX commands, from anywhere on it (books often keep them in hidden parts).
+  const macros = texMacros(document.body?.textContent ?? "");
   mathToTex(document as unknown as Document);
   // Readability drops class names, so side panels and tables of contents go first.
   for (const el of [...document.querySelectorAll(`${SKIP}, #toc, .toc, .maruku_toc, #Context`)]) el.remove();
   const article = new Readability(document as unknown as Document).parse();
-  const text = article?.content ? textOf(parseHTML(`<!doctype html><html><body>${article.content}</body></html>`).document.body as unknown as Element, page.url) : "";
+  const text = article?.content ? withPageMacros(textOf(parseHTML(`<!doctype html><html><body>${article.content}</body></html>`).document.body as unknown as Element, page.url), macros) : "";
   if (!text) throw new Error("Couldn't find readable text on that page.");
   return {
     url: page.url.toString(),
