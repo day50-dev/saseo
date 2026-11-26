@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import type { CanvasSummary } from "../shared/canvas.ts";
+import type { CanvasSummary, Sem } from "../shared/canvas.ts";
 import { Examples } from "./Canvas.tsx";
 import { canvasesApi } from "./canvasApi.ts";
 import type { Example } from "./examples.ts";
+import { SemShapes } from "./SemShapes.tsx";
 import { linkTo, navigate } from "./router.ts";
 import { signOut, useIsAdmin, useIsAnonymous, useMe } from "./session.ts";
 
@@ -88,7 +89,7 @@ export function Home() {
           )}
         </span>
       </header>
-      <Intro open={list !== null && live.length === 0} />
+      {list !== null && <Intro open={live.length === 0} />}
       {anonymous && (
         <p className="muted small">
           Free, unlimited, no account needed. Your canvases are kept in this browser; sign in if you want to keep them for good.
@@ -235,43 +236,47 @@ function CanvasRow(props: {
   );
 }
 
-/**
- * What Saseo is, for someone who has never seen it: what you bring, what happens to it, and what
- * you can do from there. Open for a first visit; folded to its headline once there are canvases.
- */
+/** Saseo explained the way it explains everything else: as a card, in its own shapes. */
+const ABOUT: Sem = {
+  why: [
+    "The web got very good at getting your attention.",
+    "Understanding something hard takes many sources, and you lose track of what you'd worked out.",
+    "So: one place to take an idea apart and keep the pieces.",
+  ],
+  what: {
+    gist: "An endless canvas where a librarian explains anything at your level, one piece at a time.",
+    details: ["Bring a page, a paper, a lecture, a slide or just a question.", "Every explanation is written from sources it finds, and shows them."],
+  },
+  parts: [
+    { symbol: "Select", meaning: "words you don't follow", note: "and they get a card of their own" },
+    { symbol: "Call", meaning: "the librarian", note: "and talk while you point at things" },
+    { symbol: "Pause", meaning: "a video", note: "and ask about what's on screen" },
+    { symbol: "Share", meaning: "a canvas", note: "and see what a colleague changed" },
+  ],
+  together: "Every card is made like this one, so any piece of it can be taken apart in turn.",
+  here: [
+    "Paste a link or ask a question.",
+    "Select the words that stop you, and a card explains them.",
+    "Select inside that card to go a level deeper, as far as you need.",
+    "Come back next week: everything is where you left it.",
+  ],
+  name: "",
+};
+
+/** What Saseo is: open on a first visit; behind "What is Saseo?" once there are canvases. */
 function Intro({ open }: { open: boolean }) {
-  return (
-    <section className="intro">
-      <p className="intro-lead">A place to work through something hard, with a librarian who has all the time in the world.</p>
-      <p>
-        Bring what you're stuck on: a Wikipedia page, a paper, a lecture, a slide from a talk, or just a question. Saseo puts it on a canvas
-        that goes on forever, and explains it at your level, one piece at a time, from sources it finds.
-      </p>
-      <details open={open}>
-        <summary>How it works</summary>
-        <ul className="intro-list">
-          <li>
-            <b>Select any words you don't follow</b> and you get a card for them: why the idea exists, what it is, its parts and how it plays
-            out, drawn as a diagram. Select something inside that card to go a level deeper, as far down as you need.
-          </li>
-          <li>
-            <b>Call the librarian</b> and talk while you point at things on the canvas. Ask it to expand a step, show you examples, draw what it
-            means or find a lecture that covers it, and it puts the result on the canvas.
-          </li>
-          <li>
-            <b>Stop a video where it loses you</b> and ask about what's on the screen at that moment.
-          </li>
-          <li>
-            <b>Keep your bearings</b> with notes, goals and connections between cards. Nothing moves unless you move it, so when you come
-            back next week everything is where you left it.
-          </li>
-          <li>
-            <b>Share a canvas</b> with a colleague. What they add or change is marked as theirs, and you go through it when you come back.
-          </li>
-        </ul>
-        <p className="muted small">Start below: name a canvas, or try one of the examples.</p>
-      </details>
-    </section>
+  const card = (
+    <div className="intro-card">
+      <SemShapes title="Saseo, Korean for librarian" sem={ABOUT} render={(t) => t} labels={{ here: "How it unfolds" }} />
+    </div>
+  );
+  return open ? (
+    card
+  ) : (
+    <details className="intro">
+      <summary>What is Saseo?</summary>
+      {card}
+    </details>
   );
 }
 
