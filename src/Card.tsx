@@ -1,3 +1,4 @@
+import { splitTabulars } from "./tabular.ts";
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { GraphView, PlotView, TableView } from "./Figures.tsx";
 import { fitSvg } from "./fitSvg.ts";
@@ -1015,6 +1016,27 @@ function AskView({ clarify, onAnswer }: { clarify: Clarify; onAnswer: (answer: s
 
 /** A transcription is LaTeX when it's math; otherwise words that may hold some. */
 function transcription(t: string): ReactNode {
+  // A table among the words is drawn as a table (KaTeX can't draw tabular); the words around it as usual.
+  const parts = splitTabulars(t);
+  if (parts.some((p) => p.kind === "table"))
+    return parts.map((p, i) =>
+      p.kind === "table" ? (
+        <table key={i} className="tex-table">
+          <tbody>
+            {p.table.rows.map((r, j) => (
+              <tr key={j} className={r.ruleBelow ? "rule" : undefined}>
+                {r.cells.map((c, k) => {
+                  const C = j === 0 && p.table.rows[0].ruleBelow ? "th" : "td";
+                  return <C key={k} className={c.bold ? "bold" : undefined}>{withMath(c.text)}</C>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <span key={i} className="tex-table-words">{transcription(p.text.trim())}</span>
+      ),
+    );
   // Delimited formulas render in place among the words; bare LaTeX is one formula.
   return /\\[(\[]|\$/.test(t) || !looksLikeTex(t) ? withMath(t) : <Tex tex={t} display />;
 }
