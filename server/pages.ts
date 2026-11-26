@@ -82,6 +82,44 @@ async function fetchPublic(start: string): Promise<{ url: URL; type: string; bod
   throw new Error("That link redirects too many times.");
 }
 
+// ---- When a page can't be reached: an archived copy ----
+// Sites go down (a 502 for hours), time out, or move pages away. The Internet Archive usually has
+// the page as it was; its "id_" form gives the original HTML, without the archive's own toolbar.
+
+/** Whether a failed fetch is worth looking for an archived copy: the site erred, refused, timed out or lost the page. */
+export function worthArchive(err: unknown): boolean {
+  const m = err instanceof Error ? `${err.name} ${err.message}` : String(err);
+  return /answered HTTP (4(03|04|10|29)|5\d\d)|fetch failed|Timeout|aborted|ECONN|ENOTFOUND|EAI_AGAIN/i.test(m);
+}
+
+/** The raw archived copy named by the Wayback Machine's availability answer, and when it was taken. */
+export function archivedCopy(answer: unknown, original: string): { url: string; taken: Date } | null {
+  const snap = (answer as { archived_snapshots?: { closest?: { available?: boolean; status?: string; timestamp?: string } } })?.archived_snapshots?.closest;
+  if (!snap?.available || snap.status !== "200" || !/^\d{14}$/.test(snap.timestamp ?? "")) return null;
+  const t = snap.timestamp!;
+  return {
+    url: `https://web.archive.org/web/${t}id_/${original}`,
+    taken: new Date(Date.UTC(+t.slice(0, 4), +t.slice(4, 6) - 1, +t.slice(6, 8), +t.slice(8, 10), +t.slice(10, 12), +t.slice(12, 14))),
+  };
+}
+
+/** A public page, or when it can't be reached, its latest archived copy (its address stays the original's). */
+async function fetchOrArchive(link: string): Promise<{ url: URL; type: string; body: string; archived?: Date }> {
+  try {
+    return await fetchPublic(link);
+  } catch (err) {
+    if (!worthArchive(err)) throw err;
+    const found = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(link)}`, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(15_000) })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    const copy = archivedCopy(found, link);
+    if (!copy) throw err;
+    const page = await fetchPublic(copy.url).catch(() => null);
+    if (!page) throw err;
+    return { ...page, url: new URL(link), archived: copy.taken };
+  }
+}
+
 export interface ReadPage {
   url: string;
   title: string;
@@ -273,12 +311,14 @@ export async function readPage(link: string): Promise<ReadPage> {
   const url = new URL(link.trim());
   const wiki = await readWikipedia(url);
   if (wiki) return wiki;
-  const page = await fetchPublic(url.toString());
+  const page = await fetchOrArchive(url.toString());
+  // Said where the source is shown, so nobody takes an old copy for today's page.
+  const archivedNote = page.archived ? ` (archived copy, ${page.archived.toISOString().slice(0, 10)})` : "";
   if (/pdf/i.test(page.type)) {
     throw new Error(/arxiv\.org/.test(page.url.hostname) ? "That's an arXiv PDF: use the arXiv button to add its pages." : "PDF links can't be read yet.");
   }
   if (/text\/plain/i.test(page.type)) {
-    return { url: page.url.toString(), title: page.url.pathname.split("/").pop() || page.url.hostname, site: page.url.hostname, text: tidy(page.body) };
+    return { url: page.url.toString(), title: page.url.pathname.split("/").pop() || page.url.hostname, site: page.url.hostname + archivedNote, text: tidy(page.body) };
   }
   const { document } = parseHTML(page.body);
   mathToTex(document as unknown as Document);
@@ -290,7 +330,7 @@ export async function readPage(link: string): Promise<ReadPage> {
   return {
     url: page.url.toString(),
     title: (article?.title ?? "").trim() || page.url.hostname,
-    site: article?.siteName?.trim() || page.url.hostname.replace(/^www\./, ""),
+    site: (article?.siteName?.trim() || page.url.hostname.replace(/^www\./, "")) + archivedNote,
     text,
   };
 }
@@ -305,7 +345,7 @@ export function looksLikeLink(input: string): boolean {
  * some of its prose for context. The readable text above flattens tables; figures need their rows.
  */
 export async function readTables(link: string): Promise<{ url: string; title: string; tables: string[]; prose: string }> {
-  const page = await fetchPublic(new URL(link.trim()).toString());
+  const page = await fetchOrArchive(new URL(link.trim()).toString());
   if (!/html/i.test(page.type)) throw new Error("Not an HTML page.");
   const { document } = parseHTML(page.body);
   const cell = (el: Element) => (el.textContent ?? "").replace(/\[\d+\]|\[[a-z]\]/g, "").replace(/\s+/g, " ").trim();

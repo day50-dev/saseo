@@ -144,3 +144,26 @@ describe("model-written JSON with LaTeX in it", () => {
     assert.deepEqual(JSON.parse(fixed), { a: String.raw`\frac{1}{2} \nabla \alpha \( x \) ` + "\n" });
   });
 });
+
+describe("F-ARCHIVE: a page that can't be reached is read from its archived copy", () => {
+  test("which failures look for a copy: the site erred, refused, timed out or lost the page", async () => {
+    const { worthArchive } = await import("../../server/pages.ts");
+    for (const m of ["The page answered HTTP 502.", "The page answered HTTP 404.", "The page answered HTTP 429.", "fetch failed"]) assert.ok(worthArchive(new Error(m)), m);
+    const t = new Error("The operation was aborted due to timeout");
+    t.name = "TimeoutError";
+    assert.ok(worthArchive(t));
+    for (const m of ["That link points inside a private network.", "That page is too large to read.", "The page answered HTTP 400."]) assert.ok(!worthArchive(new Error(m)), m);
+  });
+
+  test("the raw copy (id_) of the closest snapshot, and when it was taken", async () => {
+    const { archivedCopy } = await import("../../server/pages.ts");
+    const original = "https://encyclopediaofmath.org/wiki/Gr%C3%B6bner_basis";
+    const answer = { archived_snapshots: { closest: { status: "200", available: true, url: "http://web.archive.org/web/20260716111802/x", timestamp: "20260716111802" } } };
+    const copy = archivedCopy(answer, original)!;
+    assert.equal(copy.url, `https://web.archive.org/web/20260716111802id_/${original}`);
+    assert.equal(copy.taken.toISOString(), "2026-07-16T11:18:02.000Z");
+    assert.equal(archivedCopy({ archived_snapshots: {} }, original), null);
+    assert.equal(archivedCopy({ archived_snapshots: { closest: { ...answer.archived_snapshots.closest, status: "404" } } }, original), null);
+    assert.equal(archivedCopy(null, original), null);
+  });
+});
