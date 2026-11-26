@@ -1358,6 +1358,57 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         ];
       });
     }
+    // What was said at a stopped moment describes its frame: the semshapes description connector
+    // (a 45° bend off the frame, a straight bus, an arrowhead into the words), not the soft curve
+    // of a descent. Routed with straight runs, so it follows wherever either is moved.
+    const owner = byId.get(c.parentId);
+    if (owner?.kind === "image" && owner.moment) {
+      if (folded.has(owner.id)) return [];
+      const lit = hover === c.id || hover === owner.id;
+      const f = { left: owner.x, right: owner.x + owner.w, top: owner.y, bottom: owner.y + owner.h };
+      const BEND = 14;
+      const HEAD = 9;
+      let d: string;
+      let head: string;
+      if (c.y >= f.bottom) {
+        // Below (where it's put): down from near the frame's left edge.
+        const x0 = f.left + 28;
+        const bx = x0 + BEND;
+        const by = f.bottom + BEND;
+        const tx = Math.min(Math.max(bx, c.x + 20), c.x + c.w - 20);
+        const ty = c.y;
+        const my = Math.max(by, (by + ty) / 2);
+        d = tx === bx ? `M${x0} ${f.bottom} L${bx} ${by} L${tx} ${ty - HEAD}` : `M${x0} ${f.bottom} L${bx} ${by} L${bx} ${my} L${tx} ${my} L${tx} ${ty - HEAD}`;
+        head = `M${tx - 5} ${ty - HEAD} L${tx + 5} ${ty - HEAD} L${tx} ${ty} Z`;
+      } else if (c.y + cardHeight(c) <= f.top) {
+        // Above: the same, upward.
+        const x0 = f.left + 28;
+        const bx = x0 + BEND;
+        const by = f.top - BEND;
+        const tx = Math.min(Math.max(bx, c.x + 20), c.x + c.w - 20);
+        const ty = c.y + cardHeight(c);
+        const my = Math.min(by, (by + ty) / 2);
+        d = `M${x0} ${f.top} L${bx} ${by} L${bx} ${my} L${tx} ${my} L${tx} ${ty + HEAD}`;
+        head = `M${tx - 5} ${ty + HEAD} L${tx + 5} ${ty + HEAD} L${tx} ${ty} Z`;
+      } else {
+        // Beside: out of the frame's facing side, across, into the words' top line.
+        const right = c.x >= f.right;
+        const sgn = right ? 1 : -1;
+        const x0 = right ? f.right : f.left;
+        const y0 = f.top + 28;
+        const bx = x0 + sgn * BEND;
+        const by = y0 + BEND;
+        const tx = right ? c.x : c.x + c.w;
+        const ty = c.y + 28;
+        const mx = (bx + tx) / 2;
+        d = `M${x0} ${y0} L${bx} ${by} L${mx} ${by} L${mx} ${ty} L${tx - sgn * HEAD} ${ty}`;
+        head = `M${tx - sgn * HEAD} ${ty - 5} L${tx - sgn * HEAD} ${ty + 5} L${tx} ${ty} Z`;
+      }
+      return [
+        <path key={c.id} data-card={c.id} d={d} className={lit ? "connector moment-line lit" : "connector moment-line"} />,
+        <path key={`${c.id}-head`} d={head} className={lit ? "moment-head lit" : "moment-head"} />,
+      ];
+    }
     const s = sourceBox(c);
     if (!s) return [];
     const dir = dirOf(c);

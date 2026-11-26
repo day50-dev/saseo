@@ -49,6 +49,14 @@ before(async () => {
     },
     { id: "note0001", name: "Notes", items: [explained("n1", "Bialgebras", 0, 0)] },
     {
+      id: "mome0001",
+      name: "Moment",
+      items: [
+        { kind: "image", id: "fr1", asset: "", name: "24:22 · A lecture", x: 0, y: 0, w: 640, h: 360, naturalW: 1280, naturalH: 720, topic: "A lecture", moment: { videoImageId: "v0", videoId: "AAAAAAAAAAA", t: 1462, title: "A lecture" }, transcript: "[23:37–24:32] pass at k is one minus the chance all k attempts fail" },
+        { kind: "card", id: "said1", parentId: "fr1", origin: { kind: "note", title: "pass at k" }, x: 0, y: 408, w: 640, stage: "done", subject: "What was said at 24:22", pageText: "pass at k is one minus the chance all k attempts fail" },
+      ],
+    },
+    {
       id: "cnot0001",
       name: "Call notes",
       items: [
@@ -511,6 +519,25 @@ describe("F-DIAGRAM: nothing drawn is cut off", () => {
     const vb = src.match(/viewBox="([^"]+)"/)![1].split(" ").map(Number);
     assert.ok(vb[0] + vb[2] > 470, `the frame reaches past the label's end: ${vb}`);
     assert.doesNotMatch(src, /width="400"/, "sized by its frame");
+    await p.context().close();
+  });
+});
+
+describe("F-MOMENT: a stopped moment and what was said at it", () => {
+  test("are joined by the description connector (a bend, a straight bus, an arrowhead), which follows a move", async () => {
+    const p = await open("/c/mome0001");
+    const line = p.locator('path.moment-line[data-card="said1"]');
+    await line.waitFor({ state: "attached" });
+    const d = (await line.getAttribute("d"))!;
+    assert.doesNotMatch(d, /C/, "straight runs, not the soft curve of a descent");
+    assert.match(d, /^M28 360 L42 374/, "a 45° bend off the frame's bottom");
+    assert.equal(await p.locator("path.moment-head").count(), 1, "an arrowhead into the words");
+    if (process.env.MOMENT_SHOT) await p.screenshot({ path: process.env.MOMENT_SHOT });
+    // Moved beside the frame: the line comes out of its side instead.
+    await s.api("POST", "/api/canvases/mome0001/move", { moves: [{ id: "said1", x: 720, y: 0 }] });
+    await p.reload();
+    await line.waitFor({ state: "attached" });
+    assert.match((await line.getAttribute("d"))!, /^M640 28 L654 42/);
     await p.context().close();
   });
 });

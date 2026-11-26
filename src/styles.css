@@ -1136,6 +1136,11 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .note-trail li, .note-versions li { margin: 2px 0; overflow-wrap: anywhere; }
 .note-versions li:not(.now) div { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent); }
 .connector.note-line { stroke-dasharray: 2 4; stroke: #c9ad4f; opacity: 0.9; }
+/* A stopped moment's frame and what was said at it: the semshapes description connector. */
+.connector.moment-line { stroke: var(--sem-line); stroke-width: 2; opacity: 0.85; stroke-linejoin: round; }
+.moment-head { fill: var(--sem-line); opacity: 0.85; }
+.connector.moment-line.lit { stroke: var(--accent); opacity: 1; }
+.moment-head.lit { fill: var(--accent); opacity: 1; }
 @media (prefers-color-scheme: dark) { .connector.note-line { stroke: #8a7a3a; } }
 .note-add-btn { font-size: 13px; padding: 4px 10px; font-weight: 500; flex-shrink: 0; }
 
