@@ -624,14 +624,10 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
   .canvas-row { flex-wrap: wrap; gap: 2px 12px; }
   .canvas-row .canvas-main { flex: 1 1 100%; min-width: 0; }
   .canvas-actions { opacity: 1 !important; margin-left: -6px; }
-  /* A phone: the bar wraps into rows rather than running off the screen, and arranging many cards
-     (restack, untangle) is left to bigger screens. */
-  .toolbar { flex-wrap: wrap; gap: 6px 8px; padding: 6px 10px; }
+  .toolbar { overflow-x: auto; gap: 10px; padding: 6px 10px; scrollbar-width: none; }
+  .toolbar::-webkit-scrollbar { display: none; }
   .toolbar > * { flex-shrink: 0; }
-  .toolbar .canvas-name { min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .toolbar .hint, .toolbar .spacer, .toolbar .tb-group[aria-label="Arrange"] { display: none; }
-  .tb-group + .tb-group { border-left: 0; padding-left: 0; margin-left: 0; }
-  .toolbar .tb-group button { padding: 0 8px; }
+  .toolbar .hint, .toolbar .spacer { display: none; }
   .start-dock { bottom: 10px; }
   .empty h2 { font-size: 22px; }
 }
