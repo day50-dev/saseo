@@ -67,6 +67,19 @@ The two largest numbers in each column are in bold.`;
     assert.equal(table.rows[1].cells[2].bold, false);
   });
 
+  test("a Markdown pipe table is read too, with or without its --- line", () => {
+    const md = "Table 2: Position bias.\n\n| Judge | Prompt | Consistency |\n| Claude-v1 | default | **23.8%** |\n| | rename | 56.2% |\n\nAfter it.";
+    const parts = splitTabulars(md);
+    assert.deepEqual(parts.map((p) => p.kind), ["text", "table", "text"]);
+    const table = (parts[1] as { kind: "table"; table: ReturnType<typeof readTabular> }).table;
+    assert.deepEqual(table.rows.map((r) => r.cells.map((c) => c.text)), [["Judge", "Prompt", "Consistency"], ["Claude-v1", "default", "23.8%"], ["", "rename", "56.2%"]]);
+    assert.equal(table.rows[0].ruleBelow, true, "the header has a rule under it");
+    assert.equal(table.rows[1].cells[2].bold, true);
+    const dashed = splitTabulars("| a | b |\n|---|:-:|\n| 1 | 2 |");
+    assert.deepEqual((dashed[0] as { kind: "table"; table: ReturnType<typeof readTabular> }).table.rows.map((r) => r.cells.map((c) => c.text)), [["a", "b"], ["1", "2"]]);
+    assert.equal(splitTabulars("| just one line |")[0].kind, "text", "one line isn't a table");
+  });
+
   test("words with no table are left alone", () => {
     assert.deepEqual(splitTabulars("Just \\(x^2\\) here"), [{ kind: "text", text: "Just \\(x^2\\) here" }]);
   });
