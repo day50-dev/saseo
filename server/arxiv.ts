@@ -6,7 +6,7 @@ import { XMLParser } from "fast-xml-parser";
 import type { Paper } from "../shared/canvas.ts";
 
 const API = "https://export.arxiv.org/api/query";
-const USER_AGENT = "librarian (open-source study tool; https://github.com/kristopolous/librarian)";
+const USER_AGENT = "saseo (open-source study tool; https://github.com/day50-dev/saseo)";
 const GAP_MS = 3100;
 const DATA_DIR = process.env.LIBRARIAN_DATA ?? path.resolve("data");
 const PDF_DIR = path.join(DATA_DIR, "arxiv");

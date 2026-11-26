@@ -8,7 +8,7 @@ import net from "node:net";
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 
-const USER_AGENT = "librarian (open-source study tool; https://github.com/kristopolous/librarian)";
+const USER_AGENT = "saseo (open-source study tool; https://github.com/day50-dev/saseo)";
 const MAX_BYTES = 3_000_000;
 // The whole page: even the longest Wikipedia articles are a few hundred thousand characters.
 // Prompts take excerpts of it (see excerpt and shapePage in explain.ts).

@@ -167,12 +167,12 @@ export function Home() {
       )}
       <footer className="home-foot muted small">
         Saseo is open source under the{" "}
-        <a href="https://github.com/kristopolous/librarian/blob/main/LICENSE" target="_blank" rel="noreferrer">
+        <a href="https://github.com/day50-dev/saseo/blob/main/LICENSE" target="_blank" rel="noreferrer">
           MIT license
         </a>
         . Copyright © 2026 Chris McKenzie ·{" "}
-        <a href="https://github.com/kristopolous/librarian" target="_blank" rel="noreferrer">
-          github.com/kristopolous/librarian
+        <a href="https://github.com/day50-dev/saseo" target="_blank" rel="noreferrer">
+          github.com/day50-dev/saseo
         </a>
       </footer>
     </main>

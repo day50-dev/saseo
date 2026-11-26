@@ -1,6 +1,6 @@
 # Saseo
 
-*Saseo (사서) is Korean for librarian. The project was called Librarian until November 2026; the repository keeps that name.*
+*Saseo (사서) is Korean for librarian. The project was called Librarian until November 2026; the code lives at [day50-dev/saseo](https://github.com/day50-dev/saseo).*
 
 **A research librarian with unlimited time, on an infinite desk that never gets rearranged.**
 
