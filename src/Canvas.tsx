@@ -1527,7 +1527,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           Drop or paste an image · Select: drag a box over what stopped you · hold Space to pan · Ctrl+scroll to zoom
         </span>
         <span className="spacer" />
-        {/* Making: what goes on the canvas, and the call that does it with you. */}
+        {/* Making: what goes on the canvas, the call that does it with you, and taking it back. */}
         {!viewOnly && (
         <div className="tb-group" role="group" aria-label="Add to the canvas">
           {/* Always in its place: on an empty canvas the start box is already open in the middle, so it's only disabled. */}
@@ -1553,6 +1553,14 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               {calling ? "On a call" : "Call"}
             </button>
           )}
+          <div className="history">
+            <button type="button" className="secondary" aria-label="Undo" disabled={!nextUndo} title={nextUndo ? `Undo ${nextUndo.label} (Ctrl+Z)` : "Nothing to undo"} onClick={undo}>
+              ↶
+            </button>
+            <button type="button" className="secondary" aria-label="Redo" disabled={!nextRedo} title={nextRedo ? `Redo ${nextRedo.label} (Ctrl+Shift+Z)` : "Nothing to redo"} onClick={redo}>
+              ↷
+            </button>
+          </div>
         </div>
         )}
         {/* Moving around: the tool, and the zoom. */}
@@ -1585,17 +1593,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             {Math.round(view.scale * 100)}%
           </button>
         </div>
-        {/* Editing: undo, and tidying up what's there. */}
+        {/* Arranging: what's in front of what, and pulling apart what overlaps. */}
         {!viewOnly && (
-        <div className="tb-group" role="group" aria-label="Edit">
-          <div className="history">
-            <button type="button" className="secondary" aria-label="Undo" disabled={!nextUndo} title={nextUndo ? `Undo ${nextUndo.label} (Ctrl+Z)` : "Nothing to undo"} onClick={undo}>
-              ↶
-            </button>
-            <button type="button" className="secondary" aria-label="Redo" disabled={!nextRedo} title={nextRedo ? `Redo ${nextRedo.label} (Ctrl+Shift+Z)` : "Nothing to redo"} onClick={redo}>
-              ↷
-            </button>
-          </div>
+        <div className="tb-group" role="group" aria-label="Arrange">
           <div className="stacking" role="group" aria-label="Stacking order">
             {(
               [
