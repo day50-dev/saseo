@@ -17,9 +17,9 @@ export interface Example {
 export const EXAMPLES: Example[] = [
   {
     key: "video",
-    kind: "A video lecture",
-    title: "Eigenvectors and eigenvalues (3Blue1Brown)",
-    input: "https://www.youtube.com/watch?v=PFDu9oVAE-g",
+    kind: "Machine learning · a video lecture",
+    title: "How to evaluate a large language model (Stanford CME295, lecture 7)",
+    input: "https://www.youtube.com/watch?v=uoSynlTDyMs",
   },
   {
     key: "wiki",

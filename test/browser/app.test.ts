@@ -103,16 +103,17 @@ const cardSel = (id: string) => `.card-item[data-card-id="${id}"]`;
 const state = async (cid: string) => ((await s.api("GET", `/api/canvases/${cid}`)).body as CanvasState).items;
 
 describe("the home page", () => {
-  test("lists your canvases, offers examples, and names a new canvas", async () => {
+  test("lists your canvases, offers examples, and starts a blank canvas with one button", async () => {
     const p = await open("/");
     await p.getByText("Undo", { exact: true }).first().waitFor();
     assert.match((await p.textContent("body")) ?? "", /eigenvectors/i, "the examples");
-    await p.fill('input[placeholder^="Name a new canvas"]', "Sobolev inequalities");
-    await p.getByRole("button", { name: "New canvas" }).click();
+    assert.equal(await p.locator(".new-canvas input").count(), 0, "no name to make up first");
+    await p.getByRole("button", { name: "Start exploring" }).click();
     await p.waitForURL(/\/c\/[0-9a-f]{8}$/);
+    // The canvas asks where to start; it's named after that later.
     await p.waitForSelector('[placeholder^="A link to read"], [placeholder^="Paste a link"]');
     const id = p.url().split("/").pop()!;
-    assert.equal((await s.api("GET", `/api/canvases/${id}`)).body.name, "Sobolev inequalities");
+    assert.equal((await s.api("GET", `/api/canvases/${id}`)).body.name, "Untitled canvas");
     assert.deepEqual(errorsOf(p), []);
     await p.context().close();
   });

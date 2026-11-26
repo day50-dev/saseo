@@ -21,7 +21,6 @@ export function ago(iso: string): string {
 export function Home() {
   const [list, setList] = useState<CanvasSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [name, setName] = useState("");
   const me = useMe();
   const admin = useIsAdmin();
   const anonymous = useIsAnonymous();
@@ -35,10 +34,10 @@ export function Home() {
     load();
   }, [load]);
 
-  const create = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // A blank canvas: it asks what you want to start from, and names itself after that.
+  const create = async () => {
     try {
-      const c = await canvasesApi.create(name);
+      const c = await canvasesApi.create("");
       navigate(`/c/${c.id}`);
     } catch (err) {
       setError(String(err));
@@ -96,10 +95,11 @@ export function Home() {
           {error}
         </p>
       )}
-      <form className="row new-canvas" onSubmit={create}>
-        <input value={name} placeholder="Name a new canvas, e.g. CSS talk, Sobolev inequalities" onChange={(e) => setName(e.target.value)} />
-        <button type="submit">New canvas</button>
-      </form>
+      <div className="new-canvas">
+        <button type="button" onClick={create}>
+          Start exploring
+        </button>
+      </div>
       <Examples
         onPick={async (ex: Example) => {
           try {
@@ -113,7 +113,7 @@ export function Home() {
       {list === null ? (
         <p className="muted">Loading…</p>
       ) : live.length === 0 ? (
-        <p className="muted">No canvases yet. Name one above to start.</p>
+        <p className="muted">Nothing here yet. Start above, or pick an example.</p>
       ) : (
         <ul className="canvas-list">
           {live.map((c) => (

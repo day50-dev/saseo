@@ -34,7 +34,7 @@ Bring whatever stopped you:
 - **A question** typed in your own words.
 - **A YouTube lecture**, which plays right on the canvas (see below).
 
-The home page has one-click examples: a 3Blue1Brown lecture on eigenvectors, Wikipedia's eigenvectors page, a tutorial on spectral clustering, the Hamiltonian, the breakup of Yugoslavia, and the synaptic vesicle cycle.
+The home page has one-click examples: a Stanford lecture on evaluating large language models, Wikipedia's eigenvectors page, a tutorial on spectral clustering, the Hamiltonian, the breakup of Yugoslavia, and the synaptic vesicle cycle.
 
 The librarian may first ask one short question about where you're coming from and what you're after, and pitches everything after to your answer. Then it **looks for introductory material first** (lecture notes, textbook chapters, Khan Academy, Britannica) and draws an explanation beside what you pointed at, starting with *why the thing exists* and citing what it found. Each page it found has a **+ Add** button that puts the page itself on the canvas, beside the card.
 

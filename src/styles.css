@@ -620,9 +620,7 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
   .settings { padding: 20px 16px 48px; }
   .home-head h1 { font-size: 26px; margin: 0; }
   .home-links .muted.small { display: none; }
-  .new-canvas { flex-wrap: wrap; }
-  .new-canvas input { flex: 1 1 100%; }
-  .new-canvas button { flex: 1 1 100%; }
+  .new-canvas button { width: 100%; }
   .canvas-row { flex-wrap: wrap; gap: 2px 12px; }
   .canvas-row .canvas-main { flex: 1 1 100%; min-width: 0; }
   .canvas-actions { opacity: 1 !important; margin-left: -6px; }
