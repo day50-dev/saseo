@@ -180,7 +180,7 @@ A short video of what Librarian is for and how it works, made from the real app 
 
 ## Design
 
-The principles, the worked examples from the talk that started this (Jason Zhao's *The Cauchy problem for Manton's Chern-Simons-Schrödinger equation*), prior art, and the roadmap are in [docs/DESIGN.md](docs/DESIGN.md).
+The principles, the worked examples from the talk that started this (Jason Zhao's *The Cauchy problem for Manton's Chern-Simons-Schrödinger equation*), prior art, and the roadmap are in [docs/DESIGN.md](docs/DESIGN.md). Planned and not built yet: linking a Zotero library to bring your reading in and save finds back, in [docs/ZOTERO.md](docs/ZOTERO.md).
 
 ## Data
 
