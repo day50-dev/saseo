@@ -442,7 +442,10 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .canvas-name-input { width: 240px !important; padding: 2px 6px !important; flex-shrink: 0; }
 .home-head { display: flex; align-items: baseline; justify-content: space-between; }
 /* The home page opens on the question and its box. */
-.home-start { margin: 20px 0 12px; }
+.home-pitch { max-width: 640px; margin: 16px 0 0; }
+.home-pitch p { margin: 0 0 8px; }
+.home-tagline { font-size: 21px; font-weight: 600; line-height: 1.3; }
+.home-start { margin: 16px 0 12px; }
 .home-start button { font-size: 18px; padding: 12px 28px; }
 .home-canvases { margin: 8px 0 20px; }
 .home-canvases h2 { font-size: 16px; margin: 0 0 6px; }
