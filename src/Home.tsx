@@ -262,7 +262,7 @@ const ABOUT: Sem = {
 function Intro({ open }: { open: boolean }) {
   const card = (
     <div className="intro-card">
-      <SemShapes title="Saseo, Korean for librarian" sem={ABOUT} render={(t) => t} labels={{ here: "How it unfolds" }} />
+      <SemShapes title="Saseo, a place for understanding" sem={ABOUT} render={(t) => t} labels={{ here: "How it unfolds" }} />
     </div>
   );
   return open ? (
