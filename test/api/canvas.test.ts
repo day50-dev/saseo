@@ -1,7 +1,7 @@
 // F-DESK through HTTP, as the page uses it: canvases, images, boxes, moving, removing and bringing
 // back, collapsing, restacking, relations, settings, and serving the app.
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { fakeLlm } from "../helpers/fakeLlm.ts";
@@ -51,6 +51,18 @@ describe("F-DESK-1: named canvases with stable URLs", () => {
     assert.equal((await state(copy.id)).items.length, 4);
     assert.equal((await s.api("DELETE", `/api/canvases/${copy.id}`)).status, 200);
     assert.equal((await s.api("GET", `/api/canvases/${copy.id}`)).status, 404);
+  });
+
+  test("an example made ready opens as a copy of its canvas, under the name asked for", async () => {
+    assert.deepEqual((await s.api("GET", "/api/examples")).body.prepared, []);
+    writeFileSync(path.join(env.LIBRARIAN_DATA, "examples.json"), JSON.stringify({ wiki: "desk0001", gone: "zzzzzzzz" }));
+    assert.deepEqual((await s.api("GET", "/api/examples")).body.prepared, ["wiki"], "only examples whose canvas exists");
+    const copy = (await s.api("POST", "/api/examples/wiki", { name: "Eigenvalues and eigenvectors" })).body;
+    assert.notEqual(copy.id, "desk0001");
+    assert.equal(copy.name, "Eigenvalues and eigenvectors");
+    assert.equal((await state(copy.id)).items.length, (await state()).items.length);
+    assert.equal((await s.api("POST", "/api/examples/gone", {})).status, 404);
+    await s.api("DELETE", `/api/canvases/${copy.id}`);
   });
 
   test("an untitled canvas is named after what it was started with", async () => {

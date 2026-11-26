@@ -25,6 +25,10 @@ export const canvasesApi = {
   rename: (id: string, name: string) => send("PATCH", `/api/canvases/${id}`, { name }).then((r) => json<CanvasInfo>(r)),
   /** Moves a canvas into or out of the trash; nothing in it is deleted. */
   trash: (id: string, trashed: boolean) => send("PATCH", `/api/canvases/${id}`, { trashed }).then((r) => json<CanvasInfo>(r)),
+  /** The keys of the examples that are ready-made canvases. */
+  preparedExamples: () => fetch("/api/examples").then((r) => json<{ prepared: string[] }>(r)),
+  /** A copy of an example's ready-made canvas, yours to explore further. */
+  openExample: (key: string, name: string) => post(`/api/examples/${encodeURIComponent(key)}`, { name }).then((r) => json<CanvasInfo>(r)),
   duplicate: (id: string) => post(`/api/canvases/${id}/duplicate`, {}).then((r) => json<CanvasInfo>(r)),
   /** For good: the canvas and its history are erased. */
   remove: (id: string) => send("DELETE", `/api/canvases/${id}`, {}).then((r) => json<{ ok: true }>(r)),

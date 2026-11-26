@@ -144,6 +144,16 @@ export function Home() {
       <Examples
         onPick={async (ex: Example) => {
           try {
+            // A ready-made example opens as a copy, already explored; others start live.
+            const ready = await canvasesApi
+              .preparedExamples()
+              .then((r) => r.prepared.includes(ex.key))
+              .catch(() => false);
+            if (ready) {
+              const c = await canvasesApi.openExample(ex.key, ex.title.slice(0, 60));
+              navigate(`/c/${c.id}`);
+              return;
+            }
             const c = await canvasesApi.create(ex.title.slice(0, 60));
             navigate(`/c/${c.id}?example=${ex.key}`);
           } catch (err) {

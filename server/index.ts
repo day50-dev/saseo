@@ -11,7 +11,7 @@ import { CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Exte
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { remember } from "./pagecache.ts";
 import { pdfLink, servesPdf, slicePdf } from "./pdf.ts";
-import { actor, addReaderNote, transferCanvases, addShareLink, assetPath, autoName, changesSince, DATA_DIR, joinByLink, markSeen, removeMember, removeShareLink, roleOf, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
+import { actor, addReaderNote, transferCanvases, addShareLink, assetPath, autoName, changesSince, DATA_DIR, joinByLink, markSeen, removeMember, removeShareLink, roleOf, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, preparedExamples, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { changePassword, lockedCookie, PASSWORD_FROM_ENV, unlock } from "./admin.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
@@ -242,6 +242,18 @@ app.delete("/api/canvases/:cid", async (c) => {
   if (!(await canvasFor(c))) return c.json({ error: "unknown canvas" }, 404);
   if (!(await ownerOnly(c))) return c.json({ error: "only its owner can do that" }, 403);
   return (await deleteCanvas(c.req.param("cid"))) ? c.json({ ok: true }) : c.json({ error: "unknown canvas" }, 404);
+});
+
+// Which examples are ready-made canvases; the rest start from their link or question.
+app.get("/api/examples", async (c) => c.json({ prepared: Object.keys(await preparedExamples()) }));
+
+// Opens an example: a copy of its canvas, the visitor's own to explore further.
+app.post("/api/examples/:key", async (c) => {
+  const id = (await preparedExamples())[c.req.param("key")];
+  if (!id) return c.json({ error: "no such example" }, 404);
+  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string };
+  const info = await duplicateCanvas(id, AUTH_ON ? c.get("user").id : undefined, typeof name === "string" && name.trim() ? name.trim() : undefined);
+  return info ? c.json(info) : c.json({ error: "no such example" }, 404);
 });
 
 app.post("/api/canvases/:cid/duplicate", async (c) => {

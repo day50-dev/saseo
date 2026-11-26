@@ -287,12 +287,12 @@ export function changesSince(events: LoggedEvent[], since: number, me: string, i
 }
 
 /** A new canvas holding a copy of everything on another, as of now. */
-export async function duplicateCanvas(id: string, owner?: string): Promise<CanvasInfo | null> {
+export async function duplicateCanvas(id: string, owner?: string, name?: string): Promise<CanvasInfo | null> {
   const from = await getCanvasInfo(id);
   if (!from) return null;
   const store = await canvasStore(id);
   await store?.settled();
-  const info = await createCanvas(`Copy of ${from.name}`.slice(0, 120), owner);
+  const info = await createCanvas((name ?? `Copy of ${from.name}`).slice(0, 120), owner);
   try {
     await copyFile(path.join(CANVAS_DIR, `${id}.jsonl`), path.join(CANVAS_DIR, `${info.id}.jsonl`));
   } catch (err) {
@@ -300,6 +300,22 @@ export async function duplicateCanvas(id: string, owner?: string): Promise<Canva
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
   return info;
+}
+
+// ---- Examples ----
+
+// The home page's examples, each a canvas already explored a few levels deep. Opening one gives
+// the visitor a copy of their own. data/examples.json maps an example's key to its canvas.
+const EXAMPLES_FILE = () => path.join(DATA_DIR, "examples.json");
+
+export async function preparedExamples(): Promise<Record<string, string>> {
+  try {
+    const map = JSON.parse(await readFile(EXAMPLES_FILE(), "utf8")) as Record<string, string>;
+    const ids = new Set((await listCanvases()).map((c) => c.id));
+    return Object.fromEntries(Object.entries(map).filter(([, id]) => typeof id === "string" && ids.has(id)));
+  } catch {
+    return {};
+  }
 }
 
 export async function getCanvasInfo(id: string): Promise<CanvasInfo | undefined> {
