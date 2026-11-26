@@ -90,11 +90,6 @@ export function Home() {
         </span>
       </header>
       {list !== null && <Intro open={live.length === 0} />}
-      {anonymous && (
-        <p className="muted small">
-          Free, unlimited, no account needed. Your canvases are kept in this browser; sign in if you want to keep them for good.
-        </p>
-      )}
       <Explainer />
       {error && (
         <p className="error" onClick={() => setError(null)}>
