@@ -1706,8 +1706,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             <h2 data-pan="1">What's confusing you?</h2>
             <StartBox onStart={startFrom} big />
             <p className="muted" data-pan="1">
-              Paste a link (a Wikipedia page, an article) or type a question. Or drop or paste an image of a slide, a page or a
-              screenshot, then drag a box over the part you want explained.
+              Paste the slide, the paper or the lecture link, or just type the words that lost you. Then drag a box over the
+              part that made no sense.
             </p>
             <Examples onPick={tryExample} />
           </div>
