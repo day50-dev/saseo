@@ -742,7 +742,7 @@ export function CallBar({
   const where = pointed.selection ? `your selection “${pointed.selection.slice(0, 50)}${pointed.selection.length > 50 ? "…" : ""}”` : pointed.pieceText ? `“${pointed.pieceText.slice(0, 50)}…”` : "";
   const status = {
     starting: "Opening the microphone…",
-    listening: where ? `Listening. Pointing at ${where}` : "Listening. Just talk, and point at what you mean",
+    listening: where ? `Listening. Pointing at ${where}` : "Listening",
     talking:
       left !== null
         ? "Sending when the bar runs out. Keep talking to add more, or click the bar to send now"
