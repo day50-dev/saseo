@@ -165,7 +165,7 @@ export function Home() {
         <a href="https://github.com/day50-dev/saseo/blob/main/LICENSE" target="_blank" rel="noreferrer">
           MIT license
         </a>
-        . Copyright © 2026 Chris McKenzie ·{" "}
+        . Copyright © 2026 DA`/50 ·{" "}
         <a href="https://github.com/day50-dev/saseo" target="_blank" rel="noreferrer">
           github.com/day50-dev/saseo
         </a>
