@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { NoteItem } from "../shared/canvas.ts";
 import type { NoteHistory } from "./canvasApi.ts";
+import { useMe } from "./session.ts";
 
 const VIA = { canvas: "on the canvas", call: "on a call", chat: "in a card's conversation" } as const;
 
@@ -37,6 +38,9 @@ export function Note(props: {
 }) {
   const { note } = props;
   const ref = useRef<HTMLDivElement>(null);
+  // On a shared canvas, a note someone else left says who.
+  const me = useMe().user?.id;
+  const author = note.by === "librarian" ? "Librarian" : note.author && me && note.author.id !== me ? note.author.name : "You";
   const [editing, setEditing] = useState(Boolean(props.editing));
   const [text, setText] = useState(note.text);
   const [open, setOpen] = useState(false);
@@ -125,7 +129,7 @@ export function Note(props: {
       {!props.editing && (
         <div className="note-meta">
           <span className="note-info">
-            <span className="note-who">{who(note.by)}</span>
+            <span className="note-who">{author}</span>
             {" "}
             <span title={new Date(note.at).toLocaleString()}>{when(note.at)}</span>
             {note.on && props.aboutName && (
@@ -152,7 +156,7 @@ export function Note(props: {
       {open && (
         <div className="note-history">
           <p className="note-context">
-            {who(note.by) === "You" ? "You left this" : "The librarian left this"} {VIA[note.context.via]}, {when(note.at)}
+            {author === "You" ? "You left this" : author === "Librarian" ? "The librarian left this" : `${author} left this`} {VIA[note.context.via]}, {when(note.at)}
             {note.context.said ? (
               <>
                 , after {note.context.via === "call" || note.context.via === "chat" ? "you said" : "the ask"} <q>{note.context.said}</q>

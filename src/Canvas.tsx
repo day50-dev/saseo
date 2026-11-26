@@ -1,6 +1,7 @@
 import { GoalsPanel } from "./GoalsPanel.tsx";
+import { ChangesPanel, colourFor, names, ShareDialog } from "./Sharing.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, type Rect, type RegionItem, VIDEO_WIDTH } from "../shared/canvas.ts";
+import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type Change, type Member, type Role, type ShareLink, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, type Rect, type RegionItem, VIDEO_WIDTH } from "../shared/canvas.ts";
 import { Note } from "./Note.tsx";
 import { Card, type Side } from "./Card.tsx";
 import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
@@ -122,6 +123,17 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const api = useMemo(() => canvasApi(canvasId), [canvasId]);
   const [name, setName] = useState("");
   const [trashedAt, setTrashedAt] = useState<string | undefined>();
+  // Sharing: what you can do here, who else is on it, and (for its owner) the links to it.
+  const [role, setRole] = useState<Role>("owner");
+  const [members, setMembers] = useState<Member[]>([]);
+  const [links, setLinks] = useState<ShareLink[]>([]);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [seq, setSeq] = useState(0);
+  // What others did since you last looked: still to go through, and whether the list is open.
+  const [changes, setChanges] = useState<Change[] | null>(null);
+  const [latestSeen, setLatestSeen] = useState(0);
+  const [reviewing, setReviewing] = useState(false);
+  const viewOnly = role === "viewer";
   const [notFound, setNotFound] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -211,6 +223,10 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       const s = await api.state();
       setName(s.name);
       setTrashedAt(s.trashedAt);
+      setRole(s.role ?? "owner");
+      setMembers(s.members ?? []);
+      setLinks(s.links ?? []);
+      setSeq(s.seq);
       // Hidden items stay in the log (undo can bring them back) but aren't drawn or laid out around.
       setItems(s.items.filter((i) => !i.hidden));
       setGoals(s.goals ?? []);
@@ -246,6 +262,48 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     const t = setInterval(refresh, drawing ? 350 : 1000);
     return () => clearInterval(t);
   }, [pending, drawing, refresh]);
+  // A shared canvas can change under you: look for others' changes every few seconds.
+  const shared = role !== "owner" || members.length > 0;
+  useEffect(() => {
+    if (!shared || pending) return;
+    const t = setInterval(refresh, 3000);
+    return () => clearInterval(t);
+  }, [shared, pending, refresh]);
+
+  // Coming back: what others did since you last looked.
+  useEffect(() => {
+    api.since().then((r) => {
+      setChanges(r.changes);
+      setLatestSeen(r.latest);
+    }, () => setChanges([]));
+  }, [api]);
+  // With nothing left to go through, what's here now counts as seen (a few seconds at a time).
+  const seenSent = useRef(0);
+  useEffect(() => {
+    if (changes === null || changes.length > 0 || seq <= seenSent.current) return;
+    const t = setTimeout(() => {
+      seenSent.current = seq;
+      void api.seen(seq).catch(() => {});
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [changes, seq, api]);
+  const keepChange = (c: Change) => setChanges((all) => (all ?? []).filter((x) => x !== c));
+  const undoChange = async (c: Change) => {
+    try {
+      if (c.what === "added") await api.hide([c.id]);
+      else if (c.what === "removed") await api.show([c.id]);
+      else if (c.what === "moved" && c.before) await api.move([{ id: c.id, x: c.before.x, y: c.before.y }]);
+      keepChange(c);
+      await refresh();
+    } catch (e) {
+      setError(`Couldn't undo that: ${e}`);
+    }
+  };
+  const doneReviewing = () => {
+    setReviewing(false);
+    setChanges([]);
+    void api.seen(Math.max(latestSeen, seq)).catch(() => {});
+  };
 
   useEffect(() => saveView(canvasId, view), [canvasId, view]);
 
@@ -1399,6 +1457,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         <span className="muted">/</span>
         <CanvasName name={name} onRename={rename} />
         <CanvasSwitcher currentId={canvasId} />
+        {role !== "owner" && (
+          <span className="role-chip" title={viewOnly ? "Shared with you to look at" : "Shared with you: what you change is marked as yours"}>
+            {viewOnly ? "View only" : "Shared with you"}
+          </span>
+        )}
         {admin && (
           <a {...linkTo("/settings")} className="muted small">
             Settings
@@ -1414,6 +1477,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         </span>
         <span className="spacer" />
         {/* Making: what goes on the canvas, and the call that does it with you. */}
+        {!viewOnly && (
         <div className="tb-group" role="group" aria-label="Add to the canvas">
           {/* Always in its place: on an empty canvas the start box is already open in the middle, so it's only disabled. */}
           <button
@@ -1439,6 +1503,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             </button>
           )}
         </div>
+        )}
         {/* Moving around: the tool, and the zoom. */}
         <div className="tb-group" role="group" aria-label="View">
           <div className="modes" role="radiogroup" aria-label="Canvas tool">
@@ -1470,6 +1535,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           </button>
         </div>
         {/* Editing: undo, and tidying up what's there. */}
+        {!viewOnly && (
         <div className="tb-group" role="group" aria-label="Edit">
           <div className="history">
             <button type="button" className="secondary" aria-label="Undo" disabled={!nextUndo} title={nextUndo ? `Undo ${nextUndo.label} (Ctrl+Z)` : "Nothing to undo"} onClick={undo}>
@@ -1502,6 +1568,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             Untangle
           </button>
         </div>
+        )}
         {/* The panel on the side. */}
         <div className="tb-group" role="group" aria-label="Goals">
           <button
@@ -1517,8 +1584,24 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           >
             Goals{openGoals ? ` · ${openGoals}` : ""}
           </button>
+          {role === "owner" && me.accounts && (
+            <button type="button" className={shareOpen ? "on share-btn" : "secondary share-btn"} title="Share this canvas with someone" onClick={() => setShareOpen(!shareOpen)}>
+              Share{members.length ? ` · ${members.length}` : ""}
+            </button>
+          )}
         </div>
       </div>
+      {changes && changes.length > 0 && !reviewing && (
+        <div className="banner changes-banner">
+          {names(changes)} made {changes.length} change{changes.length > 1 ? "s" : ""} since you were last here.{" "}
+          <button type="button" className="link" onClick={() => setReviewing(true)}>
+            Go through them
+          </button>{" "}
+          <button type="button" className="link" onClick={doneReviewing}>
+            Keep them all
+          </button>
+        </div>
+      )}
       {trashedAt && (
         <div className="banner">
           This canvas is in the trash. Nothing on it is deleted.{" "}
@@ -1590,6 +1673,23 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           // --zoom lets handles keep the same size on screen at any zoom.
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, ["--zoom" as string]: view.scale }}
         >
+          {/* What others changed since you last looked, outlined in their colour until gone through. */}
+          {(changes ?? []).map((c) => {
+            const item = byId.get(c.id);
+            if (!item || item.kind === "region" || c.what === "removed" || c.what === "goal") return null;
+            const h = item.kind === "card" ? cardHeight(item) : item.kind === "note" ? (heights[item.id] ?? item.h ?? 70) : item.h;
+            return (
+              <div
+                key={`${c.what}:${c.id}`}
+                className="change-mark"
+                style={{ left: item.x - 6, top: item.y - 6, width: item.w + 12, height: h + 12, ["--who" as string]: colourFor(c.by.id) }}
+              >
+                <span className="change-tag">
+                  {c.by.name} {c.what === "added" ? "added this" : c.what === "moved" ? "moved this" : c.what === "restored" ? "put this back" : "changed this"}
+                </span>
+              </div>
+            );
+          })}
           <svg className="connectors">
             {connectors}
             {noteLines}
@@ -1921,6 +2021,35 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             setFocusNext(id);
             void refresh();
           }} onClose={() => setCalling(false)} />}
+      {reviewing && changes && (
+        <ChangesPanel
+          changes={changes}
+          onShow={(c) => focusOn(c.id)}
+          onUndo={undoChange}
+          onKeep={keepChange}
+          onDone={doneReviewing}
+        />
+      )}
+      {shareOpen && (
+        <ShareDialog
+          name={name}
+          links={links}
+          members={members}
+          onAddLink={async (r) => {
+            await api.addLink(r);
+            await refresh();
+          }}
+          onRemoveLink={async (t) => {
+            await api.removeLink(t);
+            await refresh();
+          }}
+          onRemoveMember={async (id) => {
+            await api.removeMember(id);
+            await refresh();
+          }}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
       {goalsOpen && (
         <GoalsPanel
           goals={goals}

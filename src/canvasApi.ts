@@ -1,6 +1,6 @@
 import { unreachable } from "./api.ts";
 export type { NoteHistory } from "../shared/canvas.ts";
-import type { NoteHistory, NoteItem, CanvasInfo, CanvasState, CanvasSummary, CardItem, Extension, Goal, ImageItem, NotebookCell, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
+import type { Change, Role, ShareLink, NoteHistory, NoteItem, CanvasInfo, CanvasState, CanvasSummary, CardItem, Extension, Goal, ImageItem, NotebookCell, ImageSource, Rect, RegionItem } from "../shared/canvas.ts";
 
 async function json<T>(res: Response): Promise<T> {
   if (res.status === 401) location.reload();
@@ -28,6 +28,11 @@ export const canvasesApi = {
   duplicate: (id: string) => post(`/api/canvases/${id}/duplicate`, {}).then((r) => json<CanvasInfo>(r)),
   /** For good: the canvas and its history are erased. */
   remove: (id: string) => send("DELETE", `/api/canvases/${id}`, {}).then((r) => json<{ ok: true }>(r)),
+  /** What a share link is to, before joining. */
+  joinInfo: (token: string) =>
+    fetch(`/api/join/${encodeURIComponent(token)}`).then((r) => json<{ name: string; ownerName: string; role: ShareLink["role"]; already: Role | null }>(r)),
+  /** Joins a canvas someone shared, under the name given (for a visitor not signed in). */
+  join: (token: string, name: string) => post(`/api/join/${encodeURIComponent(token)}`, { name }).then((r) => json<{ id: string; name: string }>(r)),
 };
 
 export class CanvasNotFound extends Error {}
@@ -39,8 +44,18 @@ export function canvasApi(cid: string) {
     state: () =>
       fetch(base).then((r) => {
         if (r.status === 404) throw new CanvasNotFound(cid);
-        return json<CanvasState & CanvasInfo>(r);
+        return json<CanvasState & CanvasInfo & { role: Role }>(r);
       }),
+
+    // ---- Sharing ----
+    /** A link to share it with (the owner only). */
+    addLink: (role: ShareLink["role"]) => post(`${base}/links`, { role }).then((r) => json<ShareLink>(r)),
+    removeLink: (token: string) => send("DELETE", `${base}/links/${encodeURIComponent(token)}`, {}).then((r) => json<{ ok: true }>(r)),
+    removeMember: (id: string) => send("DELETE", `${base}/members/${encodeURIComponent(id)}`, {}).then((r) => json<{ ok: true }>(r)),
+    /** What other people did since you last looked. */
+    since: () => fetch(`${base}/since`).then((r) => json<{ since: number; latest: number; changes: Change[] }>(r)),
+    /** You've seen everything up to `seq`. */
+    seen: (seq: number) => post(`${base}/seen`, { seq }).then((r) => json<{ ok: true }>(r)),
 
     addImage: (
       file: File,

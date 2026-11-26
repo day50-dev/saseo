@@ -1,10 +1,13 @@
 // Canvases: each is an append-only log (data/canvases/<id>.jsonl) named in data/canvases/index.json.
 // Image assets (data/assets/) are shared, stored by content hash.
-import { createHash, randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { appendFile, copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  type Actor,
   type CanvasEvent,
+  type Change,
   CARD_MAX_WIDTH,
   CARD_MIN_WIDTH,
   type CanvasInfo,
@@ -17,6 +20,8 @@ import {
   type Move,
   type ReaderNote,
   RETRY_TRIES,
+  type Role,
+  type ShareLink,
 } from "../shared/canvas.ts";
 
 export const DATA_DIR = process.env.LIBRARIAN_DATA ?? path.resolve("data");
@@ -145,11 +150,141 @@ export const addReaderNote = (id: string, note: ReaderNote) =>
     if (info) info.reader = [...(info.reader ?? []), note].slice(-12);
   });
 
-/** Gives every canvas one person owns to another: an anonymous visitor's, when they sign in. */
+/** Gives everything one person has to another: an anonymous visitor's, when they sign in. */
 export const transferCanvases = (from: string, to: string) =>
   changeIndex((list) => {
-    for (const info of list) if (info.owner === from) info.owner = to;
+    for (const info of list) {
+      if (info.owner === from) info.owner = to;
+      for (const m of info.members ?? []) if (m.id === from) m.id = to;
+      if (info.seen && from in info.seen) {
+        info.seen[to] = Math.max(info.seen[to] ?? 0, info.seen[from]);
+        delete info.seen[from];
+      }
+    }
   });
+
+// ---- Sharing ----
+
+/**
+ * Who is acting, for the length of a request and all the work it starts (cards written, shapes
+ * grown): every event recorded meanwhile says who it was by.
+ */
+export const actor = new AsyncLocalStorage<Actor>();
+
+/** A new link that lets whoever has it join as an editor or a viewer. */
+export const addShareLink = (id: string, role: ShareLink["role"], owner: Actor) =>
+  changeIndex((list) => {
+    const info = list.find((c) => c.id === id);
+    if (!info) return null;
+    const link: ShareLink = { token: randomBytes(12).toString("base64url"), role, createdAt: new Date().toISOString() };
+    info.links = [...(info.links ?? []), link];
+    info.ownerName = owner.name;
+    return link;
+  });
+
+/** Stops a link working. Whoever already joined with it stays. */
+export const removeShareLink = (id: string, token: string) =>
+  changeIndex((list) => {
+    const info = list.find((c) => c.id === id);
+    const before = info?.links?.length ?? 0;
+    if (info) info.links = (info.links ?? []).filter((l) => l.token !== token);
+    return Boolean(info && (info.links?.length ?? 0) < before);
+  });
+
+/** Joins whoever has a link: as its role, or (already a member) at the better of the two. */
+export const joinByLink = (token: string, who: Actor) =>
+  changeIndex((list) => {
+    const info = list.find((c) => !c.trashedAt && c.links?.some((l) => l.token === token));
+    if (!info) return null;
+    const role = info.links!.find((l) => l.token === token)!.role;
+    if (info.owner === who.id) return info;
+    const members = (info.members ??= []);
+    const m = members.find((x) => x.id === who.id);
+    if (m) {
+      if (role === "editor") m.role = "editor";
+      m.name = who.name || m.name;
+    } else members.push({ id: who.id, name: who.name, role, joinedAt: new Date().toISOString() });
+    return info;
+  });
+
+/** Takes someone off a canvas. */
+export const removeMember = (id: string, memberId: string) =>
+  changeIndex((list) => {
+    const info = list.find((c) => c.id === id);
+    const before = info?.members?.length ?? 0;
+    if (info) info.members = (info.members ?? []).filter((m) => m.id !== memberId);
+    return Boolean(info && (info.members?.length ?? 0) < before);
+  });
+
+/** What someone may do on a canvas, or null if they can't open it. */
+export function roleOf(info: CanvasInfo, user: { id: string; admin: boolean }, accountsOn: boolean): Role | null {
+  if (!accountsOn || info.owner === user.id || (!info.owner && user.admin)) return "owner";
+  return info.members?.find((m) => m.id === user.id)?.role ?? null;
+}
+
+/** Remembers that someone has seen the canvas up to `seq`. */
+export const markSeen = (id: string, userId: string, seq: number) =>
+  changeIndex((list) => {
+    const info = list.find((c) => c.id === id);
+    if (!info) return;
+    const seen = (info.seen ??= {});
+    seen[userId] = Math.max(seen[userId] ?? 0, seq);
+  });
+
+/** What a thing on the canvas is called, for a list of changes. */
+function labelOf(item: Item | undefined): string {
+  if (!item) return "something";
+  const cut = (t: string) => (t.length > 60 ? `${t.slice(0, 60)}…` : t);
+  if (item.kind === "card") return cut(item.subject ?? item.selection ?? item.origin?.title ?? "a card");
+  if (item.kind === "note") return cut(`note: ${item.text}`);
+  if (item.kind === "image") return cut(item.video?.title ?? item.source?.title ?? item.name ?? "an image");
+  return "a box";
+}
+
+/**
+ * What other people did after `since`, one entry per thing and kind of change (the newest time
+ * and person). Work done for a change (a card being written after it was added) belongs to it.
+ */
+export function changesSince(events: LoggedEvent[], since: number, me: string, items: Item[]): Change[] {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const pos = new Map<string, { x: number; y: number }>();
+  const out = new Map<string, Change>();
+  const addedHere = new Set<string>();
+  const put = (id: string, what: Change["what"], e: LoggedEvent, before?: { x: number; y: number }) => {
+    const key = `${what}:${id}`;
+    const had = out.get(key);
+    // Removing something added meanwhile cancels both; putting back something removed meanwhile too.
+    if (what === "removed" && out.has(`added:${id}`)) return void out.delete(`added:${id}`);
+    if (what === "restored" && out.has(`removed:${id}`)) return void out.delete(`removed:${id}`);
+    out.set(key, { id, what, by: e.by!, at: e.at, label: labelOf(byId.get(id)), ...(had?.before ?? before ? { before: had?.before ?? before } : {}) });
+  };
+  for (const e of events) {
+    const ev = e.event;
+    const theirs = e.seq > since && e.by && e.by.id !== me;
+    if (ev.type === "add" && "x" in ev.item) pos.set(ev.item.id, { x: ev.item.x, y: ev.item.y });
+    if (ev.type === "move") {
+      for (const m of ev.moves) {
+        if (theirs && !addedHere.has(m.id)) put(m.id, "moved", e, pos.get(m.id));
+        pos.set(m.id, { x: m.x, y: m.y });
+      }
+      continue;
+    }
+    if (!theirs) continue;
+    if (ev.type === "add") {
+      addedHere.add(ev.item.id);
+      put(ev.item.id, "added", e);
+    } else if (ev.type === "hide" || ev.type === "show") {
+      for (const id of ev.ids) put(id, ev.type === "hide" ? "removed" : "restored", e);
+    } else if ((ev.type === "update" || ev.type === "chat") && !addedHere.has(ev.id)) {
+      // The server's own bookkeeping on a card (stages, retries) isn't someone changing it.
+      if (ev.type === "update" && !("ext" in ev.patch || "text" in ev.patch || "chat" in ev.patch || "sem" in ev.patch || "object" in ev.patch)) continue;
+      put(ev.id, "changed", e);
+    } else if (ev.type === "goal") put(ev.goal.id, "goal", { ...e }, undefined);
+  }
+  // Goals aren't items: they're named by their text.
+  for (const c of out.values()) if (c.what === "goal") c.label = "a goal";
+  return [...out.values()].sort((a, b) => a.at.localeCompare(b.at));
+}
 
 /** A new canvas holding a copy of everything on another, as of now. */
 export async function duplicateCanvas(id: string, owner?: string): Promise<CanvasInfo | null> {
@@ -299,9 +434,10 @@ export class CanvasStore {
   }
 
   record(event: CanvasEvent): Promise<LoggedEvent> {
+    const by = actor.getStore();
     const run = this.queue.then(async () => {
       const s = await this.getState();
-      const logged: LoggedEvent = { seq: s.seq + 1, at: new Date().toISOString(), event };
+      const logged: LoggedEvent = { seq: s.seq + 1, at: new Date().toISOString(), event, ...(by ? { by } : {}) };
       await mkdir(CANVAS_DIR, { recursive: true });
       await appendFile(this.logPath, `${JSON.stringify(logged)}\n`);
       apply(s, logged);

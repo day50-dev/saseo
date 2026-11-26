@@ -6,11 +6,11 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
-import { CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type CardItem, type Goal, type ImageItem, type NoteItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type Role, type CardItem, type Goal, type ImageItem, type NoteItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { remember } from "./pagecache.ts";
 import { pdfLink, servesPdf, slicePdf } from "./pdf.ts";
-import { addReaderNote, assetPath, autoName, DATA_DIR, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
+import { actor, addReaderNote, addShareLink, assetPath, autoName, changesSince, DATA_DIR, joinByLink, markSeen, removeMember, removeShareLink, roleOf, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
 import { besideOf, type CallContext, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
@@ -51,8 +51,39 @@ app.use("/api/test/*", adminOnly);
 app.use("/api/models/*", adminOnly);
 app.use("/api/search", adminOnly);
 
-/** Who may open a canvas: its owner; for one from before accounts, an admin; everyone, with accounts off. */
-const canOpen = (info: CanvasInfo, user: User) => !AUTH_ON || info.owner === user.id || (!info.owner && user.admin);
+/**
+ * Who may open a canvas: its owner (for one from before accounts, an admin; everyone, with accounts
+ * off), and whoever it's shared with.
+ */
+const canOpen = (info: CanvasInfo, user: User) => roleOf(info, user, AUTH_ON) !== null;
+
+/** A canvas's details as someone with this role may see them: links only for its owner, nobody's read marks. */
+function infoFor(info: CanvasInfo, role: Role) {
+  const { links, seen, ...rest } = info;
+  return { ...rest, role, ...(role === "owner" ? { links: links ?? [] } : {}) };
+}
+
+/** The name someone goes by on a canvas: what they gave when they joined, or their account's. */
+const nameOn = (info: CanvasInfo, user: User) => info.members?.find((m) => m.id === user.id)?.name || user.name || "Someone";
+
+// On a canvas: someone it's shared with to view can look but not change anything, and everything
+// done for a request (and the work it starts) is recorded as done by whoever asked.
+const onCanvas = async (c: Context<{ Variables: { user: User } }>, next: Next) => {
+  const info = await getCanvasInfo(c.req.param("cid") ?? "");
+  const user = c.get("user");
+  const role = info ? roleOf(info, user, AUTH_ON) : null;
+  if (!info || !role) return next();
+  if (role === "viewer" && c.req.method !== "GET") return c.json({ error: "you can only view this canvas" }, 403);
+  return actor.run({ id: user.id, name: nameOn(info, user) }, next);
+};
+app.use("/api/canvases/:cid", onCanvas);
+app.use("/api/canvases/:cid/*", onCanvas);
+
+/** Only the canvas's owner may do this (share it, trash or delete it). */
+async function ownerOnly(c: Context<{ Variables: { user: User } }>) {
+  const info = await getCanvasInfo(c.req.param("cid") ?? "");
+  return info && roleOf(info, c.get("user"), AUTH_ON) === "owner" ? info : null;
+}
 
 /** The store for a canvas this user may open, or undefined, which every route answers as not found. */
 async function canvasFor(c: Context<{ Variables: { user: User } }>): Promise<CanvasStore | undefined> {
@@ -136,7 +167,7 @@ app.get("/api/canvases", async (c) => {
       const name = info.name === DEFAULT_NAME ? nameFromItems(state.items) : "";
       if (name) info = (await autoName(info.id, name)) ?? info;
       return {
-        ...info,
+        ...infoFor(info, roleOf(info, user, AUTH_ON)!),
         updatedAt: state.updatedAt ?? info.createdAt,
         cards: visible.filter((i) => i.kind === "card").length,
         pages: visible.filter((i) => i.kind === "image").length,
@@ -155,6 +186,7 @@ app.post("/api/canvases", async (c) => {
 app.patch("/api/canvases/:cid", async (c) => {
   const { name, trashed } = (await c.req.json()) as { name?: string; trashed?: boolean };
   if (!(await canvasFor(c))) return c.json({ error: "unknown canvas" }, 404);
+  if (typeof trashed === "boolean" && !(await ownerOnly(c))) return c.json({ error: "only its owner can do that" }, 403);
   const info = await updateCanvas(c.req.param("cid"), { name, trashed: typeof trashed === "boolean" ? trashed : undefined });
   return info ? c.json(info) : c.json({ error: "unknown canvas" }, 404);
 });
@@ -162,6 +194,7 @@ app.patch("/api/canvases/:cid", async (c) => {
 // Deletes a canvas for good. The client asks first; this can't be undone.
 app.delete("/api/canvases/:cid", async (c) => {
   if (!(await canvasFor(c))) return c.json({ error: "unknown canvas" }, 404);
+  if (!(await ownerOnly(c))) return c.json({ error: "only its owner can do that" }, 403);
   return (await deleteCanvas(c.req.param("cid"))) ? c.json({ ok: true }) : c.json({ error: "unknown canvas" }, 404);
 });
 
@@ -181,7 +214,74 @@ app.get("/api/canvases/:cid", async (c) => {
     const name = nameFromItems(view.items);
     if (name) info = (await autoName(store.id, name)) ?? info;
   }
-  return c.json({ ...info, ...view });
+  return c.json({ ...infoFor(info!, roleOf(info!, c.get("user"), AUTH_ON)!), ...view });
+});
+
+// ---- Sharing ----
+
+// A link anyone can join with, as an editor or a viewer. Only the owner makes or removes them.
+app.post("/api/canvases/:cid/links", async (c) => {
+  const info = await ownerOnly(c);
+  if (!info) return c.json({ error: "only its owner can share it" }, 403);
+  const { role } = (await c.req.json().catch(() => ({}))) as { role?: string };
+  if (role !== "editor" && role !== "viewer") return c.json({ error: "role is editor or viewer" }, 400);
+  const user = c.get("user");
+  return c.json(await addShareLink(info.id, role, { id: user.id, name: user.name || "The owner" }));
+});
+
+app.delete("/api/canvases/:cid/links/:token", async (c) => {
+  const info = await ownerOnly(c);
+  if (!info) return c.json({ error: "only its owner can do that" }, 403);
+  return (await removeShareLink(info.id, c.req.param("token"))) ? c.json({ ok: true }) : c.json({ error: "no such link" }, 404);
+});
+
+app.delete("/api/canvases/:cid/members/:uid", async (c) => {
+  const info = await ownerOnly(c);
+  if (!info) return c.json({ error: "only its owner can do that" }, 403);
+  return (await removeMember(info.id, c.req.param("uid"))) ? c.json({ ok: true }) : c.json({ error: "not a member" }, 404);
+});
+
+// What a link is to, before joining: the canvas's name, who shared it, and what it lets you do.
+app.get("/api/join/:token", async (c) => {
+  const token = c.req.param("token");
+  const info = (await listCanvases()).find((x) => !x.trashedAt && x.links?.some((l) => l.token === token));
+  if (!info) return c.json({ error: "that link doesn't work any more" }, 404);
+  const role = info.links!.find((l) => l.token === token)!.role;
+  return c.json({ name: info.name, ownerName: info.ownerName ?? "Someone", role, already: roleOf(info, c.get("user"), AUTH_ON) });
+});
+
+// Joining with a link: the canvas is then in your list. A visitor not signed in gives a name, so
+// the owner can tell who changed what.
+app.post("/api/join/:token", async (c) => {
+  const user = c.get("user");
+  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string };
+  const given = typeof name === "string" ? name.trim().replace(/\s+/g, " ").slice(0, 60) : "";
+  const info = await joinByLink(c.req.param("token"), { id: user.id, name: given || user.name || "Someone" });
+  return info ? c.json({ id: info.id, name: info.name }) : c.json({ error: "that link doesn't work any more" }, 404);
+});
+
+// What other people did here since you last looked; the first time, nothing (you've seen it as it is).
+app.get("/api/canvases/:cid/since", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const info = (await getCanvasInfo(store.id))!;
+  const me = c.get("user").id;
+  const state = await store.getState();
+  const since = info.seen?.[me];
+  if (since === undefined) {
+    await markSeen(store.id, me, state.seq);
+    return c.json({ since: state.seq, latest: state.seq, changes: [] });
+  }
+  return c.json({ since, latest: state.seq, changes: changesSince(await store.events(), since, me, state.items) });
+});
+
+app.post("/api/canvases/:cid/seen", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const { seq } = (await c.req.json().catch(() => ({}))) as { seq?: number };
+  const latest = (await store.getState()).seq;
+  await markSeen(store.id, c.get("user").id, Math.min(typeof seq === "number" ? seq : latest, latest));
+  return c.json({ ok: true });
 });
 
 app.get("/api/assets/:name", async (c) => {

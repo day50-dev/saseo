@@ -2,7 +2,7 @@
 // is, never explained; what it keeps is its context (who, when, about what, after what), so it can
 // just sit there, or be looked into: its history is the canvas's own log up to the moment it was left.
 import { type CardItem, type Item, type LoggedEvent, NOTE_WIDTH, type NoteHistory, type NoteItem, type NoteVia } from "../shared/canvas.ts";
-import { type CanvasStore, newId } from "./canvas.ts";
+import { actor, type CanvasStore, newId } from "./canvas.ts";
 
 const clean = (t: unknown, max = 4000) => (typeof t === "string" ? t.replace(/\r/g, "").trim().slice(0, max) : "");
 
@@ -61,6 +61,7 @@ export async function addNote(store: CanvasStore, n: NewNote): Promise<NoteItem 
     id: newId(),
     text,
     by: n.by,
+    ...(actor.getStore() ? { author: actor.getStore() } : {}),
     at: new Date().toISOString(),
     ...at,
     w: Math.round(Math.min(1200, Math.max(160, n.w ?? NOTE_WIDTH))),

@@ -154,3 +154,11 @@ Each feature has an ID. The tests carry the same ID in their `describe` names, s
 | F-MATH | Math that real LaTeX reads but KaTeX doesn't is mended before it's shown raw: an accent on a macro, as Wikipedia writes it (`\dot\boldsymbol{q}`), is braced (`\dot{\boldsymbol{q}}`). A closing `\)` or `\]` left in plain text with nothing to close (models move delimiters when restructuring) is dropped. | `unit/tex` |
 
 **Not covered automatically:** GitHub and Google sign-in; finding videos, reading, papers and notebooks (they need web search); running a notebook in the browser (Pyodide).
+
+## F-SHARE: sharing a canvas, and coming back to what others changed
+
+| ID | What | Tests |
+| --- | --- | --- |
+| F-SHARE | The owner makes a link from Share, letting whoever has it add and change things, or only look. A visitor opening it sees who shared what, gives a name, and joins; the canvas is then in their list. Only the owner makes or removes links, takes people off, trashes or deletes. A viewer can't change anything, and sees no controls for it. | `api/sharing`, `browser/sharing` |
+| F-SHARE-BY | Every change is recorded with who made it, including the librarian's work done for their request. Notes say who left them. | `api/sharing`, `browser/sharing` |
+| F-SHARE-SINCE | Coming back, a bar says who changed how much since you last looked. Going through them lists each (added, moved, removed, put back, changed), outlines it on the canvas in that person's colour, and offers Undo where there's a plain way back (remove what was added, put back what was removed or moved) and Keep. Your own changes are never news; something added and removed meanwhile isn't either. | `api/sharing`, `browser/sharing` |

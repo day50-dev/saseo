@@ -1159,3 +1159,45 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .set-tile.unverified .set-pic { border-style: dashed; }
 .set-caption { margin: 6px 0 0; }
 @media (max-width: 600px) { .card-set { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---- Sharing ---- */
+.role-chip { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 1px 9px; white-space: nowrap; flex-shrink: 0; }
+.share-dialog { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; width: min(620px, 100%); max-height: calc(100vh - 120px); overflow: auto; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2); }
+.share-head { display: flex; justify-content: space-between; align-items: center; }
+.share-head h2 { margin: 0; font-size: 18px; }
+.share-head .link { font-size: 22px; line-height: 1; }
+.share-dialog h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 18px 0 6px; }
+.share-new { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.share-links, .share-members { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.share-links li { display: flex; align-items: center; gap: 8px; }
+.share-links input { flex: 1; min-width: 0; font-size: 13px; }
+.share-role { font-size: 12px; color: var(--muted); width: 62px; flex-shrink: 0; }
+.share-members li { display: flex; align-items: center; gap: 8px; }
+.share-members .link { margin-left: auto; }
+.who-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+/* What others changed since you last looked. */
+.changes-banner { cursor: default; background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.change-mark {
+  position: absolute; pointer-events: none; z-index: 1; border: 2px dashed var(--who); border-radius: 10px;
+}
+.change-tag {
+  position: absolute; left: 8px; top: calc(-12px / var(--zoom, 1)); transform-origin: left center; transform: scale(calc(1 / var(--zoom, 1)));
+  background: var(--who); color: #fff; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px; white-space: nowrap;
+}
+.changes-panel {
+  position: fixed; top: 52px; right: 0; bottom: 0; z-index: 1999999; width: min(380px, 92vw);
+  background: var(--card); border-left: 1px solid var(--line); box-shadow: -6px 0 24px rgba(0, 0, 0, 0.12);
+  display: flex; flex-direction: column; padding: 10px 0; overflow-y: auto;
+}
+.changes-head { display: flex; align-items: center; justify-content: space-between; padding: 0 14px 8px; }
+.changes-head h2 { margin: 0; font-size: 16px; }
+.changes-panel ul { list-style: none; margin: 0; padding: 0 10px; display: flex; flex-direction: column; gap: 8px; }
+.changes-panel li { border-left: 4px solid; padding: 6px 8px; background: color-mix(in srgb, var(--line) 25%, var(--card)); border-radius: 4px; font-size: 14px; }
+.changes-panel .change-label { text-align: left; }
+.change-actions { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.change-actions .muted { margin-right: auto; }
+.change-actions button { font-size: 12px; padding: 2px 10px; }
+.join h1 { margin-bottom: 4px; }
+.join form { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; margin-top: 16px; }
+.join-name { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }

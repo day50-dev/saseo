@@ -93,6 +93,8 @@ export interface NoteItem extends ItemState {
   id: string;
   text: string;
   by: "you" | "librarian";
+  /** The person who left it (or asked the librarian to), on a shared canvas. */
+  author?: Actor;
   /** When it was left. */
   at: string;
   x: number;
@@ -613,10 +615,59 @@ export interface CanvasInfo {
   trashedAt?: string;
   /** What the reader has told the librarian about their goal and background on this canvas. */
   reader?: ReaderNote[];
+  /** The owner's name, as others see it. */
+  ownerName?: string;
+  /** People it's shared with, besides its owner. */
+  members?: Member[];
+  /** Links that let whoever has them join, as an editor or a viewer. Only the owner sees these. */
+  links?: ShareLink[];
+  /** How far into the log each person (by id) has looked: what came after is new to them. */
+  seen?: Record<string, number>;
+}
+
+/** What someone can do on a canvas: everything (its owner), add and change things, or only look. */
+export type Role = "owner" | "editor" | "viewer";
+
+/** Someone a canvas is shared with. */
+export interface Member {
+  id: string;
+  name: string;
+  role: "editor" | "viewer";
+  joinedAt: string;
+}
+
+/** A link that lets whoever has it join a canvas. */
+export interface ShareLink {
+  token: string;
+  role: "editor" | "viewer";
+  createdAt: string;
+}
+
+/** Who did something on a canvas: a person, or (later) an agent. */
+export interface Actor {
+  id: string;
+  name: string;
+}
+
+/**
+ * Something someone else did on a canvas since you last looked, per thing it touched: added it,
+ * removed it, put it back, moved it, changed it (a note reworded, a card grown or asked about), or
+ * a goal. `before` is where a moved thing was, so the move can be undone.
+ */
+export interface Change {
+  id: string;
+  what: "added" | "removed" | "restored" | "moved" | "changed" | "goal";
+  by: Actor;
+  at: string;
+  /** The thing's name as the canvas shows it. */
+  label: string;
+  before?: { x: number; y: number };
 }
 
 /** A canvas as the list shows it: its name, plus what it holds and when it last changed. */
 export interface CanvasSummary extends CanvasInfo {
+  /** What you can do on it. */
+  role: Role;
   updatedAt: string;
   cards: number;
   pages: number;
@@ -626,6 +677,8 @@ export interface LoggedEvent {
   seq: number;
   at: string;
   event: CanvasEvent;
+  /** Who did it (or asked for the work that did it). Absent for the server's own work, and in old logs. */
+  by?: Actor;
 }
 
 export interface CanvasState {
