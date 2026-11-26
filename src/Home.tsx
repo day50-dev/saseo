@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Logo } from "./Logo.tsx";
 import type { CanvasSummary, Sem } from "../shared/canvas.ts";
-import { Examples, giveTypedStart, StartBox } from "./Canvas.tsx";
+import { Examples } from "./Canvas.tsx";
 import { canvasesApi } from "./canvasApi.ts";
 import type { Example } from "./examples.ts";
 import { SemShapes } from "./SemShapes.tsx";
@@ -90,29 +90,12 @@ export function Home() {
           )}
         </span>
       </header>
-      {/* The question and its box come first; what Saseo is folds away below them. */}
-      <section className="home-start">
-        <h2>What's confusing you?</h2>
-        <StartBox
-          big
-          onStart={async (input) => {
-            try {
-              const c = await canvasesApi.create("");
-              giveTypedStart(c.id, input);
-              navigate(`/c/${c.id}`);
-            } catch (err) {
-              setError(String(err));
-            }
-          }}
-        />
-        <p className="muted">
-          Paste the slide, the paper or the lecture link, or just type the words that lost you. Then drag a box over the part
-          that made no sense.{" "}
-          <button type="button" className="link new-canvas" onClick={create}>
-            Or start with an empty canvas
-          </button>
-        </p>
-      </section>
+      {/* One button first: the canvas itself asks what's confusing you. */}
+      <div className="new-canvas home-start">
+        <button type="button" onClick={create}>
+          Start exploring
+        </button>
+      </div>
       {error && (
         <p className="error" onClick={() => setError(null)}>
           {error}
