@@ -184,7 +184,7 @@ a { color: var(--accent); }
 .stage.mode-pan, .stage.mode-pan * { cursor: grab !important; user-select: none; }
 .stage.mode-pan:active, .stage.mode-pan:active * { cursor: grabbing !important; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-.empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 16px; }
+.empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center; overflow-y: auto; text-align: center; padding: 16px; }
 .empty h2 { font-size: 20px; }
 
 .connectors { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
@@ -624,10 +624,14 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
   .canvas-row { flex-wrap: wrap; gap: 2px 12px; }
   .canvas-row .canvas-main { flex: 1 1 100%; min-width: 0; }
   .canvas-actions { opacity: 1 !important; margin-left: -6px; }
-  .toolbar { overflow-x: auto; gap: 10px; padding: 6px 10px; scrollbar-width: none; }
-  .toolbar::-webkit-scrollbar { display: none; }
+  /* A phone: the bar wraps into rows rather than running off the screen, and arranging many cards
+     (restack, untangle) is left to bigger screens. */
+  .toolbar { flex-wrap: wrap; gap: 6px 8px; padding: 6px 10px; }
   .toolbar > * { flex-shrink: 0; }
-  .toolbar .hint, .toolbar .spacer { display: none; }
+  .toolbar .canvas-name { min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toolbar .hint, .toolbar .spacer, .toolbar .tb-group[aria-label="Arrange"] { display: none; }
+  .tb-group + .tb-group { border-left: 0; padding-left: 0; margin-left: 0; }
+  .toolbar .tb-group button { padding: 0 8px; }
   .start-dock { bottom: 10px; }
   .empty h2 { font-size: 22px; }
 }
@@ -1233,3 +1237,15 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 /* The protocol choice for a model endpoint, the same size as the fields around it. */
 .settings label select { display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
 .settings label > small { display: block; margin-top: 4px; }
+
+/* A call on a phone: the controls take two rows (the microphone, voice and pause; then Mute and
+   Hang up side by side) instead of running off the screen, and the log leaves room for the canvas. */
+@media (max-width: 700px) {
+  .call-bar { width: calc(100% - 16px); bottom: calc(8px + env(safe-area-inset-bottom)); padding: 8px 10px; }
+  .call-log { max-height: 28vh; }
+  .call-controls { flex-wrap: wrap; gap: 8px; }
+  .call-voice { flex: 1 1 0; max-width: none; margin-right: 0; }
+  .call-controls .call-spacer { flex: 1 1 0; }
+  .call-controls > .call-mute, .call-controls > .call-end { flex: 1 1 calc(50% - 4px); min-width: 0; }
+  .call-voice { font: inherit; font-size: 13px; }
+}
