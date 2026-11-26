@@ -1226,3 +1226,7 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 /* 사서 drawn properly even where no Korean font is installed: a copy holding just those two glyphs. */
 @font-face { font-family: "Saseo KR"; src: url("/fonts/saseo-ko.woff2") format("woff2"); font-display: swap; unicode-range: U+C0AC, U+C11C; }
 [lang="ko"] { font-family: "Saseo KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; }
+
+/* The administrator password: unlocking Settings, and changing it. */
+.settings .unlock { display: flex; gap: 8px; max-width: 420px; margin: 12px 0; }
+.settings .unlock input { flex: 1; min-width: 0; }

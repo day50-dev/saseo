@@ -12,6 +12,7 @@ import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/prov
 import { remember } from "./pagecache.ts";
 import { pdfLink, servesPdf, slicePdf } from "./pdf.ts";
 import { actor, addReaderNote, transferCanvases, addShareLink, assetPath, autoName, changesSince, DATA_DIR, joinByLink, markSeen, removeMember, removeShareLink, roleOf, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
+import { changePassword, lockedCookie, PASSWORD_FROM_ENV, unlock } from "./admin.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
 import { besideOf, type CallContext, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
@@ -62,13 +63,38 @@ app.use("/api/*", async (c, next) => {
   return next();
 });
 
-// Models, keys and searchers are shared by everyone, so only admins see or change them.
+// Models, keys and searchers are shared by everyone, so only admins (who gave the administrator
+// password, admin.ts) see or change them.
 const adminOnly = async (c: Context<{ Variables: { user: User } }>, next: Next) =>
   c.get("user").admin ? next() : c.json({ error: "only an admin can do that" }, 403);
 app.use("/api/config", adminOnly);
 app.use("/api/test/*", adminOnly);
 app.use("/api/models/*", adminOnly);
 app.use("/api/search", adminOnly);
+app.use("/api/admin/password", adminOnly);
+
+// Unlocking with the administrator password (see admin.ts) marks this browser as an admin's.
+app.post("/api/admin/unlock", async (c) => {
+  const { password } = (await c.req.json().catch(() => ({}))) as { password?: unknown };
+  const cookie = typeof password === "string" ? await unlock(password) : null;
+  if (!cookie) return c.json({ error: "that isn't the administrator password" }, 403);
+  c.header("Set-Cookie", cookie);
+  return c.json({ ok: true });
+});
+app.post("/api/admin/lock", (c) => {
+  c.header("Set-Cookie", lockedCookie());
+  return c.json({ ok: true });
+});
+app.get("/api/admin/password", (c) => c.json({ fromEnv: PASSWORD_FROM_ENV }));
+app.put("/api/admin/password", async (c) => {
+  const { password } = (await c.req.json().catch(() => ({}))) as { password?: unknown };
+  try {
+    c.header("Set-Cookie", changePassword(typeof password === "string" ? password : ""));
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+});
 
 /**
  * Who may open a canvas: its owner (for one from before accounts, an admin; everyone, with accounts

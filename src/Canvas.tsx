@@ -1513,7 +1513,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             {viewOnly ? "View only" : "Shared with you"}
           </span>
         )}
-        {admin && (
+        {(admin || !me.accounts) && (
           <a {...linkTo("/settings")} className="muted small">
             Settings
           </a>

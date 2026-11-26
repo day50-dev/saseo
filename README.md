@@ -140,7 +140,7 @@ npm run dev
 
 Videos need [yt-dlp](https://github.com/yt-dlp/yt-dlp) (a recent one: YouTube's protections change often) and [ffmpeg](https://ffmpeg.org) on the server, and Node for yt-dlp's JavaScript runtime. YouTube sometimes refuses servers as bots ("Sign in to confirm you're not a bot"); then stopping a lecture fails until the server has cookies from a browser signed in to YouTube: export them in Netscape format (yt-dlp's [guide](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)) to `data/youtube-cookies.txt`, or point `LIBRARIAN_YTDLP_COOKIES` at the file. It's picked up within a minute, no restart needed.
 
-Then open http://localhost:5173, set up a model under **Settings**, and press **Test**. For a production build, run `npm run build && npm start`, which serves everything from port 8787.
+Then open http://localhost:5173, set up a model under **Settings**, and press **Test**. Settings asks for the administrator password: the server makes one on first start, prints it, and keeps it in `data/admin-password` (or set your own with `ADMIN_PASSWORD`). It's there so that if you share your copy with someone, they can't read your API keys or point them at their own server. You can change it at the bottom of Settings. For a production build, run `npm run build && npm start`, which serves everything from port 8787.
 
 Tests: `npm test` runs the unit, API and browser tests (headless Chrome), all against a fake model, so nothing leaves the machine. `npm run test:live` checks the real model's judgment. What each feature does, and which test checks it, is in [docs/FEATURES.md](docs/FEATURES.md).
 
@@ -155,7 +155,7 @@ npm install && npm run build
 LIBRARIAN_AUTH=on \
 BETTER_AUTH_URL=https://librarian.example.org \
 BETTER_AUTH_SECRET=$(openssl rand -hex 32) \
-ADMIN_EMAILS=you@example.org \
+ADMIN_PASSWORD='something long' \
 npm start
 ```
 
@@ -170,7 +170,7 @@ npm start
   ```
 
 - **Limiting sign-ups**, if you want to: set `SIGNUP_EMAILS` to a comma-separated list, and only those emails can create an account. Visitors who don't sign in can still use it.
-- **Admins** are whoever signs in with an email listed in `ADMIN_EMAILS` (comma-separated). They set up the models and searchers under Settings. Canvases from before accounts were turned on belong to the admins.
+- **Admins** are whoever gives the administrator password at `/settings` (`ADMIN_PASSWORD`, or the one kept in `data/admin-password`), signed in or not. That browser stays unlocked for 30 days, or until it's locked again from Settings or the password changes. Admins set up the models and searchers. Canvases from before accounts were turned on belong to the admins. The Settings link only shows for an admin.
 - **Accounts** are kept in `data/auth.db` (SQLite), created on first start. Accounts use [Better Auth](https://better-auth.com).
 - **Searching for everyone:** Keenable's free keyless use is limited per IP address, which every user on a server shares. Give it a free key, or run your own [SearXNG](https://docs.searxng.org).
 

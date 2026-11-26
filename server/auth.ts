@@ -5,7 +5,7 @@
 // can try it straight away. Signing in (email and password, no email service needed, or GitHub and
 // Google when their OAuth keys are set) is for keeping their canvases: what they made anonymously
 // moves to the account. Accounts live in data/auth.db (SQLite).
-// Emails in ADMIN_EMAILS manage the models and searchers everyone uses. SIGNUP_EMAILS, when set,
+// The models and searchers everyone uses are managed with the administrator password (admin.ts). SIGNUP_EMAILS, when set,
 // limits who can create an account, so a private server doesn't spend its models on strangers.
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -15,6 +15,7 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";
 import { anonymous } from "better-auth/plugins/anonymous";
 import { transferCanvases } from "./canvas.ts";
+import { isAdmin } from "./admin.ts";
 import { getMigrations } from "better-auth/db/migration";
 
 export const AUTH_ON = process.env.LIBRARIAN_AUTH === "on";
@@ -28,7 +29,6 @@ const emails = (v: string | undefined) =>
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean),
   );
-const ADMINS = emails(process.env.ADMIN_EMAILS);
 /** Empty means anyone can sign up. */
 const SIGNUP = emails(process.env.SIGNUP_EMAILS);
 
@@ -42,7 +42,7 @@ export interface User {
 }
 
 /** Everyone, when accounts are off: the person running it on their own machine. */
-export const LOCAL_USER: User = { id: "local", email: "", name: "You", admin: true, anonymous: false };
+export const LOCAL_USER: User = { id: "local", email: "", name: "You", admin: false, anonymous: false };
 
 /** Sessions are signed with this. Set BETTER_AUTH_SECRET in production; otherwise one is made and kept. */
 function secret(): string {
@@ -115,10 +115,10 @@ export async function initAuth(): Promise<void> {
 
 /** Who is making this request: the signed-in user, nobody, or (accounts off) the local user. */
 export async function currentUser(req: Request): Promise<User | null> {
-  if (!auth) return LOCAL_USER;
+  if (!auth) return { ...LOCAL_USER, admin: isAdmin(req) };
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return null;
   const { id, email, name } = session.user;
   const anon = Boolean((session.user as { isAnonymous?: boolean | null }).isAnonymous);
-  return { id, email: anon ? "" : email, name, admin: !anon && ADMINS.has(email.toLowerCase()), anonymous: anon };
+  return { id, email: anon ? "" : email, name, admin: isAdmin(req), anonymous: anon };
 }

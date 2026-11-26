@@ -1,6 +1,6 @@
 // F-HOST: hosting it for other people. Visitors use it without signing in; signing in keeps their
 // canvases (and brings along what they made before); each person sees only their own; only admins
-// see or change the shared models and searchers; sign-ups can be limited to a list.
+// see or change the shared models and searchers (with the administrator password); sign-ups can be limited to a list.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { fakeLlm } from "../helpers/fakeLlm.ts";
@@ -11,7 +11,7 @@ const llm = await fakeLlm();
 const env = testEnv(llm.url, {
   LIBRARIAN_AUTH: "on",
   BETTER_AUTH_SECRET: "test-secret-test-secret-test-secret-0000",
-  ADMIN_EMAILS: "admin@example.test",
+  ADMIN_PASSWORD: "admin-password-for-tests",
   SIGNUP_EMAILS: "admin@example.test,reader@example.test,visitor@example.test",
 });
 let s: TestServer;
@@ -88,7 +88,12 @@ describe("F-HOST: accounts", () => {
   });
 
   test("only admins see or change the models and searchers", async () => {
+    // Signed in or not, an admin is whoever gave the administrator password.
+    assert.equal((await admin.send("GET", "/api/me")).body.user.admin, false);
+    assert.equal((await admin.send("POST", "/api/admin/unlock", { password: "wrong" })).status, 403);
+    assert.equal((await admin.send("POST", "/api/admin/unlock", { password: "admin-password-for-tests" })).status, 200);
     assert.equal((await admin.send("GET", "/api/me")).body.user.admin, true);
+    assert.equal((await admin.send("PUT", "/api/admin/password", { password: "another-one-123" })).status, 400, "ADMIN_PASSWORD can't be changed from Settings");
     assert.equal((await reader.send("GET", "/api/me")).body.user.admin, false);
     assert.equal((await reader.send("GET", "/api/config")).status, 403);
     assert.equal((await reader.send("PUT", "/api/config", { llm: { model: "x" } })).status, 403);

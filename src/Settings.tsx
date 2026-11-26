@@ -17,17 +17,85 @@ import { goBack, linkTo } from "./router.ts";
 import { useIsAdmin } from "./session.ts";
 
 export function Settings() {
-  if (!useIsAdmin())
-    return (
-      <main className="settings">
-        <a {...linkTo("/")} className="back">
-          ← All canvases
-        </a>
-        <h1>Settings</h1>
-        <p className="muted">Models and searchers are shared by everyone here, so only an admin can change them.</p>
-      </main>
-    );
+  if (!useIsAdmin()) return <Unlock />;
   return <AdminSettings />;
+}
+
+/** Not unlocked yet: the models and keys are behind the administrator password. */
+function Unlock() {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/admin/unlock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
+    if (res.ok) return location.reload();
+    setBusy(false);
+    setError(res.status === 403 ? "That isn't the administrator password." : `Couldn't check it (HTTP ${res.status}).`);
+  };
+  return (
+    <main className="settings">
+      <a {...linkTo("/")} className="back">
+        ← All canvases
+      </a>
+      <h1>Settings</h1>
+      <p className="muted">
+        The models, searchers and their keys are shared by everyone using this copy, so changing them takes the
+        administrator password. Whoever runs the server finds it in <code>data/admin-password</code>, or sets it with{" "}
+        <code>ADMIN_PASSWORD</code>.
+      </p>
+      <form className="unlock" onSubmit={submit}>
+        <input type="password" autoComplete="current-password" autoFocus placeholder="Administrator password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <button type="submit" disabled={busy || !password}>
+          {busy ? "Checking…" : "Unlock"}
+        </button>
+      </form>
+      {error && <p className="fail small">{error}</p>}
+    </main>
+  );
+}
+
+/** Lock this browser again, or change the administrator password. */
+function AdminSection() {
+  const [fromEnv, setFromEnv] = useState(false);
+  const [next, setNext] = useState("");
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    fetch("/api/admin/password").then((r) => r.json()).then((b: { fromEnv: boolean }) => setFromEnv(b.fromEnv), () => {});
+  }, []);
+  const change = async () => {
+    const res = await fetch("/api/admin/password", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: next }) });
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    setNote(res.ok ? { ok: true, text: "Changed. Other browsers will need the new one." } : { ok: false, text: body.error ?? `HTTP ${res.status}` });
+    if (res.ok) setNext("");
+  };
+  const lock = async () => {
+    await fetch("/api/admin/lock", { method: "POST" });
+    location.href = "/";
+  };
+  return (
+    <section className="card admin-section">
+      <h2>Administrator password</h2>
+      {fromEnv ? (
+        <p className="muted small">Set by ADMIN_PASSWORD on the server.</p>
+      ) : (
+        <div className="unlock">
+          <input type="password" autoComplete="new-password" placeholder="New password (8 characters or more)" value={next} onChange={(e) => setNext(e.target.value)} />
+          <button type="button" disabled={next.trim().length < 8} onClick={change}>
+            Change
+          </button>
+        </div>
+      )}
+      {note && <p className={`${note.ok ? "ok" : "fail"} small`}>{note.text}</p>}
+      <p>
+        <button type="button" className="link" onClick={lock}>
+          Lock settings in this browser
+        </button>
+      </p>
+    </section>
+  );
 }
 
 function AdminSettings() {
@@ -130,6 +198,8 @@ function SettingsForm({ config, onSave: save }: { config: PublicConfig; onSave: 
       />
 
       <SearchersSection searchers={config.searchers} onSave={save} register={register} />
+
+      <AdminSection />
 
       <div className="done-bar">
         {doneError ? (

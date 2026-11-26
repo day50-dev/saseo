@@ -72,7 +72,7 @@ export function Home() {
           Saseo <span className="home-gloss" lang="ko" title="사서: Korean for librarian">사서</span>
         </h1>
         <span className="home-links">
-          {admin && <a {...linkTo("/settings")}>Settings</a>}
+          {(admin || !me.accounts) && <a {...linkTo("/settings")}>Settings</a>}
           {anonymous && (
 <span className="save-link">
               <a {...linkTo("/signup")}>Sign up</a> <span className="muted">|</span> <a {...linkTo("/signin")}>Sign in</a>

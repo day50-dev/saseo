@@ -1,7 +1,7 @@
 // F-DESK through HTTP, as the page uses it: canvases, images, boxes, moving, removing and bringing
 // back, collapsing, restacking, relations, settings, and serving the app.
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { fakeLlm } from "../helpers/fakeLlm.ts";
@@ -178,25 +178,57 @@ describe("F-RELATE: ask how two things are related", () => {
 });
 
 describe("F-SETTINGS: your models, your sources", () => {
+  // Without ADMIN_PASSWORD, the server makes one on first start and keeps it beside the data.
+  let cookie = "";
+  const admin = (method: string, p: string, json?: unknown) => s.api(method, p, json, { cookie });
+
+  test("F-ADMIN: without the administrator password, nobody sees or changes the models and keys", async () => {
+    const file = path.join(env.LIBRARIAN_DATA, "admin-password");
+    assert.equal(statSync(file).mode & 0o077, 0, "only its owner can read the password file");
+    assert.equal((await s.api("GET", "/api/me")).body.user.admin, false);
+    assert.equal((await s.api("GET", "/api/config")).status, 403);
+    assert.equal((await s.api("PUT", "/api/config", { llm: { baseUrl: "http://evil.example" } })).status, 403);
+    assert.equal((await s.api("GET", "/api/models/llm")).status, 403);
+    assert.equal((await s.api("POST", "/api/test/llm")).status, 403);
+    assert.equal((await s.api("POST", "/api/admin/unlock", { password: "guess" })).status, 403);
+    const r = await s.api("POST", "/api/admin/unlock", { password: readFileSync(file, "utf8").trim() });
+    assert.equal(r.status, 200);
+    cookie = r.headers.getSetCookie()[0].split(";")[0];
+    assert.equal((await admin("GET", "/api/me")).body.user.admin, true);
+  });
+
   test("keys never reach the browser", async () => {
-    const c = (await s.api("GET", "/api/config")).body;
+    const c = (await admin("GET", "/api/config")).body;
     assert.equal(c.llm.model, "fake-model");
     assert.equal(c.llm.hasKey, true);
     assert.ok(!JSON.stringify(c).includes("sk-test-secret-1234"));
   });
 
   test("models are listed from the endpoint, and the endpoint can be tested", async () => {
-    assert.deepEqual((await s.api("GET", "/api/models/llm")).body, { models: ["fake-model"] });
-    assert.equal((await s.api("GET", "/api/models/other")).status, 404);
+    assert.deepEqual((await admin("GET", "/api/models/llm")).body, { models: ["fake-model"] });
+    assert.equal((await admin("GET", "/api/models/other")).status, 404);
     llm.on(/./, "OK");
-    const t = (await s.api("POST", "/api/test/llm")).body;
+    const t = (await admin("POST", "/api/test/llm")).body;
     assert.equal(t.ok, true, JSON.stringify(t));
   });
 
   test("changing a setting keeps the key unless a new one is given", async () => {
-    const r = (await s.api("PUT", "/api/config", { llm: { timeoutSeconds: 33 } })).body;
+    const r = (await admin("PUT", "/api/config", { llm: { timeoutSeconds: 33 } })).body;
     assert.equal(r.llm.timeoutSeconds, 33);
     assert.equal(r.llm.hasKey, true);
+  });
+
+  test("F-ADMIN: changing the password locks out browsers that had the old one", async () => {
+    const other = (await s.api("POST", "/api/admin/unlock", { password: readFileSync(path.join(env.LIBRARIAN_DATA, "admin-password"), "utf8").trim() })).headers.getSetCookie()[0].split(";")[0];
+    assert.equal((await admin("PUT", "/api/admin/password", { password: "short" })).status, 400);
+    const r = await admin("PUT", "/api/admin/password", { password: "a-new-password-here" });
+    assert.equal(r.status, 200);
+    cookie = r.headers.getSetCookie()[0].split(";")[0];
+    assert.equal((await admin("GET", "/api/config")).status, 200, "the browser that changed it stays unlocked");
+    assert.equal((await s.api("GET", "/api/config", undefined, { cookie: other })).status, 403);
+    assert.equal(readFileSync(path.join(env.LIBRARIAN_DATA, "admin-password"), "utf8").trim(), "a-new-password-here");
+    const locked = (await admin("POST", "/api/admin/lock")).headers.getSetCookie()[0];
+    assert.match(locked, /Max-Age=0/);
   });
 });
 

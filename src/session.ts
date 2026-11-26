@@ -32,10 +32,10 @@ export async function signOut() {
   location.href = "/";
 }
 
-const LOCAL: Me = { accounts: false, providers: [], user: { id: "local", email: "", name: "You", admin: true, anonymous: false } };
+const LOCAL: Me = { accounts: false, providers: [], user: { id: "local", email: "", name: "You", admin: false, anonymous: false } };
 export const MeContext = createContext<Me>(LOCAL);
 export const useMe = () => useContext(MeContext);
-/** Whether this person may see and change the shared models and searchers. */
+/** Whether this browser was unlocked with the administrator password, to see and change the shared models and searchers. */
 export const useIsAdmin = () => useMe().user?.admin ?? false;
 /** Not signed in, on a server with accounts: what they make isn't kept until they sign in. */
 export const useIsAnonymous = () => useMe().user?.anonymous ?? false;
