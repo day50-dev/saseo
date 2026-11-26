@@ -90,15 +90,7 @@ export function Home() {
           )}
         </span>
       </header>
-      {/* Someone arriving cold learns what this is before anything asks them to act. */}
-      <div className="home-pitch">
-        <p className="home-tagline">Saseo explains the lecture, paper or page that went over your head.</p>
-        <p className="muted">
-          Paste a link or ask a question, then select any words you don't follow. A librarian writes you a card that
-          explains them at your level, with its sources, and you can keep going deeper.
-        </p>
-      </div>
-      {/* Then one button; the canvas it opens asks the same question, with the box. */}
+      {/* One button first; the canvas it opens asks the same question, with the box. */}
       <div className="new-canvas home-start">
         <button type="button" onClick={create}>
           What's confusing you?
