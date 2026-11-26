@@ -82,6 +82,13 @@ export function Note(props: {
     if (words !== note.text || props.editing) await props.onSave(words);
   };
 
+  // Leaves editing without saving: a new note is dropped, an existing one keeps its words.
+  const cancel = () => {
+    if (props.editing) return props.onCancel?.();
+    setText(note.text);
+    setEditing(false);
+  };
+
   const edits = note.was?.length ?? 0;
   return (
     <div
@@ -99,6 +106,7 @@ export function Note(props: {
       }}
     >
       {editing ? (
+        <>
         <textarea
           className="note-edit"
           // biome-ignore lint/a11y/noAutofocus: a note opens ready to type in.
@@ -111,9 +119,7 @@ export function Note(props: {
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.preventDefault();
-              if (props.editing) return props.onCancel?.();
-              setText(note.text);
-              setEditing(false);
+              cancel();
             }
             if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
               e.preventDefault();
@@ -121,6 +127,16 @@ export function Note(props: {
             }
           }}
         />
+        {/* Pressing these doesn't count as leaving the box (which saves), so Cancel really cancels. */}
+        <div className="note-actions">
+          <button type="button" className="secondary" onMouseDown={(e) => e.preventDefault()} onClick={cancel}>
+            Cancel
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => void finish()} title="Save (Ctrl+Enter)">
+            Save
+          </button>
+        </div>
+        </>
       ) : (
         <div className="note-text" title="Double-click to edit" onDoubleClick={() => setEditing(true)}>
           {note.text}

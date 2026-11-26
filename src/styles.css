@@ -1115,6 +1115,8 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .note-item.moving { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
 .note-text { white-space: pre-wrap; font-size: 15px; line-height: 1.45; cursor: text; user-select: text; }
 .note-meta { cursor: grab; }
+.note-actions { display: flex; justify-content: space-between; margin-top: 8px; }
+.note-actions button { font-size: 13px; padding: 4px 14px; }
 .note-edit {
   width: 100%; font: inherit; font-size: 15px; line-height: 1.45; resize: vertical; border: none; outline: none;
   background: transparent; color: var(--text); padding: 0;

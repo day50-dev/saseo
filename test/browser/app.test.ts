@@ -257,6 +257,31 @@ describe("F-NOTES: notes on the canvas", () => {
     await p.context().close();
   });
 
+  test("a note being written has Cancel on the left and Save on the right", async () => {
+    const p = await open("/c/note0001");
+    await p.locator(cardSel("n1")).waitFor();
+    await p.locator(".note-add-btn").click();
+    const edit = p.locator(".note-edit");
+    await edit.fill("Check the 1974 constitution");
+    const cancel = p.locator(".note-actions").getByRole("button", { name: "Cancel" });
+    const save = p.locator(".note-actions").getByRole("button", { name: "Save" });
+    assert.ok((await cancel.boundingBox())!.x < (await save.boundingBox())!.x, "Cancel left of Save");
+    await save.click();
+    const note = p.locator(".note-item").filter({ hasText: "Check the 1974 constitution" });
+    await note.locator(".note-text").waitFor();
+    // Editing it again and cancelling leaves the words as they were.
+    await note.locator(".note-text").dblclick();
+    await p.locator(".note-edit").fill("Something else");
+    await p.locator(".note-actions").getByRole("button", { name: "Cancel" }).click();
+    await p.locator(".note-edit").waitFor({ state: "detached" });
+    assert.equal(await note.locator(".note-text").innerText(), "Check the 1974 constitution");
+    await p.waitForTimeout(500);
+    const st = (await s.api("GET", "/api/canvases/note0001")).body as CanvasState;
+    assert.equal(st.items.filter((i) => i.kind === "note" && !i.hidden && i.text.startsWith("Check the")).length, 1, "saved once, not changed by Cancel");
+    assert.equal(st.items.some((i) => i.kind === "note" && i.text === "Something else"), false);
+    await p.context().close();
+  });
+
   test("Escape drops a note that was never written", async () => {
     const p = await open("/c/note0001");
     await p.locator(cardSel("n1")).waitFor();
