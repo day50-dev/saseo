@@ -79,6 +79,29 @@ describe("talking to the model", () => {
     assert.equal(seen[0], "");
     assert.equal(seen.at(-1), "Hello");
   });
+
+  test("streaming counts the tokens as they come, thinking included, and can ask for JSON", async () => {
+    let body: Record<string, unknown> = {};
+    const sse = createServer((req, res) => {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        body = JSON.parse(raw);
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        const pieces = [{ reasoning_content: "hmm" }, { reasoning_content: " ok" }, { content: '{"a"' }, { content: ": 1}" }];
+        for (const d of pieces) res.write(`data: ${JSON.stringify({ choices: [{ delta: d }] })}\n\n`);
+        res.end("data: [DONE]\n\n");
+      });
+    });
+    await new Promise<void>((r) => sse.listen(0, "127.0.0.1", r));
+    const counts: number[] = [];
+    const out = await chatJson({ ...ep, baseUrl: `http://127.0.0.1:${(sse.address() as AddressInfo).port}` }, [{ role: "user", content: "json" }], (n) => counts.push(n));
+    sse.close();
+    assert.deepEqual(out, { a: 1 });
+    assert.deepEqual(counts, [1, 2, 3, 4], "each piece counted, the thinking too");
+    assert.equal(body.stream, true);
+    assert.deepEqual(body.response_format, { type: "json_object" });
+  });
 });
 
 // F-PROTOCOL: an endpoint set to Anthropic's protocol is spoken to with the Messages API.

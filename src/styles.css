@@ -1251,3 +1251,6 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
   .call-controls > .call-mute, .call-controls > .call-end { flex: 1 1 calc(50% - 4px); min-width: 0; }
   .call-voice { font: inherit; font-size: 13px; }
 }
+
+/* While a card is written: the tokens come in and the seconds go by, so it's visibly working. */
+.card-progress { margin-left: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0.85; }

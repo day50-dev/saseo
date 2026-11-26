@@ -258,7 +258,14 @@ async function write(
     { role: "system", content: system },
     { role: "user", content: lines.join("\n\n") },
   ];
-  const first = await chatJson<Record<string, unknown>>(config.llm, messages);
+  // The card shows the tokens coming in, so a long write is visibly working.
+  const began = Date.now();
+  let first: Record<string, unknown>;
+  try {
+    first = await chatJson<Record<string, unknown>>(config.llm, messages, (tokens) => store.setLive(card.id, { progress: { tokens, ms: Date.now() - began } }));
+  } finally {
+    store.clearLive(card.id);
+  }
   let sem = cleanSem(first, flow ? 6 : 3);
   if (!sem.why.length && !sem.what.gist) {
     console.warn("explanation without why or what; the reply had:", JSON.stringify(first).slice(0, 600));

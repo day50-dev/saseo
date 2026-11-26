@@ -65,29 +65,42 @@ export async function chat(ep: Endpoint, messages: Message[], timeoutMs = ep.tim
 const visible = (text: string) => text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "");
 
 /**
- * Streams a reply, calling `onText` with everything visible so far as it arrives. Falls back to a
- * plain request if the endpoint doesn't stream. Resolves with the whole visible reply.
+ * Streams a reply, calling `onText` with everything visible so far as it arrives, and the tokens
+ * received so far (thinking included: a reasoning model shows nothing for a while, but is working).
+ * Falls back to a plain request if the endpoint doesn't stream. Resolves with the whole visible
+ * reply. `json` asks for JSON mode, as `chat` does.
  */
-export async function chatStream(ep: Endpoint, messages: Message[], onText: (soFar: string) => void): Promise<string> {
+export async function chatStream(ep: Endpoint, messages: Message[], onText: (soFar: string, tokens: number) => void, json = false): Promise<string> {
   if (!ep.baseUrl || !ep.model) throw new Error("The language model isn't configured (Settings)");
   if (ep.protocol === "anthropic") return anthropicStream(ep, messages, onText);
+  const jsonMode = json && !noJsonMode.has(ep.baseUrl);
   const res = await send(`${ep.baseUrl}/chat/completions`, {
     method: "POST",
     headers: headers(ep),
     signal: AbortSignal.timeout(ep.timeoutSeconds * 1000),
-    body: JSON.stringify({ model: ep.model, messages, temperature: 0.3, stream: true }),
+    body: JSON.stringify({ model: ep.model, messages, temperature: 0.3, stream: true, ...(jsonMode ? { response_format: { type: "json_object" } } : {}) }),
   });
-  if (!res.ok) throw new Error(`LLM: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
+  if (!res.ok) {
+    const body = await res.text();
+    if (jsonMode && (res.status === 400 || res.status === 422 || /response_format|json/i.test(body))) {
+      noJsonMode.add(ep.baseUrl);
+      return chatStream(ep, messages, onText, false);
+    }
+    throw new Error(`LLM: HTTP ${res.status} ${body.slice(0, 300)}`);
+  }
   if (!res.body || !(res.headers.get("content-type") ?? "").includes("event-stream")) {
     const data = await res.json();
-    const text = visible(String(data?.choices?.[0]?.message?.content ?? "")).trim();
-    onText(text);
+    const raw = String(data?.choices?.[0]?.message?.content ?? "");
+    const text = visible(raw).trim();
+    onText(text, data?.usage?.completion_tokens ?? Math.round(raw.length / 4));
     return text;
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let text = "";
+  // Servers send about a token per piece; reasoning arrives in its own field on some.
+  let tokens = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -98,10 +111,17 @@ export async function chatStream(ep: Endpoint, messages: Message[], onText: (soF
       const data = line.replace(/^data:\s*/, "").trim();
       if (!line.startsWith("data:") || !data || data === "[DONE]") continue;
       try {
-        const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
+        const d = JSON.parse(data)?.choices?.[0]?.delta;
+        const delta = d?.content;
+        const thought = d?.reasoning_content ?? d?.reasoning;
+        if (typeof thought === "string" && thought) {
+          tokens++;
+          onText(visible(text), tokens);
+        }
         if (typeof delta === "string" && delta) {
           text += delta;
-          onText(visible(text));
+          tokens++;
+          onText(visible(text), tokens);
         }
       } catch {
         // A keep-alive or a partial line; the next read completes it.
@@ -132,8 +152,9 @@ export function repairTexEscapes(json: string): string {
 }
 
 /** Asks for JSON and parses the first object in the reply, tolerating code fences and prose around it. */
-export async function chatJson<T>(ep: Endpoint, messages: Message[]): Promise<T> {
-  let text = await chat(ep, messages, undefined, true);
+/** `onTokens`, when given, streams the first try and reports the tokens received as they come. */
+export async function chatJson<T>(ep: Endpoint, messages: Message[], onTokens?: (tokens: number) => void): Promise<T> {
+  let text = onTokens ? await chatStream(ep, messages, (_t, n) => onTokens(n), true) : await chat(ep, messages, undefined, true);
   // A reply that won't parse gets one more try, told why (a long reply sometimes slips).
   for (let attempt = 0; ; attempt++) {
     const start = text.indexOf("{");

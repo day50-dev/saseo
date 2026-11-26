@@ -336,6 +336,11 @@ export function Card(props: {
       {busy && card.stage !== "asking" && (
         <p className="muted card-stage">
           <span className="spinner" /> {card.origin?.kind === "page" ? "Reading the page…" : STAGE_TEXT[card.stage]}
+          {card.progress && (
+            <span className="card-progress">
+              {card.progress.tokens.toLocaleString()} tokens · {Math.round(card.progress.ms / 1000)} s
+            </span>
+          )}
         </p>
       )}
       {card.stage === "failed" && (

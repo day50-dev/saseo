@@ -200,14 +200,14 @@ describe("F-FIG: figures on the canvas", () => {
     const card = p.locator(cardSel("r1"));
     await card.waitFor();
     const cdp = await ctx.newCDPSession(p);
-    const touch = (type: string, x: number, y: number) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
+    const touch = (type: "touchStart" | "touchMove" | "touchEnd", x: number, y: number) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
     const drag = async (x: number, y: number, dx: number) => {
       await touch("touchStart", x, y);
       for (let i = 1; i <= 8; i++) await touch("touchMove", x + (dx * i) / 8, y);
       await touch("touchEnd", x + dx, y);
       await p.waitForTimeout(300);
     };
-    const width = async () => (await state("size0001")).find((i) => i.id === "r1")!.w;
+    const width = async () => ((await state("size0001")).find((i) => i.id === "r1") as CardItem).w;
     const w0 = await width();
     let b = (await card.boundingBox())!;
     await drag(b.x + b.width + 2, b.y + 80, 100);

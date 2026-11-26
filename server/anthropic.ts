@@ -68,14 +68,15 @@ export async function anthropicChat(ep: Endpoint, messages: Message[], timeoutMs
   }
 }
 
-export async function anthropicStream(ep: Endpoint, messages: Message[], onText: (soFar: string) => void): Promise<string> {
+export async function anthropicStream(ep: Endpoint, messages: Message[], onText: (soFar: string, tokens: number) => void): Promise<string> {
   const { system, messages: msgs } = shape(messages);
   try {
     const stream = client(ep).messages.stream({ model: ep.model, max_tokens: MAX_TOKENS_STREAMING, ...(system ? { system } : {}), messages: msgs });
     let text = "";
+    // Pieces here are several tokens each; about four characters to a token.
     stream.on("text", (delta) => {
       text += delta;
-      onText(text);
+      onText(text, Math.round(text.length / 4));
     });
     return textOf(await stream.finalMessage());
   } catch (err) {

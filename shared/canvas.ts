@@ -483,6 +483,8 @@ export interface CardItem extends ItemState {
   chat?: ChatMessage[];
   /** The librarian is answering the last message. */
   chatPending?: boolean;
+  /** While the model writes: tokens received and milliseconds since it began. Shown live, never logged. */
+  progress?: { tokens: number; ms: number };
   /** An object card: what was asked for, and once made, the object itself. */
   objectKind?: ObjectKind;
   request?: string;
