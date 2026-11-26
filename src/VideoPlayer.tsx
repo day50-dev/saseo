@@ -78,7 +78,13 @@ export function VideoPlayer({
       </div>
       <div className="video-bar" style={{ height: STOP_BAR }}>
         <button type="button" className="video-stop" disabled={!ready || busy || waiting} onClick={stop} title="Pause here and put this moment on the canvas: the frame, and what was said around it">
-          {busy ? "Grabbing this moment…" : "⏸ Stop here and ask"}
+          {busy ? (
+            <>
+              <span className="spinner" /> Getting the frame and what was said…
+            </>
+          ) : (
+            "⏸ Stop here and ask"
+          )}
         </button>
         <span className="muted small">{own ? "Playing the librarian's copy. " : ""}Then box anything in the frame, or select words from what was said.</span>
       </div>
