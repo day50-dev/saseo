@@ -144,6 +144,25 @@ describe("F-DESCEND: going one level down", () => {
   });
 });
 
+describe("F-DESCEND: a person, place or event is explained as its role", () => {
+  test("selecting a name frames the card as that thing's part in what the page is about", async () => {
+    llm.reset();
+    llm.on(/./, "{}");
+    const role = "Slobodan Milošević's role in the breakup of Yugoslavia";
+    llm.on(/IN THAT SENTENCE/, { concept: role, searchQuery: "Milosevic breakup of Yugoslavia", register: "term", means: "" });
+    const r = await s.api("POST", "/api/canvases/desk0001/descend", { parentId: "a", selection: "Slobodan Milošević", context: "", x: 3000, y: 2000 });
+    const id = r.body.card.id;
+    const card = await until(async () => {
+      const c = ((await s.api("GET", "/api/canvases/desk0001")).body as CanvasState).items.find((i) => i.id === id) as CardItem;
+      return c?.subject === role ? c : undefined;
+    }, 10000, "the framed subject");
+    assert.equal(card.selection, "Slobodan Milošević", "what was selected is still shown as selected");
+    const resolve = llm.asked.find((a) => /IN THAT SENTENCE/.test(a.system))!;
+    assert.match(resolve.system, /its role there/, "the prompt asks for the role, not the bare name");
+    await s.api("POST", "/api/canvases/desk0001/hide", { ids: [id] });
+  });
+});
+
 describe("F-RELATE: ask how two things are related", () => {
   test("a relation card between them, which depends on both", async () => {
     llm.reset();

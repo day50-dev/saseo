@@ -807,6 +807,14 @@ Work out what idea those words refer to IN THAT SENTENCE. Explanations often use
 ("an invisible push", "spread-out flow") for a real concept, and searching the literal words finds
 nothing useful. Name the real concept the way an introductory textbook would title it.
 
+That name becomes the subject of an explanation card, which answers about its subject: why it exists,
+what it is, its parts, and how it is used here (or how it unfolds). Frame the subject so those questions
+make sense of it. An idea or a term needs no framing: just its name. When the words name a particular
+person, place, group, organisation, event or work, the reader wants that thing's part in what the
+page is about, so the subject is its role there: "Slobodan Milošević's role in the breakup of
+Yugoslavia", "Vienna's role in the Congress of Vienna", "the Treaty of Versailles' role in the rise of
+fascism". Use the page's own subject, not the selected sentence.
+
 Also judge the REGISTER of the selected words as used in that sentence. Mathematical writing switches
 without warning between strict terms of art and casual description, and both look like plain English:
 - "term": a technical term with a strict definition (e.g. "energy space", "well-posed", "Coulomb gauge")
@@ -814,8 +822,8 @@ without warning between strict terms of art and casual description, and both loo
 - "casual": everyday words used loosely, often pointing at something precise (e.g. "+ better", "the worst term", "rougher")
 - "notation": ONLY a symbol or formula visibly used loosely (in quote marks, with ≈, "morally"), meaning "roughly this"; a precise symbol (L^1(R^2), a defined function) is a "term"
 Return JSON only, no prose:
-{"concept": "the standard name of the idea, 2-6 words",
- "searchQuery": "2-6 plain words for BEGINNER material (intro notes, textbook chapters, videos) on that concept, without terms specific to the page",
+{"concept": "the standard name of the idea, 2-6 words; for a particular person, place, group, event or work, its role in what the page is about, up to 12 words",
+ "searchQuery": "2-6 plain words for BEGINNER material (intro notes, textbook chapters, videos) on that concept, without terms specific to the page; for a role, the thing and what it was a role in",
  "register": "term" | "idiom" | "casual" | "notation",
  "means": "for casual words or notation: what is actually meant, precisely, in one sentence; for a term or idiom: a one-line plain gloss",
  "field": "for a term borrowed from another area of mathematics or physics, that area; otherwise empty"}`;
