@@ -22,6 +22,7 @@ before(async () => {
     { id: "diag0001", name: "Diagram", items: [sem] },
     { id: "plot0001", name: "Plot", items: [objectCard("p", { type: "plot", title: "Sine", plot: { x: { min: -6, max: 6 }, y: {}, series: [{ label: "sin", fn: "sin(x)" }, { label: "1/x", fn: "1/x" }], marks: [{ x: 0, y: 0, label: "origin" }] } })] },
     { id: "tabl0001", name: "Table", items: [objectCard("t", { type: "table", title: "Populations", columns: ["year", "people"], rows: [[1900, 5], [1950, 9], [2000, 14]], sources: [{ title: "Census", url: "https://example.org/census" }] })] },
+    { id: "nbok0001", name: "Notebook", items: [objectCard("nb", { type: "notebook", title: "Circuits", cells: [{ id: "c1", kind: "code", source: "import networkx as nx\n# a comment\nG = nx.DiGraph()" }] })] },
     { id: "grph0001", name: "Graph", items: [objectCard("g", { type: "graph", title: "A tree", directed: true, nodes: [{ id: "r", label: "root" }, { id: "a", label: "left" }, { id: "b", label: "right" }], edges: [{ from: "r", to: "a" }, { from: "r", to: "b" }] })] },
     { id: "map00001", name: "Map", items: [objectCard("m", { type: "map", title: "Lagrange", route: true, places: [{ name: "Turin", lat: 45.07, lon: 7.69, note: "born" }, { name: "Berlin", lat: 52.52, lon: 13.4 }, { name: "Paris", lat: 48.86, lon: 2.35, approximate: true }] })] },
     { id: "undo0001", name: "Undo", items: [explained("u1", "Keep me", 0, 0), explained("u2", "Remove me", 800, 0)] },
@@ -165,6 +166,16 @@ describe("F-FIG: figures on the canvas", () => {
     await p.waitForSelector(`${cardSel("p")} .figure-readout`);
     assert.match((await p.textContent(`${cardSel("p")} .figure-readout`))!, /x = /);
     assert.match((await svg.getAttribute("data-f")) ?? "", /plot/);
+    await p.context().close();
+  });
+
+  test("a notebook's card shows its code colored, as the panel does", async () => {
+    const p = await open("/c/nbok0001");
+    const pre = p.locator(`${cardSel("nb")} .nb-preview`).first();
+    await pre.waitFor();
+    assert.ok((await pre.locator(".token.keyword").count()) >= 1, "import is a keyword");
+    assert.ok((await pre.locator(".token.comment").count()) === 1, "the comment is marked");
+    assert.notEqual(await pre.locator(".token.keyword").first().evaluate((e) => getComputedStyle(e).color), await pre.evaluate((e) => getComputedStyle(e).color), "the keyword has its own color");
     await p.context().close();
   });
 
