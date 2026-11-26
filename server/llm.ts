@@ -1,4 +1,5 @@
-// Thin clients for the configured LLM (OpenAI-compatible) and System One endpoints.
+// Thin clients for the configured LLM (OpenAI-compatible, or Anthropic's API: anthropic.ts) and System One endpoints.
+import { anthropicChat, anthropicStream } from "./anthropic.ts";
 import type { Endpoint } from "./config.ts";
 
 type Part = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -37,6 +38,7 @@ const noJsonMode = new Set<string>();
  */
 export async function chat(ep: Endpoint, messages: Message[], timeoutMs = ep.timeoutSeconds * 1000, json = false): Promise<string> {
   if (!ep.baseUrl || !ep.model) throw new Error("The language model isn't configured (Settings)");
+  if (ep.protocol === "anthropic") return anthropicChat(ep, messages, timeoutMs);
   const jsonMode = json && !noJsonMode.has(ep.baseUrl);
   const res = await send(`${ep.baseUrl}/chat/completions`, {
     method: "POST",
@@ -68,6 +70,7 @@ const visible = (text: string) => text.replace(/<think>[\s\S]*?(<\/think>|$)/g, 
  */
 export async function chatStream(ep: Endpoint, messages: Message[], onText: (soFar: string) => void): Promise<string> {
   if (!ep.baseUrl || !ep.model) throw new Error("The language model isn't configured (Settings)");
+  if (ep.protocol === "anthropic") return anthropicStream(ep, messages, onText);
   const res = await send(`${ep.baseUrl}/chat/completions`, {
     method: "POST",
     headers: headers(ep),

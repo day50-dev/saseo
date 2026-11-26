@@ -1230,3 +1230,6 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 /* The administrator password: unlocking Settings, and changing it. */
 .settings .unlock { display: flex; gap: 8px; max-width: 420px; margin: 12px 0; }
 .settings .unlock input { flex: 1; min-width: 0; }
+/* The protocol choice for a model endpoint, the same size as the fields around it. */
+.settings label select { display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+.settings label > small { display: block; margin-top: 4px; }

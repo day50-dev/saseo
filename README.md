@@ -78,7 +78,7 @@ Your words show in the call bar as you say them, and go to the librarian only on
 
 To show it something you can't say, like a link, type or paste it into the box in the call bar. It appears as `[text 1: …]` and goes along with the next thing you say, so you can then say "I sent you a link, can you open it as a new card?". It opens links (pages, PDFs, YouTube) and questions as **+ Add** does.
 
-Calls use the browser's own speech recognition and voice where it has them (Chrome, Edge and Safari do): words show as you say them and the answer starts speaking at once. A natural voice can be picked in the call bar when the server has one, and browsers without recognition (Firefox) send audio to the server's. Those speech servers are optional, set with `LIBRARIAN_TTS_URL` (an OpenAI-compatible `/v1/audio/speech`, such as [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M)) and `LIBRARIAN_STT_URL` (a `/transcribe` endpoint that takes raw audio and returns `{"text"}`, such as [faster-whisper](https://github.com/SYSTRAN/faster-whisper) behind a few lines of Python). `LIBRARIAN_VOICE` picks the voice (`af_heart` by default). Without them, calls use only the browser's speech.
+Calls use the browser's own speech recognition and voice where it has them (Chrome, Edge and Safari do): words show as you say them and the answer starts speaking at once. A natural voice can be picked in the call bar when the server has one, and browsers without recognition (Firefox) send audio to the server's. Both are optional. The voice is set under **Speech** in Settings; `LIBRARIAN_TTS_URL` and `LIBRARIAN_VOICE` from older setups are its defaults. Recognition is set with `LIBRARIAN_STT_URL` (a `/transcribe` endpoint that takes raw audio and returns `{"text"}`, such as [faster-whisper](https://github.com/SYSTRAN/faster-whisper) behind a few lines of Python). Without them, calls use only the browser's speech.
 
 ### Where an idea is taught
 
@@ -124,9 +124,10 @@ Every card has an "Ask about this" box. The conversation stays on that card, and
 
 ![Settings: an OpenAI-compatible language model, a System One decision model, and web searchers](docs/screenshots/settings.png)
 
-- **Language model:** any OpenAI-compatible endpoint, such as OpenAI, Anthropic, OpenRouter, LiteLLM, Ollama or vLLM. It needs to read images.
+- **Inference model:** a base URL, an API key, a model, and the protocol the server speaks: **OpenAI-compatible** (chat completions: OpenAI, OpenRouter, LiteLLM, Ollama, vLLM, llama.cpp, Groq, Together, and nearly everything else) or **Anthropic** (the Messages API, at `https://api.anthropic.com/v1`). It needs to read images.
 - **Decision model (optional):** a System One endpoint such as TypeSafe's Jev, for the fast typed checks: does this climb, is this word strict or casual, is this paper actually about what was asked. arXiv answers a search it can't match with anything sharing a word, so papers it returns are kept only when they're on the topic. When none are (arXiv barely covers history or law), the card offers scholarly reading from the web instead.
-- **Diagram model (optional):** another model to draw the SVG diagrams you ask for, since some models draw far better than they write. Leave its base URL blank to use the language model's server and key with just a different model name.
+- **Diagram model (optional):** another model to draw the SVG diagrams you ask for, since some models draw far better than they write, with its own protocol. Leave its base URL blank to use the inference model's server, key and protocol with just a different model name.
+- **Speech (optional):** the librarian's voice on a call. Any OpenAI-compatible text-to-speech server (`POST /audio/speech`): [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) run yourself (e.g. `http://localhost:8880/v1`, voice `af_heart`), or OpenAI (`https://api.openai.com/v1`, model `gpt-4o-mini-tts`, voice `alloy`). Left blank, calls use the browser's own voice.
 - **Searchers:** Keenable works with no key. SearXNG, Brave, Exa, Perplexity Sonar, Parallel, You.com and Tavily take your keys.
 
 Keys stay on your machine in `data/config.json` (mode 600, gitignored). The browser never sees them.

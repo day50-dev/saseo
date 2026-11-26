@@ -15,7 +15,7 @@ import { actor, addReaderNote, transferCanvases, addShareLink, assetPath, autoNa
 import { changePassword, lockedCookie, PASSWORD_FROM_ENV, unlock } from "./admin.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
-import { besideOf, type CallContext, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
+import { besideOf, type CallContext, callTurn, canSpeak, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
 import { around, captions, clock, heardAround, heardCaptions, hearWhole, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, diagramEndpoint, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { saveGoal } from "./goals.ts";
@@ -23,7 +23,7 @@ import { continueAfterAnswer, restartCard, explainRegion, explainRelation, expla
 import { looksLikeLink } from "./pages.ts";
 import { addNote, editNote, noteHistory } from "./notes.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
-import { listModels, runSearch, testLlm, testSystemOne } from "./providers.ts";
+import { listModels, runSearch, testLlm, testSystemOne, testTts } from "./providers.ts";
 
 const app = new Hono<{ Variables: { user: User } }>();
 
@@ -33,7 +33,7 @@ const app = new Hono<{ Variables: { user: User } }>();
 const authHandler = auth;
 if (authHandler) app.on(["GET", "POST"], "/api/auth/*", (c) => authHandler.handler(c.req.raw));
 
-app.get("/api/me", async (c) => c.json({ accounts: AUTH_ON, providers: PROVIDERS, user: await currentUser(c.req.raw), speech: { tts: Boolean(SPEECH.tts), stt: Boolean(SPEECH.stt) } }));
+app.get("/api/me", async (c) => c.json({ accounts: AUTH_ON, providers: PROVIDERS, user: await currentUser(c.req.raw), speech: { tts: await canSpeak(), stt: Boolean(SPEECH.stt) } }));
 
 // ---- Moving to a new address ----
 // Sessions belong to an address, so after a move people would arrive at the new one as strangers,
@@ -145,6 +145,7 @@ app.put("/api/config", async (c) => {
 });
 
 app.post("/api/test/llm", async (c) => c.json(await testLlm((await loadConfig()).llm)));
+app.post("/api/test/tts", async (c) => c.json(await testTts((await loadConfig()).tts)));
 app.post("/api/test/diagram", async (c) => c.json(await testLlm(diagramEndpoint(await loadConfig()))));
 
 app.post("/api/test/systemone", async (c) =>
@@ -455,7 +456,7 @@ app.post("/api/speech/listen", async (c) => {
 
 // Words in, speech out.
 app.post("/api/speech/say", async (c) => {
-  if (!SPEECH.tts) return c.json({ error: "speech isn't set up on this server" }, 404);
+  if (!(await canSpeak())) return c.json({ error: "speech isn't set up on this server" }, 404);
   const { text } = (await c.req.json()) as { text?: string };
   if (!text?.trim()) return c.json({ error: "text is required" }, 400);
   try {

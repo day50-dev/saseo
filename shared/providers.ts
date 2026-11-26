@@ -93,12 +93,22 @@ export const SEARCHERS: Record<SearcherId, SearcherInfo> = {
   },
 };
 
+/**
+ * How a model endpoint is spoken to. Nearly every server speaks OpenAI's (POST /chat/completions):
+ * OpenAI, OpenRouter, LiteLLM, Ollama, vLLM, llama.cpp, Groq, Together. Anthropic's own API speaks
+ * the Messages API.
+ */
+export type Protocol = "openai" | "anthropic";
+export const PROTOCOLS: Protocol[] = ["openai", "anthropic"];
+/** The base URL to suggest for each protocol. */
+export const PROTOCOL_BASE_URLS: Record<Protocol, string> = { openai: "https://api.openai.com/v1", anthropic: "https://api.anthropic.com/v1" };
+
 export const MODEL_DEFAULTS = {
   // A local model writing a diagram from a whole page of context can take minutes.
-  llm: { baseUrl: "https://api.openai.com/v1", model: "", timeoutSeconds: 300 },
-  systemOne: { baseUrl: "https://api.typesafe.ai/v1", model: "jev-latest", timeoutSeconds: 30 },
+  llm: { baseUrl: "https://api.openai.com/v1", model: "", timeoutSeconds: 300, protocol: "openai" as Protocol },
+  systemOne: { baseUrl: "https://api.typesafe.ai/v1", model: "jev-latest", timeoutSeconds: 30, protocol: "openai" as Protocol },
   // Blank means the language model's: a diagram model can be just another model on the same server.
-  diagram: { baseUrl: "", model: "", timeoutSeconds: 300 },
+  diagram: { baseUrl: "", model: "", timeoutSeconds: 300, protocol: "openai" as Protocol },
 };
 
 /** The endpoints the settings page edits. */
@@ -111,6 +121,16 @@ export interface PublicEndpoint {
   baseUrl: string;
   model: string;
   timeoutSeconds: number;
+  protocol: Protocol;
+  hasKey: boolean;
+  keyHint: string;
+}
+
+/** Speaking aloud on a call: an OpenAI-compatible POST /audio/speech (Kokoro, OpenAI, and others). */
+export interface PublicTts {
+  baseUrl: string;
+  model: string;
+  voice: string;
   hasKey: boolean;
   keyHint: string;
 }
@@ -126,16 +146,20 @@ export interface PublicConfig {
   llm: PublicEndpoint;
   systemOne: PublicEndpoint;
   diagram: PublicEndpoint;
+  tts: PublicTts;
   searchers: Record<SearcherId, PublicSearcher>;
 }
 
 // A key field in an update: absent = keep, null = clear, string = set.
 export type KeyUpdate = string | null | undefined;
 
+type EndpointUpdate = { baseUrl?: string; model?: string; timeoutSeconds?: number; protocol?: Protocol; apiKey?: KeyUpdate };
+
 export interface ConfigUpdate {
-  llm?: { baseUrl?: string; model?: string; timeoutSeconds?: number; apiKey?: KeyUpdate };
-  systemOne?: { baseUrl?: string; model?: string; timeoutSeconds?: number; apiKey?: KeyUpdate };
-  diagram?: { baseUrl?: string; model?: string; timeoutSeconds?: number; apiKey?: KeyUpdate };
+  llm?: EndpointUpdate;
+  systemOne?: EndpointUpdate;
+  diagram?: EndpointUpdate;
+  tts?: { baseUrl?: string; model?: string; voice?: string; apiKey?: KeyUpdate };
   searchers?: Partial<
     Record<SearcherId, { enabled?: boolean; baseUrl?: string; apiKey?: KeyUpdate }>
   >;

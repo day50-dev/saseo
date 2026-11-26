@@ -28,6 +28,7 @@ export const api = {
     call<PublicConfig>("/api/config", { method: "PUT", body: JSON.stringify(update) }),
   testLlm: () => call<TestResult>("/api/test/llm", { method: "POST" }),
   testSystemOne: () => call<TestResult>("/api/test/systemone", { method: "POST" }),
+  testTts: () => call<TestResult>("/api/test/tts", { method: "POST" }),
   testDiagram: () => call<TestResult>("/api/test/diagram", { method: "POST" }),
   listModels: (which: "llm" | "systemOne" | "diagram") =>
     call<{ models: string[]; error?: string }>(`/api/models/${which}`),

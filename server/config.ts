@@ -7,6 +7,8 @@ import {
   MODEL_DEFAULTS,
   TIMEOUT_LIMITS,
   type PublicConfig,
+  PROTOCOLS,
+  type Protocol,
   SEARCHER_IDS,
   SEARCHERS,
   type SearcherId,
@@ -18,6 +20,16 @@ export interface Endpoint {
   apiKey: string;
   /** How long to wait for one answer before giving up. */
   timeoutSeconds: number;
+  /** OpenAI's chat completions, or Anthropic's Messages API. */
+  protocol: Protocol;
+}
+
+/** Speaking aloud on a call (OpenAI-compatible POST /audio/speech). */
+export interface Tts {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  voice: string;
 }
 
 export interface Searcher {
@@ -31,6 +43,7 @@ export interface Config {
   systemOne: Endpoint;
   /** Draws SVG diagrams; blank fields fall back to `llm`'s (see diagramEndpoint). */
   diagram: Endpoint;
+  tts: Tts;
   searchers: Record<SearcherId, Searcher>;
 }
 
@@ -43,6 +56,7 @@ export function diagramEndpoint(config: Config): Endpoint {
     apiKey: own ? d.apiKey : config.llm.apiKey,
     model: d.model || config.llm.model,
     timeoutSeconds: d.timeoutSeconds || config.llm.timeoutSeconds,
+    protocol: own ? d.protocol : config.llm.protocol,
   };
 }
 
@@ -63,6 +77,13 @@ function defaults(): Config {
     llm: { ...MODEL_DEFAULTS.llm, apiKey: "" },
     systemOne: { ...MODEL_DEFAULTS.systemOne, apiKey: "" },
     diagram: { ...MODEL_DEFAULTS.diagram, apiKey: "" },
+    // Servers set up before speech was in Settings named it in the environment; that's the default.
+    tts: {
+      baseUrl: process.env.LIBRARIAN_TTS_URL ? `${process.env.LIBRARIAN_TTS_URL.replace(/\/+$/, "").replace(/\/v1$/, "")}/v1` : "",
+      apiKey: "",
+      model: "",
+      voice: process.env.LIBRARIAN_VOICE ?? (process.env.LIBRARIAN_TTS_URL ? "af_heart" : ""),
+    },
     searchers,
   };
 }
@@ -79,6 +100,7 @@ export async function loadConfig(): Promise<Config> {
     llm: { ...base.llm, ...stored.llm },
     systemOne: { ...base.systemOne, ...stored.systemOne },
     diagram: { ...base.diagram, ...stored.diagram },
+    tts: { ...base.tts, ...stored.tts },
     searchers: Object.fromEntries(
       SEARCHER_IDS.map((id) => [id, { ...base.searchers[id], ...stored.searchers?.[id] }]),
     ) as Record<SearcherId, Searcher>,
@@ -112,7 +134,16 @@ export async function updateConfig(update: ConfigUpdate): Promise<Config> {
     if (typeof u.timeoutSeconds === "number" && Number.isFinite(u.timeoutSeconds)) {
       ep.timeoutSeconds = Math.round(Math.min(TIMEOUT_LIMITS.max, Math.max(TIMEOUT_LIMITS.min, u.timeoutSeconds)));
     }
+    if (u.protocol && PROTOCOLS.includes(u.protocol)) ep.protocol = u.protocol;
     ep.apiKey = applyKey(ep.apiKey, u.apiKey);
+  }
+  if (update.tts) {
+    const u = update.tts;
+    const t = config.tts;
+    if (u.baseUrl !== undefined) t.baseUrl = clean(u.baseUrl);
+    if (u.model !== undefined) t.model = u.model.trim();
+    if (u.voice !== undefined) t.voice = u.voice.trim();
+    t.apiKey = applyKey(t.apiKey, u.apiKey);
   }
   for (const id of SEARCHER_IDS) {
     const u = update.searchers?.[id];
@@ -133,6 +164,7 @@ export function toPublic(config: Config): PublicConfig {
     baseUrl: e.baseUrl,
     model: e.model,
     timeoutSeconds: e.timeoutSeconds,
+    protocol: e.protocol,
     hasKey: e.apiKey !== "",
     keyHint: hint(e.apiKey),
   });
@@ -140,6 +172,7 @@ export function toPublic(config: Config): PublicConfig {
     llm: ep(config.llm),
     systemOne: ep(config.systemOne),
     diagram: ep(config.diagram),
+    tts: { baseUrl: config.tts.baseUrl, model: config.tts.model, voice: config.tts.voice, hasKey: config.tts.apiKey !== "", keyHint: hint(config.tts.apiKey) },
     searchers: Object.fromEntries(
       SEARCHER_IDS.map((id) => {
         const s = config.searchers[id];

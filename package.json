@@ -17,6 +17,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
     "@hono/node-server": "^2.1.11",
     "@mozilla/readability": "^0.6.0",
     "agent-web-search": "^0.2.0",

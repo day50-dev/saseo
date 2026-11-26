@@ -6,14 +6,15 @@ import { CARD_WIDTH, type CardItem, EXTENSION_SHAPES, type Extension, type Exten
 import { type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { chat, type Message } from "./llm.ts";
+import { speak } from "./providers.ts";
 
+// Listening is a server named in the environment; speaking is set up in Settings (config.tts).
 export const SPEECH = {
-  tts: process.env.LIBRARIAN_TTS_URL ?? "",
   stt: process.env.LIBRARIAN_STT_URL ?? "",
-  voice: process.env.LIBRARIAN_VOICE ?? "af_heart",
 };
 
-export const speechOn = () => Boolean(SPEECH.tts && SPEECH.stt);
+/** Whether this server can speak aloud: a speech endpoint is set in Settings. */
+export const canSpeak = async () => Boolean((await loadConfig()).tts.baseUrl);
 
 /** Audio in, words out. `hint` primes the recogniser with the canvas's own vocabulary. */
 export async function listen(audio: ArrayBuffer, hint: string): Promise<string> {
@@ -29,16 +30,9 @@ export async function listen(audio: ArrayBuffer, hint: string): Promise<string> 
   return /^(thank you|thanks|thanks for watching|you|bye|\.+|\[.*\]|\(.*\))[.!?]*$/i.test(text) ? "" : text;
 }
 
-/** Words in, speech out (wav). */
+/** Words in, speech out (wav), from the speech endpoint in Settings. */
 export async function say(text: string): Promise<ArrayBuffer> {
-  const r = await fetch(`${SPEECH.tts.replace(/\/$/, "")}/v1/audio/speech`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ input: text, voice: SPEECH.voice, response_format: "wav" }),
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!r.ok) throw new Error(`speech: HTTP ${r.status}`);
-  return r.arrayBuffer();
+  return speak((await loadConfig()).tts, text);
 }
 
 export interface Pointing {

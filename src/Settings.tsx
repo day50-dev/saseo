@@ -5,6 +5,9 @@ import {
   type PublicConfig,
   type PublicEndpoint,
   type PublicSearcher,
+  type PublicTts,
+  type Protocol,
+  PROTOCOL_BASE_URLS,
   SEARCHER_IDS,
   SEARCHERS,
   type SearcherId,
@@ -160,20 +163,21 @@ function SettingsForm({ config, onSave: save }: { config: PublicConfig; onSave: 
 
       <EndpointSection
         which="llm"
-        title="Language model"
-        blurb="Writes explanations and quizzes. Any OpenAI-compatible endpoint: OpenAI, Anthropic, OpenRouter, LiteLLM, Ollama, vLLM."
+        title="Inference model"
+        blurb="Reads what you point at and writes the cards, diagrams and answers. Give it a base URL, a key and a model, and say which protocol the server speaks."
         endpoint={config.llm}
         baseUrlHint="https://api.openai.com/v1"
         modelHint="e.g. gpt-5.5, claude-sonnet-5-5, llama3"
         keyOptional
         onSave={save}
+        protocols
         onTest={api.testLlm}
         register={register}
       />
 
       <EndpointSection
         which="systemOne"
-        title="System One decision model"
+        title="Decision model"
         blurb="Fast typed decisions: does this term climb, which route down, did this answer show understanding. Speaks the System One API (POST /systemone), e.g. TypeSafe Jev or a LiteLLM proxy."
         endpoint={config.systemOne}
         baseUrlHint="https://api.typesafe.ai/v1"
@@ -187,15 +191,18 @@ function SettingsForm({ config, onSave: save }: { config: PublicConfig; onSave: 
       <EndpointSection
         which="diagram"
         title="Diagram model"
-        blurb="Draws the SVG diagrams you ask for (in a card's chat, or on a call). Some models draw much better than they write. Leave the base URL blank to use the language model's server and key with another model; leave both blank to use the language model."
+        blurb="Draws the SVG diagrams you ask for (in a card's chat, or on a call). Some models draw much better than they write. Leave the base URL blank to use the inference model's server, key and protocol with another model; leave both blank to use the inference model."
         endpoint={config.diagram}
-        baseUrlHint="Same as the language model"
-        modelHint="Same as the language model"
+        baseUrlHint="Same as the inference model"
+        modelHint="Same as the inference model"
         keyOptional
         onSave={save}
+        protocols
         onTest={api.testDiagram}
         register={register}
       />
+
+      <TtsSection tts={config.tts} onSave={save} register={register} />
 
       <SearchersSection searchers={config.searchers} onSave={save} register={register} />
 
@@ -285,12 +292,15 @@ function EndpointSection(props: {
   baseUrlHint: string;
   modelHint: string;
   keyOptional: boolean;
+  /** Offer the OpenAI or Anthropic protocol (the decision model has its own). */
+  protocols?: boolean;
   onSave: (u: ConfigUpdate) => Promise<PublicConfig>;
   onTest: () => Promise<TestResult>;
   register: Register;
 }) {
   const { which, endpoint } = props;
   const [baseUrl, setBaseUrl] = useState(endpoint.baseUrl);
+  const [protocol, setProtocol] = useState<Protocol>(endpoint.protocol);
   const [model, setModel] = useState(endpoint.model);
   const [timeout, setTimeoutSeconds] = useState(String(endpoint.timeoutSeconds));
   const [keyDraft, setKeyDraft] = useState("");
@@ -303,6 +313,7 @@ function EndpointSection(props: {
   const timeoutNum = Number(timeout);
   const dirty =
     baseUrl !== endpoint.baseUrl ||
+    protocol !== endpoint.protocol ||
     model !== endpoint.model ||
     (Number.isFinite(timeoutNum) && timeoutNum !== endpoint.timeoutSeconds) ||
     keyDraft.trim() !== "" ||
@@ -312,6 +323,7 @@ function EndpointSection(props: {
     const next = await props.onSave({
       [which]: {
         baseUrl,
+        protocol,
         model,
         timeoutSeconds: Number.isFinite(timeoutNum) ? timeoutNum : undefined,
         apiKey: keyUpdate(keyDraft, clearKey),
@@ -355,9 +367,33 @@ function EndpointSection(props: {
     <section className="card">
       <h2>{props.title}</h2>
       <p className="muted">{props.blurb}</p>
+      {props.protocols && (
+        <label>
+          <span>Protocol</span>
+          <select
+            value={protocol}
+            style={{ maxWidth: 320 }}
+            onChange={(e) => {
+              const next = e.target.value as Protocol;
+              // Switching protocol on a provider's own address switches to the other provider's.
+              if (!baseUrl || Object.values(PROTOCOL_BASE_URLS).includes(baseUrl)) setBaseUrl(which === "diagram" && !baseUrl ? "" : PROTOCOL_BASE_URLS[next]);
+              setProtocol(next);
+              setModels([]);
+            }}
+          >
+            <option value="openai">OpenAI-compatible (chat completions)</option>
+            <option value="anthropic">Anthropic (Messages API)</option>
+          </select>
+          <small className="muted">
+            {protocol === "anthropic"
+              ? "Anthropic's API, or a proxy that speaks it."
+              : "Almost every server speaks this: OpenAI, OpenRouter, LiteLLM, Ollama, vLLM, llama.cpp, Groq, Together."}
+          </small>
+        </label>
+      )}
       <label>
         <span>Base URL</span>
-        <input value={baseUrl} placeholder={props.baseUrlHint} spellCheck={false} onChange={(e) => setBaseUrl(e.target.value)} />
+        <input value={baseUrl} placeholder={protocol === "anthropic" && props.baseUrlHint.startsWith("http") ? PROTOCOL_BASE_URLS.anthropic : props.baseUrlHint} spellCheck={false} onChange={(e) => setBaseUrl(e.target.value)} />
       </label>
       <label>
         <span>Model</span>
@@ -402,6 +438,71 @@ function EndpointSection(props: {
       </label>
       <div className="actions">
         <button type="button" disabled={!!busy} onClick={() => run("testing")}>
+          {busy === "testing" ? "Testing…" : dirty ? "Save and test" : "Test"}
+        </button>
+        <button type="button" className="secondary" disabled={!!busy || !dirty} onClick={() => run("saving")}>
+          {busy === "saving" ? "Saving…" : "Save"}
+        </button>
+      </div>
+      <Status result={result} />
+    </section>
+  );
+}
+
+/** Speaking aloud on a call: any OpenAI-compatible text-to-speech server. */
+function TtsSection(props: { tts: PublicTts; onSave: (u: ConfigUpdate) => Promise<PublicConfig>; register: Register }) {
+  const { tts, register } = props;
+  const [baseUrl, setBaseUrl] = useState(tts.baseUrl);
+  const [model, setModel] = useState(tts.model);
+  const [voice, setVoice] = useState(tts.voice);
+  const [keyDraft, setKeyDraft] = useState("");
+  const [clearKey, setClearKey] = useState(false);
+  const [busy, setBusy] = useState<"" | "saving" | "testing">("");
+  const [result, setResult] = useState<TestResult | null>(null);
+  const dirty = baseUrl !== tts.baseUrl || model !== tts.model || voice !== tts.voice || keyDraft.trim() !== "" || clearKey;
+  const save = async () => {
+    await props.onSave({ tts: { baseUrl, model, voice, apiKey: keyUpdate(keyDraft, clearKey) } });
+    setKeyDraft("");
+    setClearKey(false);
+  };
+  useEffect(() => register("Speech", dirty ? save : null));
+  const run = async (kind: "saving" | "testing") => {
+    setBusy(kind);
+    setResult(null);
+    try {
+      if (dirty) await save();
+      if (kind === "testing") setResult(await api.testTts());
+    } catch (e) {
+      setResult({ ok: false, message: String(e), ms: 0 });
+    } finally {
+      setBusy("");
+    }
+  };
+  return (
+    <section className="card">
+      <h2>Speech</h2>
+      <p className="muted">
+        The librarian's voice on a call. Any OpenAI-compatible text-to-speech server (POST /audio/speech): Kokoro run
+        yourself, OpenAI, and others. Leave the base URL blank and calls use the browser's own voice.
+      </p>
+      <label>
+        <span>Base URL</span>
+        <input value={baseUrl} placeholder="http://localhost:8880/v1" spellCheck={false} onChange={(e) => setBaseUrl(e.target.value)} />
+      </label>
+      <label>
+        <span>Model</span>
+        <input value={model} placeholder="e.g. kokoro, gpt-4o-mini-tts (optional for Kokoro)" spellCheck={false} onChange={(e) => setModel(e.target.value)} />
+      </label>
+      <label>
+        <span>Voice</span>
+        <input value={voice} placeholder="e.g. af_heart (Kokoro), alloy (OpenAI)" spellCheck={false} onChange={(e) => setVoice(e.target.value)} />
+      </label>
+      <label>
+        <span>API key</span>
+        <KeyField hasKey={tts.hasKey} keyHint={tts.keyHint} draft={keyDraft} clear={clearKey} onDraft={setKeyDraft} onClear={setClearKey} required={false} />
+      </label>
+      <div className="actions">
+        <button type="button" disabled={!!busy || !baseUrl} onClick={() => run("testing")}>
           {busy === "testing" ? "Testing…" : dirty ? "Save and test" : "Test"}
         </button>
         <button type="button" className="secondary" disabled={!!busy || !dirty} onClick={() => run("saving")}>

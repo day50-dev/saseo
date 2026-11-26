@@ -9,7 +9,8 @@ import {
   type SearchHit,
   type TestResult,
 } from "../shared/providers.ts";
-import type { Config, Endpoint } from "./config.ts";
+import { anthropicChat, anthropicModels } from "./anthropic.ts";
+import type { Config, Endpoint, Tts } from "./config.ts";
 
 const TIMEOUT_MS = 30_000;
 
@@ -52,6 +53,10 @@ export function testLlm(ep: Endpoint): Promise<TestResult> {
   return timed(async () => {
     if (!ep.baseUrl) return { ok: false, message: "Set a base URL first" };
     if (!ep.model) return { ok: false, message: "Set a model first" };
+    if (ep.protocol === "anthropic") {
+      const reply = await anthropicChat(ep, [{ role: "user", content: "Reply with the single word: ok" }]);
+      return { ok: true, message: `Replied: “${reply.slice(0, 80)}”`, detail: { model: ep.model } };
+    }
     const res = await fetch(`${ep.baseUrl}/chat/completions`, {
       method: "POST",
       headers: headers(ep),
@@ -79,6 +84,7 @@ export function testLlm(ep: Endpoint): Promise<TestResult> {
 
 /** Lists models from an OpenAI-style GET /models, for the model dropdown. */
 export async function listModels(ep: Endpoint): Promise<string[]> {
+  if (ep.protocol === "anthropic") return anthropicModels(ep);
   const res = await fetch(`${ep.baseUrl}/models`, {
     headers: headers(ep),
     signal: AbortSignal.timeout(15_000),
@@ -90,6 +96,29 @@ export async function listModels(ep: Endpoint): Promise<string[]> {
     .map((m) => (typeof m === "string" ? m : (m as { id?: string; name?: string })?.id ?? (m as { name?: string })?.name))
     .filter((id): id is string => typeof id === "string")
     .sort();
+}
+
+/** Words in, speech out (wav), from an OpenAI-compatible POST {base}/audio/speech. */
+export async function speak(tts: Tts, text: string, timeoutMs = 60_000): Promise<ArrayBuffer> {
+  if (!tts.baseUrl) throw new Error("speech isn't set up (Settings)");
+  const res = await fetch(`${tts.baseUrl}/audio/speech`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(tts.apiKey ? { Authorization: `Bearer ${tts.apiKey}` } : {}) },
+    signal: AbortSignal.timeout(timeoutMs),
+    body: JSON.stringify({ input: text, response_format: "wav", ...(tts.model ? { model: tts.model } : {}), ...(tts.voice ? { voice: tts.voice } : {}) }),
+  });
+  if (!res.ok) throw new Error(`speech: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`.trim());
+  return res.arrayBuffer();
+}
+
+/** Checks the speech endpoint by saying one word. */
+export function testTts(tts: Tts): Promise<TestResult> {
+  return timed(async () => {
+    if (!tts.baseUrl) return { ok: false, message: "Set a base URL first" };
+    const audio = await speak(tts, "Hello.", 30_000);
+    if (audio.byteLength < 1000) return { ok: false, message: `Got ${audio.byteLength} bytes, too few to be speech` };
+    return { ok: true, message: `Spoke: ${(audio.byteLength / 1024).toFixed(0)} KB of audio` };
+  });
 }
 
 /** Checks a System One endpoint (POST {base}/systemone) with one yes/no question. */
