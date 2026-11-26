@@ -2,8 +2,8 @@
 // with its real text over it, so a block of words can be selected and explained like words on a
 // card. Dragging anywhere that isn't text (a figure, an equation, a margin) still draws a box,
 // on the image underneath.
-import { getDocument, GlobalWorkerOptions, type PDFPageProxy, TextLayer } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { getDocument, GlobalWorkerOptions, type PDFPageProxy, TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
+import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { useEffect, useRef, useState } from "react";
 import type { ImageItem } from "../shared/canvas.ts";
 import { assetUrl } from "./canvasApi.ts";

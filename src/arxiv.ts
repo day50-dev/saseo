@@ -1,7 +1,7 @@
 // Adding arXiv papers to a canvas: search through the server, and render chosen PDF pages to
 // images in the browser, each keeping a link back to the paper.
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
+import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import type { ImageSource, Paper } from "../shared/canvas.ts";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
