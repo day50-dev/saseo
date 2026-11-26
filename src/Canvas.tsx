@@ -652,7 +652,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       const px = e.clientX - r.left;
       const py = e.clientY - r.top;
       setView((v) => {
-        const scale = Math.min(3, Math.max(0.15, v.scale * Math.exp(-e.deltaY * 0.0025)));
+        const scale = Math.min(3, Math.max(0.1, v.scale * Math.exp(-e.deltaY * 0.0025)));
         return { scale, x: px - ((px - v.x) * scale) / v.scale, y: py - ((py - v.y) * scale) / v.scale };
       });
     } else if (e.shiftKey && !e.deltaX) {
@@ -704,7 +704,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       const r = el.getBoundingClientRect();
       const now = two();
       const p = pinch;
-      const scale = Math.min(3, Math.max(0.15, (p.v.scale * now.d) / p.d));
+      const scale = Math.min(3, Math.max(0.1, (p.v.scale * now.d) / p.d));
       // The point under the fingers' midpoint stays under it, and moving both fingers pans.
       const wx = (p.cx - r.left - p.v.x) / p.v.scale;
       const wy = (p.cy - r.top - p.v.y) / p.v.scale;
