@@ -1468,9 +1468,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           </a>
         )}
         {anonymous && (
-          <a {...linkTo("/signin")} className="save-link" title="Not signed in: sign in to keep this canvas">
-            Sign in to save
-          </a>
+          <span className="save-link">
+            <a {...linkTo("/signup")}>Sign up</a> <span className="muted">|</span> <a {...linkTo("/signin")}>Sign in</a>
+          </span>
         )}
         <span className="muted small hint">
           Drop or paste an image · Select: drag a box over what stopped you · hold Space to pan · Ctrl+scroll to zoom

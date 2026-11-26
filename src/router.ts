@@ -6,7 +6,7 @@ export type Route = { page: "home" } | { page: "canvas"; id: string } | { page: 
 export function parse(path: string): Route {
   if (path === "/" || path === "") return { page: "home" };
   if (path === "/settings") return { page: "settings" };
-  if (path === "/signin") return { page: "signin" };
+  if (path === "/signin" || path === "/signup") return { page: "signin" };
   const j = path.match(/^\/s\/([A-Za-z0-9_-]+)\/?$/);
   if (j) return { page: "join", token: j[1] };
   const m = path.match(/^\/c\/([A-Za-z0-9_-]+)\/?$/);

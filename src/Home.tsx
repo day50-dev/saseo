@@ -75,9 +75,9 @@ export function Home() {
         <span className="home-links">
           {admin && <a {...linkTo("/settings")}>Settings</a>}
           {anonymous && (
-            <a {...linkTo("/signin")} className="save-link">
-              Sign in to save your canvases
-            </a>
+<span className="save-link">
+              <a {...linkTo("/signup")}>Sign up</a> <span className="muted">|</span> <a {...linkTo("/signin")}>Sign in</a>
+            </span>
           )}
           {me.accounts && me.user && !anonymous && (
             <>

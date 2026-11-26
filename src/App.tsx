@@ -15,7 +15,7 @@ export function App() {
     (async () => {
       let me = await fetchMe();
       // Nobody signed in: start anonymously, so they can try it at once. Signing in is for keeping things.
-      if (me.accounts && !me.user && location.pathname !== "/signin") {
+      if (me.accounts && !me.user && location.pathname !== "/signin" && location.pathname !== "/signup") {
         await startAnonymously();
         me = await fetchMe();
       }

@@ -5,7 +5,7 @@ const PROVIDER_LABEL: Record<string, string> = { github: "GitHub", google: "Goog
 
 /** Signing in keeps your canvases; anything made before signing in comes along. */
 export function SignIn({ providers, anonymous }: { providers: string[]; anonymous: boolean }) {
-  const [mode, setMode] = useState<"in" | "up">(anonymous ? "up" : "in");
+  const [mode, setMode] = useState<"in" | "up">(location.pathname === "/signup" ? "up" : "in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -31,18 +31,8 @@ export function SignIn({ providers, anonymous }: { providers: string[]; anonymou
     <main className="settings signin">
       <h1>Saseo</h1>
       <p className="muted">
-        A research librarian with unlimited time, for following hard material from outside the field. Free and unlimited, no account needed.
-      </p>
-      <p>
-        {anonymous
-          ? "Sign in to keep your canvases. Everything you've made so far comes with you. "
-          : "Sign in to keep your canvases, or "}
-        {anonymous ? (
-          <a href="/">Not now</a>
-        ) : (
-          <a href="/">try it without an account</a>
-        )}
-        .
+        {anonymous && "What you've made so far comes with you. "}
+        <a href="/">Back</a>
       </p>
       <section className="card">
         <h2>{mode === "in" ? "Sign in" : "Create an account"}</h2>
