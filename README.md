@@ -1,6 +1,6 @@
 # Saseo
 
-*Saseo (사서) is Korean for librarian. The project was called Librarian until November 2026; the code lives at [day50-dev/saseo](https://github.com/day50-dev/saseo).*
+*Saseo (사서) is Korean for librarian. The code lives at [day50-dev/saseo](https://github.com/day50-dev/saseo).*
 
 **A research librarian with unlimited time, on an infinite desk that never gets rearranged.**
 
@@ -149,12 +149,12 @@ Shortcuts: **/** to start something new, **N** for a note, **V** for select and 
 
 ## Hosting it for other people
 
-Run locally, Librarian has no accounts: it's yours. To put it on a server for others, turn accounts on. Visitors can then use everything straight away without signing in; signing in (anyone can sign up) is only for keeping their canvases, and whatever they made before comes with them. Each person sees only their own canvases, and only admins can see or change the models and searchers that everyone shares.
+Run locally, Saseo has no accounts: it's yours. To put it on a server for others, turn accounts on. Visitors can then use everything straight away without signing in; signing in (anyone can sign up) is only for keeping their canvases, and whatever they made before comes with them. Each person sees only their own canvases, and only admins can see or change the models and searchers that everyone shares.
 
 ```bash
 npm install && npm run build
 LIBRARIAN_AUTH=on \
-BETTER_AUTH_URL=https://librarian.example.org \
+BETTER_AUTH_URL=https://saseo.example.org \
 BETTER_AUTH_SECRET=$(openssl rand -hex 32) \
 ADMIN_PASSWORD='something long' \
 npm start
@@ -165,7 +165,7 @@ npm start
 - **A domain with HTTPS** is needed for the OAuth providers. The server listens on 127.0.0.1:8787, so put a reverse proxy in front of it. With [Caddy](https://caddyserver.com), which handles certificates itself, this is the whole config:
 
   ```
-  librarian.example.org {
+  saseo.example.org {
       reverse_proxy 127.0.0.1:8787
   }
   ```
@@ -177,7 +177,7 @@ npm start
 
 ## The explainer video
 
-A short video of what Librarian is for and how it works, made from the real app with Kokoro narration, is on the home page. How it was made, and the tools to remake it, are in [docs/explainer/](docs/explainer/README.md).
+A short video of what Saseo is for and how it works, made from the real app with Kokoro narration, is on the home page. How it was made, and the tools to remake it, are in [docs/explainer/](docs/explainer/README.md).
 
 ## Design
 
