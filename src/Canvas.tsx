@@ -599,6 +599,12 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   useEffect(() => {
     if (!loaded || exampleStarted.current) return;
     exampleStarted.current = true;
+    // Or what was typed on the home page, handed over in this tab's storage (not the address).
+    const typed = takeTypedStart(canvasId);
+    if (typed) {
+      if (shown.length === 0) void startFrom(typed);
+      return;
+    }
     const ex = exampleByKey(new URLSearchParams(location.search).get("example"));
     if (!ex) return;
     history.replaceState(null, "", location.pathname);
@@ -2269,8 +2275,25 @@ function CanvasSwitcher({ currentId }: { currentId: string }) {
   );
 }
 
+const typedKey = (canvasId: string) => `librarian.start.${canvasId}`;
+/** Hands what was typed on the home page to the canvas made for it. */
+export function giveTypedStart(canvasId: string, input: string) {
+  try {
+    sessionStorage.setItem(typedKey(canvasId), input);
+  } catch {}
+}
+function takeTypedStart(canvasId: string): string | null {
+  try {
+    const v = sessionStorage.getItem(typedKey(canvasId));
+    sessionStorage.removeItem(typedKey(canvasId));
+    return v;
+  } catch {
+    return null;
+  }
+}
+
 /** A link to read or a question to explain: a start that isn't an image. */
-function StartBox({ onStart, big = false, onClose, onArxiv }: { onStart: (input: string) => Promise<unknown>; big?: boolean; onClose?: () => void; onArxiv?: (query: string) => void }) {
+export function StartBox({ onStart, big = false, onClose, onArxiv }: { onStart: (input: string) => Promise<unknown>; big?: boolean; onClose?: () => void; onArxiv?: (query: string) => void }) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   return (

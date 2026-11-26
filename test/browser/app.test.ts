@@ -125,13 +125,26 @@ describe("the home page", () => {
     await p.getByText("Undo", { exact: true }).first().waitFor();
     assert.match((await p.textContent("body")) ?? "", /eigenvectors/i, "the examples");
     assert.equal(await p.locator(".new-canvas input").count(), 0, "no name to make up first");
-    await p.getByRole("button", { name: "Start exploring" }).click();
+    await p.getByRole("button", { name: "Or start with an empty canvas" }).click();
     await p.waitForURL(/\/c\/[0-9a-f]{8}$/);
     // The canvas asks where to start; it's named after that later.
     await p.waitForSelector('[placeholder^="A link to read"], [placeholder^="Paste a link"]');
     const id = p.url().split("/").pop()!;
     assert.equal((await s.api("GET", `/api/canvases/${id}`)).body.name, "Untitled canvas");
     assert.deepEqual(errorsOf(p), []);
+    await p.context().close();
+  });
+
+  test("the box at the top starts a canvas with what was typed", async () => {
+    const p = await open("/");
+    const box = p.locator('.home-start input');
+    await box.fill("What is a Hamiltonian?");
+    await box.press("Enter");
+    await p.waitForURL(/\/c\/[0-9a-f]{8}$/);
+    const id = p.url().split("/").pop()!;
+    await until(async () => ((await s.api("GET", `/api/canvases/${id}`)).body.items ?? []).length > 0);
+    const items = (await s.api("GET", `/api/canvases/${id}`)).body.items as CardItem[];
+    assert.ok(JSON.stringify(items).includes("Hamiltonian"), "the canvas started from the question");
     await p.context().close();
   });
 

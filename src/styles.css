@@ -439,7 +439,12 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .canvas-name:hover { border-color: var(--line); }
 .canvas-name-input { width: 240px !important; padding: 2px 6px !important; flex-shrink: 0; }
 .home-head { display: flex; align-items: baseline; justify-content: space-between; }
-.new-canvas { margin: 20px 0; }
+/* The home page opens on the question and its box. */
+.home-start { margin: 20px 0 12px; }
+.home-start h2 { font-size: 22px; margin: 0 0 10px; }
+.home-start .start-box.big { width: 100%; max-width: 640px; }
+.home-start p { max-width: 640px; margin: 0; }
+.home-start .new-canvas { padding: 0; }
 .canvas-list { list-style: none; padding: 0; }
 .canvas-list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .canvas-list a { font-weight: 600; font-size: 16px; }
@@ -620,7 +625,6 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
   .settings { padding: 20px 16px 48px; }
   .home-head h1 { font-size: 26px; margin: 0; }
   .home-links .muted.small { display: none; }
-  .new-canvas button { width: 100%; }
   .canvas-row { flex-wrap: wrap; gap: 2px 12px; }
   .canvas-row .canvas-main { flex: 1 1 100%; min-width: 0; }
   .canvas-actions { opacity: 1 !important; margin-left: -6px; }
