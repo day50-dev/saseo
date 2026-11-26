@@ -168,6 +168,7 @@ function rememberBrowserEarsFailed() {
 /** Before listening for speech, this long measuring the room's own noise. */
 const SETTLE_MS = 500;
 const WAIT_KEY = "librarian.callWait";
+const FOLD_KEY = "librarian.callFolded";
 /** How long a pause before what you said is sent, in seconds: short for quick back-and-forth, longer to think. */
 export const WAITS = [0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 7, 10];
 const DEFAULT_WAIT = 1.5;
@@ -210,6 +211,20 @@ export function CallBar({
     setVoice(v);
     try {
       localStorage.setItem(VOICE_KEY, v);
+    } catch {}
+  };
+  // The conversation can be folded away, leaving the status and controls, to see the canvas.
+  const [folded, setFoldedState] = useState(() => {
+    try {
+      return localStorage.getItem(FOLD_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setFolded = (f: boolean) => {
+    setFoldedState(f);
+    try {
+      localStorage.setItem(FOLD_KEY, f ? "1" : "0");
     } catch {}
   };
   const [state, setState] = useState<State>("starting");
@@ -803,7 +818,8 @@ export function CallBar({
   return (
     <div className="call-bar" onPointerDown={(e) => e.stopPropagation()}>
       {marks.length > 0 && <Marks marks={marks} onPick={pick} />}
-      <div className="call-log" ref={logRef}>
+      {!folded && (
+        <div className="call-log" ref={logRef}>
         {turns.slice(-6).map((t, i) =>
           t.role === "sent" ? (
             <div key={i} className="call-turn sent">
@@ -832,7 +848,9 @@ export function CallBar({
             Just talk. Keep your hand on the canvas: point at a piece and say “break this down”, “why?”, or “what does this word mean?”.
           </div>
         )}
-      </div>
+        </div>
+      )}
+      {!folded && (
       <form
         className="call-type"
         onSubmit={(e) => {
@@ -849,12 +867,16 @@ export function CallBar({
           onChange={(e) => setTyped(e.target.value)}
         />
       </form>
+      )}
       {/* What's happening, on a line of its own so it's never squeezed out by the buttons. */}
       <div className="call-status-line">
         <span className="call-status">
           {(state === "hearing" || state === "thinking" || state === "starting") && <span className="spinner" />} {status}
 
         </span>
+        <button type="button" className="link call-fold" onClick={() => setFolded(!folded)} aria-expanded={!folded}>
+          {folded ? "Show conversation" : "Hide conversation"}
+        </button>
         {error && <span className="call-error">{error}</span>}
       </div>
       {marks.length > 0 && (

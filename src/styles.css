@@ -884,6 +884,8 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .call-controls > button { flex: none; white-space: nowrap; }
 .call-spacer { flex: 1; }
 .call-status-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 20px; }
+.call-fold { flex: none; font-size: 13px; }
+.call-error { flex: 1 1 100%; }
 .call-mic {
   width: 30px; height: 30px; border-radius: 50%; flex: none; display: flex; align-items: flex-end; justify-content: center;
   background: #1f8a4c; overflow: hidden; padding: 6px 0; box-sizing: border-box;
@@ -896,7 +898,7 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .call-mute { min-width: 8.5em; }
 .call-mute.interrupting { background: var(--accent); color: #fff; border-color: var(--accent); }
 .call-mute kbd { opacity: 0.75; margin-left: 4px; }
-.call-status { flex: 1 1 100%; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.call-status { flex: 1 1 0; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .call-error { color: var(--fail); font-size: 13px; }
 .call-end { background: transparent; color: var(--fail); border-color: var(--fail); }
 /* What "this" means while on a call. */
