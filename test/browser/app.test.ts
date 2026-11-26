@@ -126,7 +126,7 @@ describe("the home page", () => {
     await p.getByText("Undo", { exact: true }).first().waitFor();
     assert.match((await p.textContent("body")) ?? "", /eigenvectors/i, "the examples");
     assert.equal(await p.locator(".new-canvas input").count(), 0, "no name to make up first");
-    await p.getByRole("button", { name: "Start exploring" }).click();
+    await p.getByRole("button", { name: "What's confusing you?" }).click();
     await p.waitForURL(/\/c\/[0-9a-f]{8}$/);
     // The canvas asks where to start; it's named after that later.
     await p.waitForSelector('[placeholder^="A link to read"], [placeholder^="Paste a link"]');

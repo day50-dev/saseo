@@ -90,10 +90,10 @@ export function Home() {
           )}
         </span>
       </header>
-      {/* One button first: the canvas itself asks what's confusing you. */}
+      {/* One button first; the canvas it opens asks the same question, with the box. */}
       <div className="new-canvas home-start">
         <button type="button" onClick={create}>
-          Start exploring
+          What's confusing you?
         </button>
       </div>
       {error && (
