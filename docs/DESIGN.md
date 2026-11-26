@@ -18,7 +18,7 @@ The goal is a medium where deep exploration of hard material, such as Sobolev in
 
 | Librarian | In the app |
 | --- | --- |
-| The reference interview: works out what you actually need from what you walked in with | Drop an image, point at the part that stopped you |
+| The reference interview: works out what you actually need from what you walked in with | Drop an image, point at the part that's confusing you |
 | Knows the collection and fetches; doesn't author | Go fish: find lectures, notes and books before generating anything |
 | Matches material to you: the primer, not the monograph | Explanations descend toward your floor |
 | The stacks don't move | Fixed geography on the canvas |

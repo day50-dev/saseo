@@ -23,7 +23,7 @@ Each feature has an ID. The tests carry the same ID in their `describe` names, s
 
 ---
 
-## F-START: bringing what stopped you
+## F-START: bringing what's confusing you
 
 | ID | Feature | Checked by |
 |---|---|---|

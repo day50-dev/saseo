@@ -1524,7 +1524,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           </span>
         )}
         <span className="muted small hint">
-          Drop or paste an image · Select: drag a box over what stopped you · hold Space to pan · Ctrl+scroll to zoom
+          Drop or paste an image · Select: drag a box over what's confusing you · hold Space to pan · Ctrl+scroll to zoom
         </span>
         <span className="spacer" />
         {/* Making: what goes on the canvas, the call that does it with you, and taking it back. */}
@@ -1703,7 +1703,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         {loaded && shown.length === 0 && (
           // An empty canvas asks where to start, in the middle of the screen where the eye is.
           <div className="empty" data-pan="1">
-            <h2 data-pan="1">What stopped you?</h2>
+            <h2 data-pan="1">What's confusing you?</h2>
             <StartBox onStart={startFrom} big />
             <p className="muted" data-pan="1">
               Paste a link (a Wikipedia page, an article) or type a question. Or drop or paste an image of a slide, a page or a

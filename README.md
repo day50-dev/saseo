@@ -26,7 +26,7 @@ Self-directed deep study does work somewhere: a library, with a good reference l
 
 ## What it does
 
-Bring whatever stopped you:
+Bring whatever's confusing you:
 
 - **A screenshot** of a slide, a page or a figure: drop or paste it, then drag a box over the part you don't get.
 - **A link** to a Wikipedia page or an article: it's read whole and drawn as shapes. First an overview of the whole page, then **the whole page, section by section**, restructured into shapes without losing anything: every claim, number, name and example is carried by some piece, each piece points at the paragraphs it came from (¶), the page's figures sit with the text they illustrate, and anything the restructuring missed is kept as written. You can flip to the page's own text at any time.
