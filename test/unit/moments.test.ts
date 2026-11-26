@@ -12,7 +12,7 @@ import { testEnv, useEnv } from "../helpers/env.ts";
 const llm = await fakeLlm();
 const env = testEnv(llm.url);
 useEnv(env);
-const { heardAround } = await import("../../server/video.ts");
+const { heardAround, hearWhole, heardCaptions } = await import("../../server/video.ts");
 after(() => llm.close());
 
 /** Seconds of 16-bit mono audio in a WAV. */
@@ -40,5 +40,26 @@ describe("F-MOMENT-HEARD: what was said, from our own copy", () => {
   test("nothing without a copy, and nothing when nothing is heard", async () => {
     assert.equal(await heardAround("nocopy00001", 30, async () => "words"), "");
     assert.equal(await heardAround("lecture0001", 30, async () => "  "), "");
+  });
+
+  test("a whole video is heard once, thirty seconds at a time, and kept", async () => {
+    const asked: number[] = [];
+    await hearWhole("lecture0001", async (wav) => {
+      asked.push(seconds(wav));
+      return `piece ${asked.length}`;
+    });
+    assert.equal(asked.length, 4, "two minutes, in four pieces");
+    assert.ok(asked.every((s) => Math.abs(s - 30) < 0.5), `thirty seconds each: ${asked}`);
+    assert.deepEqual(await heardCaptions("lecture0001"), [
+      { t: 0, text: "piece 1" },
+      { t: 30, text: "piece 2" },
+      { t: 60, text: "piece 3" },
+      { t: 90, text: "piece 4" },
+    ]);
+    // Already heard: not again, even when asked again.
+    let again = 0;
+    await hearWhole("lecture0001", async () => String(++again));
+    assert.equal(again, 0);
+    assert.deepEqual(await heardCaptions("nocopy00001"), [], "nothing for a video never heard");
   });
 });

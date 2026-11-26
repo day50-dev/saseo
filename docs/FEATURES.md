@@ -165,4 +165,4 @@ Each feature has an ID. The tests carry the same ID in their `describe` names, s
 
 | ID | What | Tests |
 | --- | --- | --- |
-| F-MOMENT-HEARD | Stopping a video at a moment brings what was said around it. YouTube's captions are used when it gives them; when it doesn't (it often refuses servers), the stretch from 45 s before to 10 s after is cut from our own copy of the video and heard by the speech recogniser, marked with the stretch it covers. | `unit/moments` |
+| F-MOMENT-HEARD | Stopping a video at a moment brings what was said around it. YouTube's captions are used when it gives them; when it doesn't (it often refuses servers), the stretch from 45 s before to 10 s after is cut from our own copy of the video and heard by the speech recogniser, marked with the stretch it covers. A video someone puts on the canvas is copied and heard whole in the background, thirty seconds at a time, once per video and kept, so stopping it later is instant; a stretch not yet heard is heard on the spot. | `unit/moments` |

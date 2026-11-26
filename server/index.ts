@@ -15,7 +15,7 @@ import { actor, addReaderNote, transferCanvases, addShareLink, assetPath, autoNa
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
 import { besideOf, type CallContext, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
-import { around, captions, clock, heardAround, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
+import { around, captions, clock, heardAround, heardCaptions, hearWhole, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, diagramEndpoint, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { saveGoal } from "./goals.ts";
 import { continueAfterAnswer, restartCard, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, findFor, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
@@ -847,7 +847,12 @@ async function addSource(store: CanvasStore, input: string, at: { x: number; y: 
     await store.add(video);
     // Its uploader doesn't allow playing it elsewhere: fetch our own copy to play here.
     if (!info.embeddable) void hostVideo(store, video.id, "not-embeddable");
-    void captions(yt).catch(() => []); // fetched ahead, so the first moment is quick
+    // Someone put this video here, so they'll likely stop it and ask: have what was said ready.
+    // YouTube's captions when it gives them; otherwise our own copy, heard once and kept.
+    void captions(yt)
+      .catch(() => [])
+      .then((caps) => (caps.length || !SPEECH.stt ? undefined : fetchCopy(yt).then(() => hearWhole(yt, (wav) => listen(wav, info.title)))))
+      .catch(() => {});
     return { image: video };
   }
   // A PDF (an arXiv paper, or any .pdf) becomes its pages, each a single-page PDF, ten to a row.
@@ -989,9 +994,12 @@ app.post("/api/canvases/:cid/videos/:id/moments", async (c) => {
     return c.json({ error: (err as Error).message }, 502);
   }
   const asset = await saveAsset(frame.jpeg, "image/jpeg");
-  // YouTube's captions, or (when it gives none) our own recogniser listening to our copy.
-  let transcript = around(caps, t);
+  // YouTube's captions; or what our recogniser has already heard of our copy; or, for a stretch
+  // it hasn't got to yet, heard now.
+  let transcript = around(caps, t) || around(await heardCaptions(videoId), t);
   if (!transcript && SPEECH.stt) transcript = await heardAround(videoId, t, (wav) => listen(wav, title)).catch(() => "");
+  // And the rest of it heard meanwhile (carrying on after a restart), so the next stop is instant.
+  if (!caps.length && SPEECH.stt) void hearWhole(videoId, (wav) => listen(wav, title));
   const w = MOMENT_WIDTH;
   const h = Math.round((w * frame.h) / frame.w);
   const image: ImageItem = {

@@ -134,6 +134,63 @@ export function around(caps: Caption[], t: number, before = 60, after = 15): str
     .join("\n");
 }
 
+// ---- Heard transcripts: our own, for videos YouTube gives no captions for ----
+
+const heardPath = (id: string) => path.join(DIR, `${id}.heard.json`);
+interface Heard {
+  /** Seconds heard so far, from the start; the whole video once `done`. */
+  upTo: number;
+  done: boolean;
+  caps: Caption[];
+}
+const PIECE = 30; // seconds heard at a time: each piece is one timed line
+
+/** What has been heard of a video so far (a cache, kept for good and shared by every canvas). */
+export async function heardCaptions(id: string): Promise<Caption[]> {
+  try {
+    return (JSON.parse(await readFile(heardPath(id), "utf8")) as Heard).caps;
+  } catch {
+    return [];
+  }
+}
+
+// One video heard at a time: the recogniser is shared with calls and stopped moments.
+let hearingQueue: Promise<unknown> = Promise.resolve();
+const hearing = new Map<string, Promise<void>>();
+
+/**
+ * Hears a whole video from our copy, thirty seconds at a time, saving as it goes (a restart
+ * carries on where it stopped). Done once per video.
+ */
+export function hearWhole(id: string, hear: (wav: ArrayBuffer) => Promise<string>): Promise<void> {
+  let p = hearing.get(id);
+  if (p) return p;
+  p = (hearingQueue = hearingQueue.then(async () => {
+    if (!(await haveCopy(id))) return;
+    let h: Heard = { upTo: 0, done: false, caps: [] };
+    try {
+      h = JSON.parse(await readFile(heardPath(id), "utf8")) as Heard;
+    } catch {}
+    if (h.done) return;
+    const length = Number((await run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", copyPath(id)])).stdout) || 0;
+    while (h.upTo < length) {
+      const from = h.upTo;
+      const { stdout } = await run(
+        "ffmpeg",
+        ["-loglevel", "error", "-ss", String(from), "-t", String(PIECE), "-i", copyPath(id), "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", "pipe:1"],
+        { timeout: 60_000, encoding: "buffer", maxBuffer: 16 * 1024 * 1024 },
+      );
+      const text = stdout.length ? (await hear(stdout.buffer.slice(stdout.byteOffset, stdout.byteOffset + stdout.byteLength) as ArrayBuffer).catch(() => "")).trim() : "";
+      if (text) h.caps.push({ t: from, text });
+      h.upTo = from + PIECE;
+      h.done = h.upTo >= length;
+      await writeFile(heardPath(id), JSON.stringify(h));
+    }
+  }).catch(() => {}));
+  hearing.set(id, p);
+  return p;
+}
+
 /**
  * What was said around a moment, heard from our own copy of the video: for when YouTube gives no
  * captions (it often refuses servers now). The stretch from `before` seconds before to `after`
