@@ -924,7 +924,11 @@ function BlockSource({ paras, from, onOpenPage }: { paras: string[]; from: numbe
 function Look({ image, rect, onPeek }: { image: ImageItem; rect: Rect; onPeek: (on: boolean) => void }) {
   // Natural size where it fits; smaller when the thing is tall. Sized in proportions, so when the
   // column is narrower than that the whole picture shrinks with it instead of being cut off.
-  const k = Math.min(1.25, 220 / rect.h);
+  // Sized from how big the image is on the canvas, not its full resolution: a 1920-pixel video
+  // frame shown 640 wide would otherwise blow a slide's title up into a banner. A little larger
+  // than on the canvas, to be readable; never taller than 220.
+  const onCanvas = image.naturalW ? image.w / image.naturalW : 1;
+  const k = Math.min(1.5 * onCanvas, 1.25, 220 / rect.h);
   const pct = (at: number, size: number, whole: number) => (whole > size ? (at / (whole - size)) * 100 : 0);
   return (
     <span
