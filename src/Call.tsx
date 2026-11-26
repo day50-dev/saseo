@@ -505,6 +505,8 @@ export function CallBar({
       }
     };
     rec.onresult = (e) => {
+      lastResult = Date.now();
+      loudMs = 0;
       if (muted.current || deaf.current) return;
       let fin = "";
       let part = "";
@@ -538,11 +540,13 @@ export function CallBar({
     rec.onerror = (e) => {
       if (e.error === "not-allowed") {
         stopped = true;
+        stopMeter();
         setError("The browser didn't allow the microphone.");
       } else if (e.error === "network" || e.error === "service-not-allowed" || e.error === "language-not-supported") {
         // Its recognizer can't work here: hand over to the server's, or say why nothing is heard.
         stopped = true;
         rec.abort();
+        stopMeter();
         if (serverEars) setEars("server");
         else setError("This browser can't recognise speech here. Try Chrome or Edge.");
       }
@@ -551,10 +555,61 @@ export function CallBar({
     rec.onend = () => {
       if (!stopped) setTimeout(() => !stopped && rec.start(), 100);
     };
+    // The recognizer says nothing about what the microphone hears, so the call measures it too:
+    // for the level meter, and to notice a recognizer that never answers (some browsers' don't,
+    // without any error): after a few seconds of you talking and nothing back, the server's takes over.
+    let lastResult = Date.now();
+    let loudMs = 0;
+    let meterStream: MediaStream | null = null;
+    let meterCtx: AudioContext | null = null;
+    let meter: ReturnType<typeof setInterval> | null = null;
+    const stopMeter = () => {
+      if (meter) clearInterval(meter);
+      meterStream?.getTracks().forEach((t) => t.stop());
+      void meterCtx?.close().catch(() => {});
+    };
+    void (async () => {
+      try {
+        meterStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      } catch {
+        return;
+      }
+      if (stopped) return stopMeter();
+      meterCtx = new AudioContext();
+      const an = meterCtx.createAnalyser();
+      an.fftSize = 2048;
+      meterCtx.createMediaStreamSource(meterStream).connect(an);
+      const buf = new Float32Array(an.fftSize);
+      let floor = 0.005;
+      let last = performance.now();
+      meter = setInterval(() => {
+        if (stopped) return stopMeter();
+        an.getFloatTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+        const rms = Math.sqrt(sum / buf.length);
+        setLevel(Math.min(1, rms / 0.15));
+        const now = performance.now();
+        const dt = now - last;
+        last = now;
+        const threshold = Math.max(floor * 3.5, 0.012);
+        if (rms < threshold) floor = rms < floor ? floor * 0.9 + rms * 0.1 : floor * 0.995 + rms * 0.005;
+        if (muted.current || deaf.current || stateRef.current === "speaking") return;
+        if (rms > threshold) loudMs += dt;
+        if (loudMs > 4000 && Date.now() - lastResult > 6000) {
+          stopped = true;
+          rec.abort();
+          stopMeter();
+          if (serverEars) setEars("server");
+          else setError("The microphone hears you, but this browser's speech recognition isn't answering. Try Chrome or Edge.");
+        }
+      }, 80);
+    })();
     rec.start();
     setState("listening");
     return () => {
       stopped = true;
+      stopMeter();
       clearInterval(tick);
       rec.abort();
       hush();
@@ -723,6 +778,9 @@ export function CallBar({
               <span className="call-who">{t.role === "you" ? "You" : "Librarian"}</span> {t.text}
             </div>
           ),
+        )}
+        {ears === "server" && BrowserSTT && (
+          <div className="muted small call-ears">This browser's speech recognition didn't work, so the server is listening instead: your words appear when you pause.</div>
         )}
         {(held || interim) && (
           <div className="call-turn you live">
