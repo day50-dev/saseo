@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Logo } from "./Logo.tsx";
 import type { CanvasSummary, Sem } from "../shared/canvas.ts";
 import { Examples } from "./Canvas.tsx";
 import { canvasesApi } from "./canvasApi.ts";
@@ -69,7 +70,8 @@ export function Home() {
     <main className="settings home">
       <header className="home-head">
         <h1>
-          Saseo <span className="home-gloss" lang="ko" title="사서: Korean for librarian">사서</span>
+          <Logo />
+          Saseo
         </h1>
         <span className="home-links">
           {(admin || !me.accounts) && <a {...linkTo("/settings")}>Settings</a>}

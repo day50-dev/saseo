@@ -1,4 +1,5 @@
 import { GoalsPanel } from "./GoalsPanel.tsx";
+import { Logo } from "./Logo.tsx";
 import { ChangesPanel, colourFor, names, ShareDialog } from "./Sharing.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type Change, type Member, type Role, type ShareLink, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, type Rect, type RegionItem, VIDEO_WIDTH } from "../shared/canvas.ts";
@@ -1503,6 +1504,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     <div className="canvas-page">
       <div className="toolbar">
         <a className="brand" {...linkTo("/")} title="All canvases">
+          <Logo />
           Saseo
         </a>
         <span className="muted">/</span>

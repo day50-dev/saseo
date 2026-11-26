@@ -1218,16 +1218,14 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .join h1 { margin-bottom: 4px; }
 .join form { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; margin-top: 16px; }
 .join-name { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
-.home-gloss { font-size: 0.55em; font-weight: 400; color: var(--muted); margin-left: 6px; vertical-align: middle; }
+/* The logo (Logo.tsx): about the height of the name's capitals and descenders, left of it. */
+.logo { height: 1.05em; width: auto; vertical-align: -0.17em; margin-right: 0.35em; }
 .intro-card { margin: 8px 0 16px; }
 .intro summary { cursor: pointer; font-weight: 600; color: var(--accent); margin: 4px 0 8px; }
 @media (max-width: 520px) {
   .intro-card .sem-part { overflow-wrap: break-word; hyphens: manual; padding: 6px 5px; font-size: 12.5px; }
   .intro-card .sem-parts { gap: 5px; }
 }
-/* 사서 drawn properly even where no Korean font is installed: a copy holding just those two glyphs. */
-@font-face { font-family: "Saseo KR"; src: url("/fonts/saseo-ko.woff2") format("woff2"); font-display: swap; unicode-range: U+C0AC, U+C11C; }
-[lang="ko"] { font-family: "Saseo KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; }
 
 /* The administrator password: unlocking Settings, and changing it. */
 .settings .unlock { display: flex; gap: 8px; max-width: 420px; margin: 12px 0; }
