@@ -118,6 +118,27 @@ export function Home() {
           {error}
         </p>
       )}
+      {list === null ? (
+        <p className="muted">Loading…</p>
+      ) : (
+        live.length > 0 && (
+          <section className="home-canvases">
+            <h2>Your canvases</h2>
+            <ul className="canvas-list">
+              {live.map((c) => (
+                <CanvasRow
+                  key={c.id}
+                  canvas={c}
+                  onRename={(n) => act(() => canvasesApi.rename(c.id, n))}
+                  onDuplicate={() => act(() => canvasesApi.duplicate(c.id))}
+                  onTrash={() => act(() => canvasesApi.trash(c.id, true))}
+                  onDelete={() => confirmDelete([c])}
+                />
+              ))}
+            </ul>
+          </section>
+        )
+      )}
       <Intro />
       <Explainer />
       <Examples
@@ -130,24 +151,6 @@ export function Home() {
           }
         }}
       />
-      {list === null ? (
-        <p className="muted">Loading…</p>
-      ) : live.length === 0 ? (
-        <p className="muted">Nothing here yet. Start above, or pick an example.</p>
-      ) : (
-        <ul className="canvas-list">
-          {live.map((c) => (
-            <CanvasRow
-              key={c.id}
-              canvas={c}
-              onRename={(n) => act(() => canvasesApi.rename(c.id, n))}
-              onDuplicate={() => act(() => canvasesApi.duplicate(c.id))}
-              onTrash={() => act(() => canvasesApi.trash(c.id, true))}
-              onDelete={() => confirmDelete([c])}
-            />
-          ))}
-        </ul>
-      )}
       {trashed.length > 0 && (
         <details className="trash">
           <summary>

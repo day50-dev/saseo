@@ -447,6 +447,8 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .home-start .start-box.big { width: 100%; max-width: 640px; }
 .home-start p { max-width: 640px; margin: 0; }
 .home-start .new-canvas { padding: 0; }
+.home-canvases { margin: 8px 0 20px; }
+.home-canvases h2 { font-size: 16px; margin: 0 0 6px; }
 .canvas-list { list-style: none; padding: 0; }
 .canvas-list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .canvas-list a { font-weight: 600; font-size: 16px; }
