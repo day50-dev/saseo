@@ -12,7 +12,7 @@
     "test:browser": "node --import tsx --test --test-concurrency=1 test/browser/*.test.ts",
     "test:live": "node --import tsx --test --test-concurrency=1 --test-timeout=600000 test/live/*.test.ts"
   },
-  "author": "Chris McKenzie <kristopolous@yahoo.com> (http://9ol.es/)",
+  "author": "DA`/50 (https://github.com/day50-dev)",
   "license": "MIT",
   "type": "module",
   "private": true,

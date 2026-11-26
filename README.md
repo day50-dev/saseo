@@ -193,4 +193,4 @@ The principles, the worked examples from the talk that started this (Jason Zhao'
 
 ## License
 
-[MIT](LICENSE). Copyright (c) 2026 Chris McKenzie.
+[MIT](LICENSE). Copyright (c) 2026 DA`/50.
