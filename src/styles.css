@@ -442,10 +442,14 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .canvas-name-input { width: 240px !important; padding: 2px 6px !important; flex-shrink: 0; }
 .home-head { display: flex; align-items: baseline; justify-content: space-between; }
 /* The home page opens on the question and its box. */
-.home-start { margin: 20px 0 12px; }
-.home-start button { font-size: 18px; padding: 12px 28px; }
-.home-canvases { margin: 8px 0 20px; }
-.home-canvases h2 { font-size: 16px; margin: 0 0 6px; }
+/* Room to breathe: the question, the box, the hint and the way out each get their own line. */
+.home-start { margin: 40px 0 48px; }
+.home-start h2 { font-size: 26px; margin: 0 0 18px; }
+.home-start .start-box.big { width: 100%; max-width: 640px; margin: 0 0 18px; }
+.home-start p { max-width: 640px; margin: 0; line-height: 1.6; }
+.home-start .new-canvas { display: block; padding: 0; margin-top: 16px; }
+.home-canvases { margin: 0 0 40px; }
+.home-canvases h2 { font-size: 17px; margin: 0 0 10px; }
 .canvas-list { list-style: none; padding: 0; }
 .canvas-list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .canvas-list a { font-weight: 600; font-size: 16px; }
