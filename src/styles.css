@@ -411,6 +411,8 @@ kbd {
   cursor: ew-resize; z-index: 1;
 }
 .card-resize:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+/* By touch, a tapped border shows it's ready: the next drag on it resizes. */
+.card-item.resize-armed > .card-resize { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 .card-resize-grip {
   position: absolute; right: 0; bottom: 0; z-index: 2; cursor: ew-resize;
   width: calc(18px / var(--zoom, 1)); height: calc(18px / var(--zoom, 1));

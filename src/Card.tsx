@@ -118,6 +118,8 @@ export function Card(props: {
   childStages: Record<string, CardStage>;
   /** Starts dragging the card's right edge, to make it wider or narrower. */
   onResize: (e: React.PointerEvent) => void;
+  /** By touch, its border was tapped: a drag on it now resizes. */
+  resizeArmed?: boolean;
   onRemove: () => void;
   onRetry: () => void;
   /** Answers the librarian's question; "" means just explain. */
@@ -255,7 +257,7 @@ export function Card(props: {
     <div
       ref={ref}
       data-card-id={card.id}
-      className={`card-item ${props.lit ? "lit" : ""} ${props.moving ? "moving" : ""} ${props.linking ? "link-target" : ""} ${card.relates ? "relation" : ""} ${props.selected ? "selected" : ""}`}
+      className={`card-item ${props.lit ? "lit" : ""} ${props.moving ? "moving" : ""} ${props.linking ? "link-target" : ""} ${card.relates ? "relation" : ""} ${props.selected ? "selected" : ""} ${props.resizeArmed ? "resize-armed" : ""}`}
       style={{ left: card.x, top: card.y, width: card.w, zIndex: props.moving ? 100000 : props.z }}
       onPointerEnter={() => props.onHover(true)}
       onPointerLeave={() => props.onHover(false)}

@@ -23,6 +23,7 @@ before(async () => {
     { id: "plot0001", name: "Plot", items: [objectCard("p", { type: "plot", title: "Sine", plot: { x: { min: -6, max: 6 }, y: {}, series: [{ label: "sin", fn: "sin(x)" }, { label: "1/x", fn: "1/x" }], marks: [{ x: 0, y: 0, label: "origin" }] } })] },
     { id: "tabl0001", name: "Table", items: [objectCard("t", { type: "table", title: "Populations", columns: ["year", "people"], rows: [[1900, 5], [1950, 9], [2000, 14]], sources: [{ title: "Census", url: "https://example.org/census" }] })] },
     { id: "nbok0001", name: "Notebook", items: [objectCard("nb", { type: "notebook", title: "Circuits", cells: [{ id: "c1", kind: "code", source: "import networkx as nx\n# a comment\nG = nx.DiGraph()" }] })] },
+    { id: "size0001", name: "Resize", items: [explained("r1", "Width", 0, 0)] },
     { id: "grph0001", name: "Graph", items: [objectCard("g", { type: "graph", title: "A tree", directed: true, nodes: [{ id: "r", label: "root" }, { id: "a", label: "left" }, { id: "b", label: "right" }], edges: [{ from: "r", to: "a" }, { from: "r", to: "b" }] })] },
     { id: "map00001", name: "Map", items: [objectCard("m", { type: "map", title: "Lagrange", route: true, places: [{ name: "Turin", lat: 45.07, lon: 7.69, note: "born" }, { name: "Berlin", lat: 52.52, lon: 13.4 }, { name: "Paris", lat: 48.86, lon: 2.35, approximate: true }] })] },
     { id: "undo0001", name: "Undo", items: [explained("u1", "Keep me", 0, 0), explained("u2", "Remove me", 800, 0)] },
@@ -190,6 +191,38 @@ describe("F-FIG: figures on the canvas", () => {
     assert.ok((await pre.locator(".token.comment").count()) === 1, "the comment is marked");
     assert.notEqual(await pre.locator(".token.keyword").first().evaluate((e) => getComputedStyle(e).color), await pre.evaluate((e) => getComputedStyle(e).color), "the keyword has its own color");
     await p.context().close();
+  });
+
+  test("by touch, a drag on a card's border pans; a tap on it first makes the next drag resize", async () => {
+    const ctx = await browser.newContext({ viewport: { width: 900, height: 900 }, hasTouch: true });
+    const p = await ctx.newPage();
+    await p.goto(`${s.url}/c/size0001`);
+    const card = p.locator(cardSel("r1"));
+    await card.waitFor();
+    const cdp = await ctx.newCDPSession(p);
+    const touch = (type: string, x: number, y: number) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
+    const drag = async (x: number, y: number, dx: number) => {
+      await touch("touchStart", x, y);
+      for (let i = 1; i <= 8; i++) await touch("touchMove", x + (dx * i) / 8, y);
+      await touch("touchEnd", x + dx, y);
+      await p.waitForTimeout(300);
+    };
+    const width = async () => (await state("size0001")).find((i) => i.id === "r1")!.w;
+    const w0 = await width();
+    let b = (await card.boundingBox())!;
+    await drag(b.x + b.width + 2, b.y + 80, 100);
+    assert.equal(await width(), w0, "a bare drag on the border doesn't resize");
+    const moved = (await card.boundingBox())!;
+    assert.ok(Math.abs(moved.x - b.x - 100) < 3, "it pans the canvas instead");
+    b = moved;
+    await touch("touchStart", b.x + b.width + 2, b.y + 80);
+    await touch("touchEnd", b.x + b.width + 2, b.y + 80);
+    await p.waitForSelector(`${cardSel("r1")}.resize-armed`);
+    await drag(b.x + b.width + 2, b.y + 80, 100);
+    await until(async () => (await width()) > w0);
+    const after = (await card.boundingBox())!;
+    assert.ok(Math.abs(after.x - b.x) < 3, "resizing doesn't pan too");
+    await ctx.close();
   });
 
   test("a table lists its rows and sources, charts itself, and copies as CSV", async () => {

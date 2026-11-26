@@ -156,6 +156,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const [hover, setHover] = useState<string | null>(null);
   // The image or card the stacking buttons act on.
   const [selected, setSelected] = useState<string | null>(null);
+  // The card whose border a tap has readied for resizing by touch; picking anything else unreadies it.
+  const [resizeArmed, setResizeArmed] = useState<string | null>(null);
+  useEffect(() => {
+    if (resizeArmed && selected !== resizeArmed) setResizeArmed(null);
+  }, [selected, resizeArmed]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [goalsOpen, setGoalsOpen] = useState(() => {
     try {
@@ -823,6 +828,22 @@ export function Canvas({ canvasId }: { canvasId: string }) {
    */
   const startResize = (id: string, e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    // By touch, a bare drag on the border pans like anywhere else: a tap arms it first, then a drag resizes.
+    if (e.pointerType === "touch" && resizeArmed !== id) {
+      const x0 = e.clientX;
+      const y0 = e.clientY;
+      const up = (ev: PointerEvent) => {
+        window.removeEventListener("pointerup", up);
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 10) {
+          setSelected(id);
+          setResizeArmed(id);
+        }
+      };
+      window.addEventListener("pointerup", up);
+      return;
+    }
+    // Armed (or a mouse): resize, and the pan a touch on a card starts doesn't.
+    pan.current = null;
     const card = byId.get(id);
     if (card?.kind !== "card") return;
     e.stopPropagation();
@@ -2016,6 +2037,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               }}
               onGrab={(e) => startMove(c.id, e)}
               onResize={(e) => startResize(c.id, e)}
+              resizeArmed={resizeArmed === c.id}
               onPortDown={(side, e) => startLink(c.id, side, e)}
               linking={!!link && link.from !== c.id}
               relatesNames={c.relates?.map((id) => {
