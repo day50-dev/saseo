@@ -134,6 +134,25 @@ export function around(caps: Caption[], t: number, before = 60, after = 15): str
     .join("\n");
 }
 
+/**
+ * What was said around a moment, heard from our own copy of the video: for when YouTube gives no
+ * captions (it often refuses servers now). The stretch from `before` seconds before to `after`
+ * seconds after is cut out as audio and handed to `hear` (the speech recogniser). Empty without a
+ * copy, or when nothing is heard.
+ */
+export async function heardAround(id: string, t: number, hear: (wav: ArrayBuffer) => Promise<string>, before = 45, after = 10): Promise<string> {
+  if (!(await haveCopy(id))) return "";
+  const from = Math.max(0, t - before);
+  const { stdout } = await run(
+    "ffmpeg",
+    ["-loglevel", "error", "-ss", String(from), "-t", String(t - from + after), "-i", copyPath(id), "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", "pipe:1"],
+    { timeout: 60_000, encoding: "buffer", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (!stdout.length) return "";
+  const text = (await hear(stdout.buffer.slice(stdout.byteOffset, stdout.byteOffset + stdout.byteLength) as ArrayBuffer)).trim();
+  return text ? `[${clock(from)}–${clock(t + after)}] ${text}` : "";
+}
+
 export function clock(t: number): string {
   const s = Math.max(0, Math.floor(t));
   const h = Math.floor(s / 3600);

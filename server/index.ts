@@ -15,7 +15,7 @@ import { actor, addReaderNote, transferCanvases, addShareLink, assetPath, autoNa
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
 import { besideOf, type CallContext, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
-import { around, captions, clock, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
+import { around, captions, clock, heardAround, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, diagramEndpoint, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { saveGoal } from "./goals.ts";
 import { continueAfterAnswer, restartCard, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, findFor, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
@@ -989,7 +989,9 @@ app.post("/api/canvases/:cid/videos/:id/moments", async (c) => {
     return c.json({ error: (err as Error).message }, 502);
   }
   const asset = await saveAsset(frame.jpeg, "image/jpeg");
-  const transcript = around(caps, t);
+  // YouTube's captions, or (when it gives none) our own recogniser listening to our copy.
+  let transcript = around(caps, t);
+  if (!transcript && SPEECH.stt) transcript = await heardAround(videoId, t, (wav) => listen(wav, title)).catch(() => "");
   const w = MOMENT_WIDTH;
   const h = Math.round((w * frame.h) / frame.w);
   const image: ImageItem = {

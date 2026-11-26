@@ -162,3 +162,7 @@ Each feature has an ID. The tests carry the same ID in their `describe` names, s
 | F-SHARE | The owner makes a link from Share, letting whoever has it add and change things, or only look. A visitor opening it sees who shared what, gives a name, and joins; the canvas is then in their list. Only the owner makes or removes links, takes people off, trashes or deletes. A viewer can't change anything, and sees no controls for it. | `api/sharing`, `browser/sharing` |
 | F-SHARE-BY | Every change is recorded with who made it, including the librarian's work done for their request. Notes say who left them. | `api/sharing`, `browser/sharing` |
 | F-SHARE-SINCE | Coming back, a bar says who changed how much since you last looked. Going through them lists each (added, moved, removed, put back, changed), outlines it on the canvas in that person's colour, and offers Undo where there's a plain way back (remove what was added, put back what was removed or moved) and Keep. Your own changes are never news; something added and removed meanwhile isn't either. | `api/sharing`, `browser/sharing` |
+
+| ID | What | Tests |
+| --- | --- | --- |
+| F-MOMENT-HEARD | Stopping a video at a moment brings what was said around it. YouTube's captions are used when it gives them; when it doesn't (it often refuses servers), the stretch from 45 s before to 10 s after is cut from our own copy of the video and heard by the speech recogniser, marked with the stretch it covers. | `unit/moments` |
