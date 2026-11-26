@@ -2,6 +2,7 @@
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono, type Next } from "hono";
+import { randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
@@ -10,7 +11,7 @@ import { CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Exte
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { remember } from "./pagecache.ts";
 import { pdfLink, servesPdf, slicePdf } from "./pdf.ts";
-import { actor, addReaderNote, addShareLink, assetPath, autoName, changesSince, DATA_DIR, joinByLink, markSeen, removeMember, removeShareLink, roleOf, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
+import { actor, addReaderNote, transferCanvases, addShareLink, assetPath, autoName, changesSince, DATA_DIR, joinByLink, markSeen, removeMember, removeShareLink, roleOf, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
 import { allSightings } from "./curriculum.ts";
 import { besideOf, type CallContext, callTurn, listen, type Pointing, say, SPEECH, type Turn } from "./call.ts";
@@ -32,6 +33,24 @@ const authHandler = auth;
 if (authHandler) app.on(["GET", "POST"], "/api/auth/*", (c) => authHandler.handler(c.req.raw));
 
 app.get("/api/me", async (c) => c.json({ accounts: AUTH_ON, providers: PROVIDERS, user: await currentUser(c.req.raw), speech: { tts: Boolean(SPEECH.tts), stt: Boolean(SPEECH.stt) } }));
+
+// ---- Moving to a new address ----
+// Sessions belong to an address, so after a move people would arrive at the new one as strangers,
+// cut off from their canvases (most people never sign in). The old address sends every visit here
+// first: whoever it was there gets a one-time token, and claiming it at the new address (as whoever
+// they are there) brings their canvases along. Then they land on the page they asked for.
+const handoffs = new Map<string, { from: string; until: number }>();
+const HOME = (process.env.BETTER_AUTH_URL ?? "").replace(/\/$/, "");
+const localPath = (p: string | undefined) => (p && p.startsWith("/") && !p.startsWith("//") ? p : "/");
+
+app.get("/api/handoff", async (c) => {
+  const to = localPath(c.req.query("to"));
+  const user = AUTH_ON ? await currentUser(c.req.raw) : null;
+  if (!user) return c.redirect(`${HOME}${to}`, 302);
+  const token = randomBytes(18).toString("base64url");
+  handoffs.set(token, { from: user.id, until: Date.now() + 10 * 60_000 });
+  return c.redirect(`${HOME}/handoff?t=${token}&to=${encodeURIComponent(to)}`, 302);
+});
 
 // Everything else under /api needs someone signed in, except images, which are named by their
 // content hash and carry nothing private.
@@ -215,6 +234,17 @@ app.get("/api/canvases/:cid", async (c) => {
     if (name) info = (await autoName(store.id, name)) ?? info;
   }
   return c.json({ ...infoFor(info!, roleOf(info!, c.get("user"), AUTH_ON)!), ...view });
+});
+
+// Claiming a handoff from the old address: what that visitor had is now yours. Each token works once.
+app.post("/api/handoff/claim", async (c) => {
+  const { t } = (await c.req.json().catch(() => ({}))) as { t?: string };
+  const h = typeof t === "string" ? handoffs.get(t) : undefined;
+  if (t) handoffs.delete(t);
+  if (!h || h.until < Date.now()) return c.json({ error: "that hand-off has expired" }, 404);
+  const me = c.get("user").id;
+  if (h.from !== me) await transferCanvases(h.from, me);
+  return c.json({ ok: true });
 });
 
 // ---- Sharing ----

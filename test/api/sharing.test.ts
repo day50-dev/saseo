@@ -46,7 +46,12 @@ function person() {
     } catch {}
     return { status: r.status, body };
   };
-  return { send };
+  /** A GET that doesn't follow redirects: where it was sent. */
+  const where = async (path: string) => {
+    const r = await fetch(`${s.url}${path}`, { redirect: "manual", headers: { cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; ") } });
+    return { status: r.status, location: r.headers.get("location") ?? "" };
+  };
+  return { send, where };
 }
 
 describe("F-SHARE: sharing a canvas", () => {
@@ -134,5 +139,29 @@ describe("F-SHARE: sharing a canvas", () => {
     const anaId = (await ana.send("GET", "/api/me")).body.user.id;
     assert.equal((await owner.send("DELETE", `/api/canvases/${cid}/members/${anaId}`)).status, 200);
     assert.equal((await ana.send("GET", `/api/canvases/${cid}`)).status, 404);
+  });
+});
+
+describe("F-MOVE: moving to a new address keeps people's canvases", () => {
+  test("a visit to the old address hands its canvases to whoever you are at the new one, once", async () => {
+    const before = person();
+    await before.send("POST", "/api/auth/sign-in/anonymous");
+    const made = (await before.send("POST", "/api/canvases", { name: "Made before the move" })).body.id;
+    // At the old address: sent on with a token, to the page asked for.
+    const r = await before.where(`/api/handoff?to=${encodeURIComponent(`/c/${made}`)}`);
+    assert.equal(r.status, 302);
+    const u = new URL(r.location);
+    assert.equal(u.pathname, "/handoff");
+    assert.equal(u.searchParams.get("to"), `/c/${made}`);
+    // At the new address they're a stranger, until they claim it.
+    const after = person();
+    await after.send("POST", "/api/auth/sign-in/anonymous");
+    assert.equal((await after.send("GET", `/api/canvases/${made}`)).status, 404);
+    assert.equal((await after.send("POST", "/api/handoff/claim", { t: u.searchParams.get("t") })).status, 200);
+    assert.equal((await after.send("GET", `/api/canvases/${made}`)).status, 200, "their canvas came along");
+    assert.equal((await after.send("POST", "/api/handoff/claim", { t: u.searchParams.get("t") })).status, 404, "a token works once");
+    // Nobody signed in at the old address: just sent on, to a page on this site only.
+    const nobody = person();
+    assert.equal((await nobody.where("/api/handoff?to=//evil.example/x")).location.endsWith("/"), true);
   });
 });

@@ -30,7 +30,7 @@ export function Home() {
   }, []);
 
   useEffect(() => {
-    document.title = "Librarian";
+    document.title = "Saseo";
     load();
   }, [load]);
 
@@ -68,7 +68,9 @@ export function Home() {
   return (
     <main className="settings home">
       <header className="home-head">
-        <h1>Librarian</h1>
+        <h1>
+          Saseo <span className="home-gloss" lang="ko" title="사서: Korean for librarian">사서</span>
+        </h1>
         <span className="home-links">
           {admin && <a {...linkTo("/settings")}>Settings</a>}
           {anonymous && (
@@ -162,7 +164,7 @@ export function Home() {
         </details>
       )}
       <footer className="home-foot muted small">
-        Librarian is open source under the{" "}
+        Saseo is open source under the{" "}
         <a href="https://github.com/kristopolous/librarian/blob/main/LICENSE" target="_blank" rel="noreferrer">
           MIT license
         </a>
@@ -232,7 +234,7 @@ function CanvasRow(props: {
   );
 }
 
-/** The short video explainer of what Librarian is for, when this server has one. */
+/** The short video explainer of what Saseo is for, when this server has one. */
 function Explainer() {
   const [has, setHas] = useState(false);
   useEffect(() => {

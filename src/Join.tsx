@@ -32,7 +32,7 @@ export function Join({ token }: { token: string }) {
   return (
     <main className="settings join">
       <p>
-        <a {...linkTo("/")}>Librarian</a>
+        <a {...linkTo("/")}>Saseo</a>
       </p>
       {error && <p className="error">{error}</p>}
       {!error && !info && <p className="muted">Loading…</p>}

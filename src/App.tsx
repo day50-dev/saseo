@@ -19,6 +19,14 @@ export function App() {
         await startAnonymously();
         me = await fetchMe();
       }
+      // Arriving from the old address: bring along what you had there, then go where you were going.
+      if (location.pathname === "/handoff") {
+        const q = new URLSearchParams(location.search);
+        const to = q.get("to") ?? "/";
+        await fetch("/api/handoff/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: q.get("t") }) }).catch(() => {});
+        history.replaceState(null, "", to.startsWith("/") && !to.startsWith("//") ? to : "/");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
       setMe(me);
     })().catch((e) => setError(String(e)));
   }, []);

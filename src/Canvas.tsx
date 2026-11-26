@@ -308,7 +308,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   useEffect(() => saveView(canvasId, view), [canvasId, view]);
 
   useEffect(() => {
-    document.title = name ? `${name} · Librarian` : "Librarian";
+    document.title = name ? `${name} · Saseo` : "Saseo";
   }, [name]);
 
   const rename = async (next: string) => {
@@ -1452,7 +1452,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     <div className="canvas-page">
       <div className="toolbar">
         <a className="brand" {...linkTo("/")} title="All canvases">
-          Librarian
+          Saseo
         </a>
         <span className="muted">/</span>
         <CanvasName name={name} onRename={rename} />

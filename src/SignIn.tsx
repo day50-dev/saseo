@@ -29,7 +29,7 @@ export function SignIn({ providers, anonymous }: { providers: string[]; anonymou
 
   return (
     <main className="settings signin">
-      <h1>Librarian</h1>
+      <h1>Saseo</h1>
       <p className="muted">
         A research librarian with unlimited time, for following hard material from outside the field. Free and unlimited, no account needed.
       </p>

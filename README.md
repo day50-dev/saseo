@@ -1,8 +1,10 @@
-# Librarian
+# Saseo
+
+*Saseo (사서) is Korean for librarian. The project was called Librarian until November 2026; the repository keeps that name.*
 
 **A research librarian with unlimited time, on an infinite desk that never gets rearranged.**
 
-**Try it: [librarian.9ol.es](https://librarian.9ol.es).** Free, unlimited, no account needed. Sign in only if you want to keep your canvases.
+**Try it: [saseo.app](https://saseo.app).** Free, unlimited, no account needed. Sign in only if you want to keep your canvases.
 
 ![A slide from a research talk with two boxed phrases, each explained by a card drawn as a diagram](docs/screenshots/overview.png)
 
