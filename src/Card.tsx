@@ -164,10 +164,10 @@ export function Card(props: {
 }) {
   const { card, onHeight } = props;
   const ref = useRef<HTMLDivElement>(null);
-  const [picked, setPicked] = useState<{ text: string; context: string; top: number; clientY: number } | null>(null);
+  const [picked, setPicked] = useState<{ text: string; context: string; top: number; left: number; clientY: number } | null>(null);
   // Explanations asked for from this card that haven't landed yet: the button stays where it was,
   // turned into a working chip, so a press shows something at once.
-  const [sent, setSent] = useState<{ key: number; text: string; top: number; cardId?: string }[]>([]);
+  const [sent, setSent] = useState<{ key: number; text: string; top: number; left: number; cardId?: string }[]>([]);
   // A chip goes once its card has its answer (or the request failed).
   const live = sent.filter((x) => !x.cardId || x.cardId in props.childStages);
   useEffect(() => {
@@ -234,7 +234,8 @@ export function Card(props: {
     // The line the words sit in tells the librarian what they refer to.
     const line = node?.closest(".sem-step, .sem-desc, .sem-part, .sem-together, .sem-aside, .facet p, .chat-text, .source-para");
     const context = (line ? textWithTex(line) : "").replace(/\s+/g, " ").trim().slice(0, 500);
-    setPicked({ text: text.slice(0, 200), context, top: (r.bottom - box.top) / scale + 6, clientY: r.top });
+    // Under the start of the words (kept inside the card by the button itself, once it's drawn).
+    setPicked({ text: text.slice(0, 200), context, top: (r.bottom - box.top) / scale + 6, left: Math.max(16, (r.left - box.left) / scale - 10), clientY: r.top });
   };
 
   // A click on a marked term (or a stand-in) offers to explain it, without having to select it.
@@ -462,7 +463,8 @@ export function Card(props: {
             type="button"
             key={x.key}
             className="descend sent"
-            style={{ top: x.top }}
+            ref={keepInside}
+            style={{ top: x.top, left: x.left }}
             role="status"
             title={x.cardId ? "Show the new card" : undefined}
             onClick={() => x.cardId && props.onFocus(x.cardId)}
@@ -475,13 +477,15 @@ export function Card(props: {
       })}
       {picked && (
         <button
+          key={`${picked.top}:${picked.left}`}
           type="button"
           className="descend"
-          style={{ top: picked.top }}
+          ref={keepInside}
+          style={{ top: picked.top, left: picked.left }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             const key = Date.now() + Math.random();
-            setSent((all) => [...all, { key, text: picked.text, top: picked.top }]);
+            setSent((all) => [...all, { key, text: picked.text, top: picked.top, left: picked.left }]);
             void props
               .onDescend(picked.text, picked.context, picked.clientY)
               .then((cardId) => setSent((all) => (cardId ? all.map((x) => (x.key === key ? { ...x, cardId } : x)) : all.filter((x) => x.key !== key))));
@@ -494,6 +498,14 @@ export function Card(props: {
       )}
     </div>
   );
+}
+
+/** A button placed under selected words, pulled back left if it would run past the card's edge. */
+function keepInside(el: HTMLElement | null) {
+  const card = el?.offsetParent as HTMLElement | null;
+  if (!el || !card) return;
+  const over = el.offsetLeft + el.offsetWidth - (card.clientWidth - 16);
+  if (over > 0) el.style.left = `${Math.max(16, el.offsetLeft - over)}px`;
 }
 
 /** Says up front whether the selected words were a strict term or casual language (principle 9). */
