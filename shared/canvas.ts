@@ -68,6 +68,9 @@ export interface CopyProgress {
 
 /** How wide a video plays on the canvas, and how wide a moment's frame lands. */
 export const VIDEO_WIDTH = 720;
+/** How narrow and how wide a video on the canvas can be dragged. */
+export const VIDEO_MIN_WIDTH = 320;
+export const VIDEO_MAX_WIDTH = 1920;
 export const MOMENT_WIDTH = 640;
 
 export interface VideoMeta {

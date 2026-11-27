@@ -726,6 +726,17 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
   display: flex; align-items: center; gap: 12px; padding: 0 12px; background: var(--card);
   border-top: 1px solid var(--line);
 }
+/* Dragged at its right edge or corner: bigger or smaller, the same shape. */
+.video-resize { position: absolute; top: 0; bottom: 0; right: 0; width: calc(10px / var(--zoom, 1)); cursor: ew-resize; z-index: 2; }
+.video-resize:hover { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.video-resize-grip {
+  position: absolute; right: 0; bottom: 0; z-index: 3; cursor: nwse-resize;
+  width: calc(18px / var(--zoom, 1)); height: calc(18px / var(--zoom, 1));
+  background: linear-gradient(135deg, transparent 50%, var(--line) 50%, var(--line) 58%, transparent 58%, transparent 70%, var(--line) 70%, var(--line) 78%, transparent 78%);
+}
+.video-item:hover .video-resize-grip { background: linear-gradient(135deg, transparent 50%, var(--accent) 50%, var(--accent) 58%, transparent 58%, transparent 70%, var(--accent) 70%, var(--accent) 78%, transparent 78%); }
+/* While resizing, the player mustn't swallow the drag. */
+body.resizing iframe, body.resizing video { pointer-events: none; }
 .video-stop { font-size: 15px; font-weight: 600; padding: 7px 14px; white-space: nowrap; }
 .video-bar .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resume-btn {

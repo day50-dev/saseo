@@ -2,7 +2,7 @@ import { GoalsPanel } from "./GoalsPanel.tsx";
 import { Logo } from "./Logo.tsx";
 import { ChangesPanel, colourFor, names, ShareDialog } from "./Sharing.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type Change, type Member, type Role, type ShareLink, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, RELATION_ASK, RELATION_KINDS, type RelationKind, DIRECTED, type Rect, type RegionItem, VIDEO_WIDTH } from "../shared/canvas.ts";
+import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type Change, type Member, type Role, type ShareLink, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, RELATION_ASK, RELATION_KINDS, type RelationKind, DIRECTED, type Rect, type RegionItem, VIDEO_MAX_WIDTH, VIDEO_MIN_WIDTH, VIDEO_WIDTH } from "../shared/canvas.ts";
 import { Note } from "./Note.tsx";
 import { Card, type Side } from "./Card.tsx";
 import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
@@ -938,6 +938,43 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       if (Math.abs(w - w0) < 2) return;
       const to = [{ id, x: card.x, y: card.y, w }, ...Object.entries(along).map(([sid, x]) => ({ id: sid, x: x + w - w0, y: (byId.get(sid) as CardItem).y }))];
       const from = [{ id, x: card.x, y: card.y, w: w0 }, ...Object.entries(along).map(([sid, x]) => ({ id: sid, x, y: (byId.get(sid) as CardItem).y }))];
+      try {
+        await api.move(to);
+        pushStep({ label: "resize", undo: () => api.move(from), redo: () => api.move(to) });
+      } catch (err) {
+        setError(`Couldn't resize: ${err}`);
+      }
+      await refresh();
+    };
+    document.body.classList.add("resizing");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  /** Drags a video's corner or right edge: bigger or smaller, keeping its shape. One undoable step. */
+  const startVideoResize = (id: string, e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const img = byId.get(id);
+    if (img?.kind !== "image" || !img.video) return;
+    e.stopPropagation();
+    e.preventDefault();
+    pan.current = null;
+    setSelected(id);
+    const x0 = e.clientX;
+    const w0 = img.w;
+    const h0 = img.h;
+    let w = w0;
+    const move = (ev: PointerEvent) => {
+      w = Math.round(Math.min(VIDEO_MAX_WIDTH, Math.max(VIDEO_MIN_WIDTH, w0 + (ev.clientX - x0) / view.scale)));
+      setItems((all) => all.map((i) => (i.id === id && i.kind === "image" ? { ...i, w, h: Math.round((w * h0) / w0) } : i)));
+    };
+    const up = async () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.classList.remove("resizing");
+      if (Math.abs(w - w0) < 2) return;
+      const to = [{ id, x: img.x, y: img.y, w }];
+      const from = [{ id, x: img.x, y: img.y, w: w0 }];
       try {
         await api.move(to);
         pushStep({ label: "resize", undo: () => api.move(from), redo: () => api.move(to) });
@@ -1988,6 +2025,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 selected={selected === img.id || picked.has(img.id)}
                 onStop={(t) => stopAt(img, t)}
                 onNeedCopy={() => api.hostVideo(img.id).then(refresh, (e) => setError(`Couldn't fetch a copy of the video: ${e}`))}
+                onResize={(e) => startVideoResize(img.id, e)}
                 autoPlay={autoPlayId === img.id}
               />
             ))}

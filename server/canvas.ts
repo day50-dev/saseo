@@ -10,6 +10,8 @@ import {
   type Change,
   CARD_MAX_WIDTH,
   CARD_MIN_WIDTH,
+  VIDEO_MAX_WIDTH,
+  VIDEO_MIN_WIDTH,
   type CanvasInfo,
   type CanvasState,
   type CardItem,
@@ -352,7 +354,7 @@ function apply(s: CanvasState, logged: LoggedEvent): void {
   } else if (e.type === "move") {
     for (const m of e.moves) {
       const item = s.items.find((i) => i.id === m.id);
-      if (item && item.kind !== "region") Object.assign(item, { x: m.x, y: m.y }, item.kind !== "image" && m.h ? { h: m.h } : {}, item.kind !== "image" && m.w ? { w: m.w } : {});
+      if (item && item.kind !== "region") Object.assign(item, { x: m.x, y: m.y }, (item.kind !== "image" || item.video) && m.h ? { h: m.h } : {}, (item.kind !== "image" || item.video) && m.w ? { w: m.w } : {});
     }
   } else {
     const ids = new Set(e.ids);
@@ -596,7 +598,7 @@ export class CanvasStore {
       const item = items.find((i) => i.id === m.id);
       if (!item || item.kind === "region") return { ok: false, error: `can't move ${m.id}` };
       if (!Number.isFinite(m.x) || !Number.isFinite(m.y)) return { ok: false, error: "x and y must be numbers" };
-      if (m.w !== undefined && (item.kind === "image" || !Number.isFinite(m.w))) return { ok: false, error: "only a card's or a note's width can be set" };
+      if (m.w !== undefined && ((item.kind === "image" && !item.video) || !Number.isFinite(m.w))) return { ok: false, error: "only a card's, a note's or a video's width can be set" };
     }
     // Check every visible card whose own position or whose parent's position changes.
     for (const card of items) {
@@ -612,7 +614,17 @@ export class CanvasStore {
     }
     await this.record({
       type: "move",
-      moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y), ...(m.h ? { h: Math.round(m.h) } : {}), ...(m.w ? { w: Math.round(Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, m.w))) } : {}) })),
+      moves: moves.map((m) => {
+        const item = items.find((i) => i.id === m.id);
+        const at = { id: m.id, x: Math.round(m.x), y: Math.round(m.y) };
+        // A video keeps its shape: its height follows the width it's given.
+        if (item?.kind === "image") {
+          if (!m.w) return at;
+          const w = Math.round(Math.min(VIDEO_MAX_WIDTH, Math.max(VIDEO_MIN_WIDTH, m.w)));
+          return { ...at, w, h: Math.round((w * item.h) / item.w) };
+        }
+        return { ...at, ...(m.h ? { h: Math.round(m.h) } : {}), ...(m.w ? { w: Math.round(Math.min(CARD_MAX_WIDTH, Math.max(CARD_MIN_WIDTH, m.w))) } : {}) };
+      }),
     });
     return { ok: true };
   }

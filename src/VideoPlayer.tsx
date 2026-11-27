@@ -16,6 +16,7 @@ export function VideoPlayer({
   selected,
   onStop,
   onNeedCopy,
+  onResize,
   autoPlay = false,
 }: {
   item: ImageItem;
@@ -27,6 +28,8 @@ export function VideoPlayer({
   onStop: (t: number) => Promise<void>;
   /** YouTube won't play it here: ask the server for our own copy. */
   onNeedCopy: () => void;
+  /** Its corner or right edge is being dragged: bigger or smaller. */
+  onResize: (e: React.PointerEvent) => void;
 }) {
   const v = item.video!;
   const [blocked, setBlocked] = useState(false);
@@ -88,6 +91,8 @@ export function VideoPlayer({
         </button>
         <span className="muted small">{own ? "Playing the librarian's copy. " : ""}Then box anything in the frame, or select words from what was said.</span>
       </div>
+      <div className="video-resize" title="Drag to make this video bigger or smaller" onPointerDown={onResize} />
+      <div className="video-resize-grip" title="Drag to make this video bigger or smaller" onPointerDown={onResize} />
     </div>
   );
 }
