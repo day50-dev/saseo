@@ -1270,3 +1270,15 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 
 /* While a card is written: the tokens come in and the seconds go by, so it's visibly working. */
 .card-progress { margin-left: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0.85; }
+
+/* Zotero: the library page, the note after its sign-in, the add button. */
+.zotero-note { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; width: max-content; gap: 12px; align-items: center; max-width: min(560px, calc(100vw - 32px)); padding: 10px 14px; border-radius: 8px; background: var(--card); color: var(--text); border: 1px solid var(--line); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
+.zotero-connect { margin: 24px 0; }
+.zotero-connect p { max-width: 560px; line-height: 1.6; }
+.zotero-who { line-height: 1.6; }
+.zotero-search { display: flex; gap: 8px; margin: 20px 0 12px; max-width: 640px; }
+.zotero-search input { flex: 1; min-width: 0; }
+.zotero-items { list-style: none; padding: 0; margin: 0; max-width: 720px; }
+.zotero-items li { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.zotero-title { font-weight: 600; line-height: 1.4; }
+.zotero-actions { display: flex; gap: 14px; align-items: center; margin-top: 8px; flex-wrap: wrap; }

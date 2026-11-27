@@ -1,3 +1,4 @@
+import { AddToZotero } from "./Zotero.tsx";
 import { splitTabulars } from "./tabular.ts";
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -446,7 +447,8 @@ export function Card(props: {
                 <a href={s.url} target="_blank" rel="noreferrer">
                   {s.title || domain(s.url)}
                 </a>{" "}
-                <span className="muted small">{domain(s.url)}</span> <AddLink url={s.url} onAdd={props.onAddLink} />
+                <span className="muted small">{domain(s.url)}</span> <AddLink url={s.url} onAdd={props.onAddLink} />{" "}
+                <AddToZotero item={{ url: s.url, title: s.title }} />
               </li>
             ))}
           </ol>
@@ -750,7 +752,7 @@ function ObjectView({
           <a href={l.url} target="_blank" rel="noreferrer">
             {l.title || domain(l.url)}
           </a>{" "}
-          <span className="muted small">{domain(l.url)}</span> <AddLink url={l.url} onAdd={onAddLink} />
+          <span className="muted small">{domain(l.url)}</span> <AddLink url={l.url} onAdd={onAddLink} /> <AddToZotero item={{ url: l.url, title: l.title }} />
           {l.snippet && <p className="small">{l.snippet.slice(0, 180)}…</p>}
         </li>
       ))}

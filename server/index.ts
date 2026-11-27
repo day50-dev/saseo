@@ -24,6 +24,7 @@ import { looksLikeLink } from "./pages.ts";
 import { addNote, editNote, noteHistory } from "./notes.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { listModels, runSearch, testLlm, testSystemOne, testTts } from "./providers.ts";
+import { addToLibrary, beginLink, finishLink, getLink, listLibrary, safeBack, unlink, zoteroAvailable } from "./zotero.ts";
 
 const app = new Hono<{ Variables: { user: User } }>();
 
@@ -33,7 +34,11 @@ const app = new Hono<{ Variables: { user: User } }>();
 const authHandler = auth;
 if (authHandler) app.on(["GET", "POST"], "/api/auth/*", (c) => authHandler.handler(c.req.raw));
 
-app.get("/api/me", async (c) => c.json({ accounts: AUTH_ON, providers: PROVIDERS, user: await currentUser(c.req.raw), speech: { tts: await canSpeak(), stt: Boolean(SPEECH.stt) } }));
+app.get("/api/me", async (c) => {
+  const user = await currentUser(c.req.raw);
+  const zotero = (await zoteroAvailable()) ? { linked: user ? ((await getLink(user.id))?.username ?? null) : null } : undefined;
+  return c.json({ accounts: AUTH_ON, providers: PROVIDERS, user, speech: { tts: await canSpeak(), stt: Boolean(SPEECH.stt) }, zotero });
+});
 
 // ---- Moving to a new address ----
 // Sessions belong to an address, so after a move people would arrive at the new one as strangers,
@@ -1119,6 +1124,66 @@ app.post("/api/canvases/:cid/show", async (c) => {
   const shown = (Array.isArray(ids) ? ids : []).filter((id) => known.has(id));
   if (shown.length) await store.record({ type: "show", ids: shown });
   return c.json({ ids: shown });
+});
+
+// ---- Zotero ----
+// A reader links their library with Zotero's own sign-in (zotero.ts); then they can see it here, start
+// a canvas from anything in it, and add what the librarian finds.
+
+/** Back from Zotero, or a failure there: to the page they came from, with a note for it to show. */
+const zoteroBack = (back: string, error?: string) => `${back}${back.includes("?") ? "&" : "?"}zotero=${error ? encodeURIComponent(error) : "linked"}`;
+
+app.get("/api/zotero/connect", async (c) => {
+  const back = safeBack(c.req.query("back"));
+  const site = HOME || new URL(c.req.url).origin;
+  try {
+    return c.redirect(await beginLink(c.get("user").id, `${site}/api/zotero/callback`, back), 302);
+  } catch (err) {
+    return c.redirect(zoteroBack(back, err instanceof Error ? err.message : String(err)), 302);
+  }
+});
+
+app.get("/api/zotero/callback", async (c) => {
+  const token = c.req.query("oauth_token") ?? "";
+  const verifier = c.req.query("oauth_verifier");
+  // Turned down on Zotero's page: no verifier comes back.
+  if (!verifier) return c.redirect(zoteroBack("/zotero", "Zotero wasn't connected."), 302);
+  try {
+    return c.redirect(zoteroBack(await finishLink(c.get("user").id, token, verifier)), 302);
+  } catch (err) {
+    return c.redirect(zoteroBack("/zotero", err instanceof Error ? err.message : String(err)), 302);
+  }
+});
+
+app.delete("/api/zotero", async (c) => {
+  await unlink(c.get("user").id);
+  return c.json({ ok: true });
+});
+
+app.get("/api/zotero/items", async (c) => {
+  try {
+    return c.json(await listLibrary(c.get("user").id, c.req.query("q") ?? "", Number(c.req.query("start")) || 0));
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+  }
+});
+
+app.post("/api/zotero/items", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+  try {
+    const r = await addToLibrary(c.get("user").id, {
+      url: str(body.url) ?? "",
+      title: str(body.title) ?? "",
+      authors: Array.isArray(body.authors) ? body.authors.filter((a): a is string => typeof a === "string").slice(0, 50) : undefined,
+      date: str(body.date),
+      abstract: str(body.abstract)?.slice(0, 5000),
+      arxiv: str(body.arxiv),
+    });
+    return c.json(r);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+  }
 });
 
 // In production, serve the built panel too; app paths like /c/<id> get the page and route there.

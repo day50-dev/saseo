@@ -1,3 +1,4 @@
+import { AddToZotero } from "./Zotero.tsx";
 import { useEffect, useState } from "react";
 import type { Paper } from "../shared/canvas.ts";
 import { searchArxiv } from "./arxiv.ts";
@@ -113,6 +114,7 @@ export function PaperRow({ paper, onAdd }: { paper: Paper; onAdd: (paper: Paper,
         </button>
       </div>
       {state && state !== "adding" && state !== "added" && <p className="fail small">{state}</p>}
+      <AddToZotero item={{ url: paper.url, title: paper.title, authors: paper.authors, date: paper.published, abstract: paper.summary, arxiv: paper.id }} />
     </li>
   );
 }

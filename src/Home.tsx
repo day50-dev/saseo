@@ -75,6 +75,7 @@ export function Home() {
         </h1>
         <span className="home-links">
           {(admin || !me.accounts) && <a {...linkTo("/settings")}>Settings</a>}
+          {me.zotero && <a {...linkTo("/zotero")}>Zotero</a>}
           {anonymous && (
 <span className="save-link">
               <a {...linkTo("/signup")}>Sign up</a> <span className="muted">|</span> <a {...linkTo("/signin")}>Sign in</a>

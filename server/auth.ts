@@ -15,6 +15,7 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";
 import { anonymous } from "better-auth/plugins/anonymous";
 import { transferCanvases } from "./canvas.ts";
+import { moveLink } from "./zotero.ts";
 import { isAdmin } from "./admin.ts";
 import { getMigrations } from "better-auth/db/migration";
 
@@ -85,6 +86,7 @@ function options(): BetterAuthOptions {
         // Signing in or up keeps what they made before.
         onLinkAccount: async ({ anonymousUser, newUser }) => {
           await transferCanvases(anonymousUser.user.id, newUser.user.id);
+          await moveLink(anonymousUser.user.id, newUser.user.id);
         },
       }),
     ],

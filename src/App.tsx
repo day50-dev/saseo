@@ -6,6 +6,7 @@ import { linkTo, useRoute } from "./router.ts";
 import { fetchMe, type Me, MeContext, startAnonymously } from "./session.ts";
 import { Settings } from "./Settings.tsx";
 import { SignIn } from "./SignIn.tsx";
+import { ZoteroNote, ZoteroPage } from "./Zotero.tsx";
 
 export function App() {
   const route = useRoute();
@@ -37,6 +38,7 @@ export function App() {
 
   let page;
   if (route.page === "settings") page = <Settings />;
+  else if (route.page === "zotero") page = <ZoteroPage />;
   else if (route.page === "join") page = <Join token={route.token} />;
   // Keyed by id so switching canvases starts fresh: its own view, its own undo history.
   else if (route.page === "canvas") page = <Canvas key={route.id} canvasId={route.id} />;
@@ -50,5 +52,10 @@ export function App() {
       </main>
     );
   else page = <Home />;
-  return <MeContext.Provider value={me}>{page}</MeContext.Provider>;
+  return (
+    <MeContext.Provider value={me}>
+      <ZoteroNote />
+      {page}
+    </MeContext.Provider>
+  );
 }

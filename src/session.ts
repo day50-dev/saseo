@@ -11,6 +11,8 @@ export interface Me {
   /** The server can listen and speak, so calls with the librarian are possible. */
   /** Speech servers this server has; a browser's own speech covers what's missing. */
   speech?: { tts: boolean; stt: boolean };
+  /** This server offers Zotero; `linked` is the reader's Zotero name once they've connected their library. */
+  zotero?: { linked: string | null };
 }
 
 export const authClient = createAuthClient({ baseURL: location.origin, plugins: [anonymousClient()] });
