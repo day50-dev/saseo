@@ -53,6 +53,13 @@ export const EXAMPLES: Example[] = [
     input:
       "How does the synaptic vesicle cycle work: how does a vesicle fuse with the membrane to release neurotransmitter, and how is it pulled back and refilled?",
   },
+  // Pictures: a gallery of the paintings, oldest first, beside what changed and how to look.
+  {
+    key: "art",
+    kind: "Art history · a gallery",
+    title: "Renaissance paintings: what changed, and how to look at one",
+    input: "Art history: Renaissance paintings. What changed in painting during the Renaissance, and how do I look at one of these paintings?",
+  },
 ];
 
 export const exampleByKey = (key: string | null) => EXAMPLES.find((e) => e.key === key);
