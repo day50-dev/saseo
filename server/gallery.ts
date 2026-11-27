@@ -13,6 +13,7 @@ const UA = "Librarian/1.0 (study canvas)";
 export const GALLERY_MAX = 12;
 /** More are picked than shown: looking at them drops the ones that turn out not to fit. */
 const GALLERY_PICK = 18;
+const PER_PAGE = 8;
 const MIN_SIDE = 240;
 const MAX_BYTES = 8_000_000;
 
@@ -171,7 +172,8 @@ const PICK = `A reader on a study canvas asked to see pictures. You are given nu
 is said to show (its alt text, caption or description) and the page it's on. Choose the ones that best show what they asked
 for, at most ${GALLERY_PICK}: real artwork, photographs, drawings, model sheets, scans and figures of the subject itself.
 Leave out logos, site decoration, ads, author photos, merchandise and anything only loosely related. Don't choose two that
-are surely the same picture. When they asked how something changed over time, order them by date, oldest first; otherwise
+are surely the same picture. Draw from several sources when they serve equally well, so it isn't one site's selection.
+When they asked how something changed over time, order them by date, oldest first; otherwise
 most useful first. For each chosen image: its number, a caption of one plain sentence saying what it shows (from what it
 is said to show; don't invent detail), and "when" (a year or period) only if the candidate says so.
 Also a short title for the gallery and a one-sentence caption.
@@ -286,7 +288,8 @@ export async function makeGallery(
     search(query).catch(() => [] as FoundSource[]),
   ]);
   const commons = [...precise, ...broad];
-  const pages = await Promise.all(found.slice(0, 6).map((f) => pageCandidates(f.url)));
+  // A few from each page: one big gallery page mustn't make the whole gallery.
+  const pages = (await Promise.all(found.slice(0, 6).map((f) => pageCandidates(f.url)))).map((list) => list.slice(0, PER_PAGE));
   // The pages' own figures first (they're about this), then Commons; one of each address.
   const seen = new Set<string>();
   // Room for both: a page with many figures mustn't crowd Commons out.
