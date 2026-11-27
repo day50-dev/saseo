@@ -476,6 +476,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     return isPending(c) ? Math.max(measured, PENDING_HEIGHT) : measured || PENDING_HEIGHT;
   };
 
+  /** How tall a card is drawn right now: for lines that meet it, not the room kept for it to grow. */
+  const drawnHeight = (c: CardItem) => heights[c.id] || cardHeight(c);
+
   /**
    * First free y at or below `wanted` for a new card at x. The new card is assumed to be as tall
    * as the reserve, since it hasn't been written yet. Placement is decided once and never revisited.
@@ -848,7 +851,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   /** The rectangle of what a card explains: the box on the image, or the card it came from. */
   const sourceBox = (card: CardItem): Box | null => {
     const parent = byId.get(card.parentId);
-    if (parent?.kind === "card") return { left: parent.x, right: parent.x + parent.w, top: parent.y, bottom: parent.y + cardHeight(parent) };
+    if (parent?.kind === "card") return { left: parent.x, right: parent.x + parent.w, top: parent.y, bottom: parent.y + drawnHeight(parent) };
     if (parent?.kind === "region") {
       const r = regionWorld(parent);
       return r ? { left: r.x, right: r.x + r.w, top: r.y, bottom: r.y + r.h } : null;
@@ -1016,7 +1019,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   /** The drawn box of something a relation can join: a card, or a whole image (a collapsed one is its grip). */
   const relBox = (id: string): { x: number; y: number; w: number; h: number } | null => {
     const i = byId.get(id);
-    if (i?.kind === "card") return { x: i.x, y: i.y, w: i.w, h: cardHeight(i) };
+    if (i?.kind === "card") return { x: i.x, y: i.y, w: i.w, h: drawnHeight(i) };
     if (i?.kind === "image") return i.collapsed ? { x: i.x, y: i.y - 26, w: i.w, h: 22 } : { x: i.x, y: i.y, w: i.w, h: i.h + (i.video ? STOP_BAR : i.doc ? PAGER_BAR : 0) };
     return null;
   };
@@ -1494,7 +1497,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     if (c.relates) {
       const kind = c.relKind ?? "relates";
       const boxes = c.relates.map((id) => (folded.has(id) ? null : relBox(id)));
-      const card = { x: c.x, y: c.y, w: c.w, h: cardHeight(c) };
+      const card = { x: c.x, y: c.y, w: c.w, h: drawnHeight(c) };
       const lit = hover === c.id || c.relates.some((id) => hover === id);
       const cls = (extra = "") => `connector relation rel-${kind}${extra}${lit ? " lit" : ""}`;
       const out: React.JSX.Element[] = [];
@@ -1556,13 +1559,13 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         const my = Math.max(by, (by + ty) / 2);
         d = tx === bx ? `M${x0} ${f.bottom} L${bx} ${by} L${tx} ${ty - HEAD}` : `M${x0} ${f.bottom} L${bx} ${by} L${bx} ${my} L${tx} ${my} L${tx} ${ty - HEAD}`;
         head = `M${tx - 5} ${ty - HEAD} L${tx + 5} ${ty - HEAD} L${tx} ${ty} Z`;
-      } else if (c.y + cardHeight(c) <= f.top) {
+      } else if (c.y + drawnHeight(c) <= f.top) {
         // Above: the same, upward.
         const x0 = f.left + 28;
         const bx = x0 + BEND;
         const by = f.top - BEND;
         const tx = Math.min(Math.max(bx, c.x + 20), c.x + c.w - 20);
-        const ty = c.y + cardHeight(c);
+        const ty = c.y + drawnHeight(c);
         const my = Math.min(by, (by + ty) / 2);
         d = `M${x0} ${f.top} L${bx} ${by} L${bx} ${my} L${tx} ${my} L${tx} ${ty + HEAD}`;
         head = `M${tx - 5} ${ty + HEAD} L${tx + 5} ${ty + HEAD} L${tx} ${ty} Z`;
@@ -1600,7 +1603,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
       d = `M${from.x} ${from.y} C${mx} ${from.y} ${mx} ${to.y} ${to.x} ${to.y}`;
     } else {
       const from = { x: (s.left + s.right) / 2, y: dir === "below" ? s.bottom : s.top };
-      const to = { x: c.x + c.w / 2, y: dir === "below" ? c.y : c.y + cardHeight(c) };
+      const to = { x: c.x + c.w / 2, y: dir === "below" ? c.y : c.y + drawnHeight(c) };
       const my = (from.y + to.y) / 2;
       d = `M${from.x} ${from.y} C${from.x} ${my} ${to.x} ${my} ${to.x} ${to.y}`;
     }
