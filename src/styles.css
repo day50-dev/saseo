@@ -1333,3 +1333,16 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .sem-via { margin: 6px 0 0; text-align: center; font-style: italic; }
 .sem-within-whole { margin: 18px 0 0; }
 .sem-within-part { margin: 18px 0 8px 64px; }
+
+/* A PDF read in one place, a page at a time (PdfReader), like a video with its timeline. */
+.doc-item { position: absolute; background: var(--card); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; outline: none; }
+.doc-item.selected, .doc-item:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.doc-frame { position: relative; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--text) 6%, var(--card)); overflow: hidden; }
+.doc-cover { max-width: 100%; max-height: 100%; }
+.doc-canvas { display: block; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); transition: opacity 120ms; }
+.doc-failed { position: absolute; left: 12px; right: 12px; bottom: 8px; }
+.doc-bar { display: flex; align-items: center; gap: 8px; padding: 0 10px; border-top: 1px solid var(--line); }
+.doc-turn { font-size: 20px; line-height: 1; padding: 4px 12px; }
+.doc-pageno { display: flex; align-items: center; gap: 6px; }
+.doc-pageno input { width: 52px; text-align: center; padding: 4px; }
+.doc-take { margin-left: auto; font-size: 15px; font-weight: 600; padding: 7px 14px; white-space: nowrap; }

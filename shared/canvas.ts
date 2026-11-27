@@ -35,7 +35,13 @@ export interface ImageItem extends ItemState {
    * A page of a PDF: `asset` is that page alone as a PDF (drawn crisp, its text selectable), and the
    * image's own asset is its rendering (for boxes and the vision model).
    */
-  pdf?: { asset: string; page: number; pages: number; url: string; title: string };
+  pdf?: { asset: string; page: number; pages: number; url: string; title: string; doc?: string };
+  /**
+   * A whole PDF, read here a page at a time (a pager, like a video's timeline). The asset is its
+   * first page drawn; `file` is the PDF itself. A page taken out becomes an image with `pdf`, whose
+   * `doc` points back here.
+   */
+  doc?: { file: string; pages: number; url: string; title: string };
   /** The whole page read once, when something first needs it (relating two slides). */
   pageText?: string;
   topic?: string;
@@ -753,4 +759,8 @@ export const RELATION_MARK: Record<RelationKind, string> = { relates: "⟷", dif
 
 /** Kinds where one of the two comes first: it leads to the other, or is a part of it. */
 export const DIRECTED: RelationKind[] = ["leads", "within"];
+
+/** A PDF being read on the canvas, and a page taken out of it (world pixels wide). */
+export const DOC_WIDTH = 620;
+export const PAGE_WIDTH = 480;
 

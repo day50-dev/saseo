@@ -7,10 +7,10 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
-import { RELATION_KINDS, RELATION_MARK, type RelationKind, CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type Role, type CardItem, type Goal, type ImageItem, type NoteItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { DOC_WIDTH, PAGE_WIDTH, RELATION_KINDS, RELATION_MARK, type RelationKind, CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type Role, type CardItem, type Goal, type ImageItem, type NoteItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { remember } from "./pagecache.ts";
-import { pdfLink, servesPdf, slicePdf } from "./pdf.ts";
+import { openPdf, pageOfPdf, pdfLink, servesPdf } from "./pdf.ts";
 import { actor, addReaderNote, transferCanvases, addShareLink, assetPath, autoName, changesSince, DATA_DIR, joinByLink, markSeen, removeMember, removeShareLink, roleOf, deleteCanvas, DEFAULT_NAME, nameFromItems, type CanvasStore, canvasStore, createCanvas, duplicateCanvas, preparedExamples, getCanvasInfo, listCanvases, newId, saveAsset, updateCanvas } from "./canvas.ts";
 import { changePassword, lockedCookie, PASSWORD_FROM_ENV, unlock } from "./admin.ts";
 import { AUTH_ON, auth, currentUser, initAuth, PROVIDERS, type User } from "./auth.ts";
@@ -515,7 +515,7 @@ app.post("/api/canvases/:cid/call", async (c) => {
         : { x: shown.length ? Math.max(...shown.map((i) => i.x + i.w)) + 120 : 0, y: shown.length ? Math.min(...shown.map((i) => i.y)) : 0 };
       const r = await addSource(store, input, at);
       const id = r.card?.id ?? r.image?.id ?? "";
-      const what = r.images ? `${r.total ?? r.images.length} pages of a PDF` : r.image?.video ? `the video "${r.image.video.title}"` : r.card?.origin?.kind === "page" ? `the page ${input}` : `a card on "${input.slice(0, 80)}"`;
+      const what = r.image?.doc ? `the PDF "${r.image.doc.title}"` : r.image?.video ? `the video "${r.image.video.title}"` : r.card?.origin?.kind === "page" ? `the page ${input}` : `a card on "${input.slice(0, 80)}"`;
       return { id, what };
     },
     descend: async (card, phrase) => {
@@ -901,46 +901,27 @@ async function addSource(store: CanvasStore, input: string, at: { x: number; y: 
       .catch(() => {});
     return { image: video };
   }
-  // A PDF (an arXiv paper, or any .pdf) becomes its pages, each a single-page PDF, ten to a row.
+  // A PDF (an arXiv paper, or any .pdf) is read in one place, a page at a time; a page the reader
+  // wants to work on is taken out onto the canvas (the docs route), as a moment is from a video.
   const pdf = pdfLink(input) ?? (looksLikeLink(input) && (await servesPdf(input)) ? { url: input } : null);
   if (pdf) {
-    {
-      const sliced = await slicePdf(pdf);
-      const PER_ROW = 10;
-      const GAP_X = 40;
-      const GAP_Y = 80;
-      const width = 480;
-      const images: ImageItem[] = [];
-      let rowTop = at.y;
-      for (let i = 0; i < sliced.pages.length; i += PER_ROW) {
-        const row = sliced.pages.slice(i, i + PER_ROW);
-        let x = at.x;
-        let tallest = 0;
-        for (const p of row) {
-          const h = Math.round((p.h * width) / p.w);
-          const img: ImageItem = {
-            kind: "image",
-            id: newId(),
-            asset: p.png,
-            name: `${sliced.title} p.${p.n}`,
-            x,
-            y: rowTop,
-            w: width,
-            h,
-            naturalW: p.w,
-            naturalH: p.h,
-            pageText: p.text || undefined,
-            pdf: { asset: p.pdf, page: p.n, pages: sliced.total, url: pdf.arxiv ? `https://arxiv.org/pdf/${pdf.arxiv}` : pdf.url, title: sliced.title },
-          };
-          await store.add(img);
-          images.push(img);
-          x += width + GAP_X;
-          tallest = Math.max(tallest, h);
-        }
-        rowTop += tallest + GAP_Y;
-      }
-      return { image: images[0], images, total: sliced.total };
-    }
+    const opened = await openPdf(pdf);
+    const w = DOC_WIDTH;
+    const image: ImageItem = {
+      kind: "image",
+      id: newId(),
+      asset: opened.cover.png,
+      name: opened.title,
+      ...at,
+      w,
+      h: Math.round((opened.cover.h * w) / opened.cover.w),
+      naturalW: opened.cover.w,
+      naturalH: opened.cover.h,
+      topic: opened.title,
+      doc: { file: opened.asset, pages: opened.pages, url: pdf.arxiv ? `https://arxiv.org/pdf/${pdf.arxiv}` : pdf.url, title: opened.title },
+    };
+    await store.add(image);
+    return { image };
   }
   if (looksLikeLink(input)) {
     const card: CardItem = { kind: "card", id: newId(), parentId: "", origin: { kind: "page", url: input, title: input }, ...at, w: SOURCE_WIDTH, stage: "reading", subject: input };
@@ -1020,6 +1001,44 @@ async function sendRanged(c: Context, file: string, type: string): Promise<Respo
     headers: { ...headers, "Content-Length": String(end - start + 1), "Content-Range": `bytes ${start}-${end}/${size}` },
   });
 }
+
+// Taking a page out of a PDF being read: it lands on the canvas as its own page, crisp, with its
+// words selectable and anything on it boxable, as a stopped video's frame does.
+app.post("/api/canvases/:cid/docs/:id/pages", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const doc = await store.findItem(c.req.param("id"));
+  if (doc?.kind !== "image" || !doc.doc) return c.json({ error: "unknown PDF" }, 404);
+  const body = (await c.req.json()) as { page?: number; x?: number; y?: number };
+  const n = Number(body.page);
+  if (!Number.isInteger(n) || n < 1 || n > doc.doc.pages) return c.json({ error: `page must be 1 to ${doc.doc.pages}` }, 400);
+  if (!Number.isFinite(body.x) || !Number.isFinite(body.y)) return c.json({ error: "x and y are required" }, 400);
+  const found = assetPath(doc.doc.file);
+  if (!found) return c.json({ error: "the PDF is missing" }, 404);
+  let p: Awaited<ReturnType<typeof pageOfPdf>>;
+  try {
+    p = await pageOfPdf(found.file, n);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 502);
+  }
+  const w = PAGE_WIDTH;
+  const image: ImageItem = {
+    kind: "image",
+    id: newId(),
+    asset: p.png,
+    name: `${doc.doc.title} p.${n}`,
+    x: Math.round(body.x!),
+    y: Math.round(body.y!),
+    w,
+    h: Math.round((p.h * w) / p.w),
+    naturalW: p.w,
+    naturalH: p.h,
+    pageText: p.text || undefined,
+    pdf: { asset: p.pdf, page: n, pages: doc.doc.pages, url: doc.doc.url, title: doc.doc.title, doc: doc.id },
+  };
+  await store.add(image);
+  return c.json({ image });
+});
 
 // Stopping a video: the frame at that moment lands on the canvas like a slide, and below it a
 // card with what was said around it. Box the frame or select the words to go further down.

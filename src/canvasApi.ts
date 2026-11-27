@@ -87,6 +87,9 @@ export function canvasApi(cid: string) {
     moment: (videoId: string, t: number, x: number, y: number) =>
       post(`${base}/videos/${videoId}/moments`, { t, x, y }).then((r) => json<{ image: ImageItem; card?: CardItem }>(r)),
 
+    /** Takes a page out of a PDF being read: it lands at (x, y) as its own page. */
+    takePage: (docId: string, page: number, x: number, y: number) =>
+      post(`${base}/docs/${docId}/pages`, { page, x, y }).then((r) => json<{ image: ImageItem }>(r)),
     /** Asks how two cards are related; the answer is a new card between them. */
     relate: (body: { a: string; b: string; x: number; y: number; kind?: string }) =>
       post(`${base}/relate`, body).then((r) => json<{ card: CardItem }>(r)),

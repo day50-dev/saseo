@@ -6,6 +6,7 @@ import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type Ch
 import { Note } from "./Note.tsx";
 import { Card, type Side } from "./Card.tsx";
 import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
+import { PAGER_BAR, PdfReader } from "./PdfReader.tsx";
 import { players } from "./youtube.ts";
 import { assetUrl, CanvasNotFound, canvasApi, canvasesApi } from "./canvasApi.ts";
 import { renderPages as renderPaperPages } from "./arxiv.ts";
@@ -539,15 +540,14 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     const y = at?.y ?? Math.round(toWorld(r.left, r.top + 60).y);
     // A PDF takes a while: it's fetched and sliced into its pages.
     const pdf = /\.pdf($|[?#])|arxiv\.org\/(abs|pdf)\//i.test(input);
-    const done = pdf ? expect({ x, y, label: "", text: "Fetching the PDF and slicing it into pages…" }) : () => {};
+    const done = pdf ? expect({ x, y, label: "", text: "Fetching the PDF…" }) : () => {};
     try {
       const res = await api.addSource(input, x, y);
       const id = (res.card ?? res.image)!.id;
-      added(res.images ? `add ${res.images.length} pages of a PDF` : "start from", res.images ? res.images.map((i) => i.id) : [id]);
+      added(res.image?.doc ? "add a PDF" : "start from", [id]);
       await refresh();
       setView((v) => ({ ...v, x: r.width * 0.06 - x * v.scale, y: 60 - y * v.scale }));
       setSelected(id);
-      if (res.total && res.images && res.total > res.images.length) setError(`That PDF has ${res.total} pages; the first ${res.images.length} are on the canvas.`);
       return id;
     } catch (e) {
       setError(`Couldn't start from that: ${e}`);
@@ -953,7 +953,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const relBox = (id: string): { x: number; y: number; w: number; h: number } | null => {
     const i = byId.get(id);
     if (i?.kind === "card") return { x: i.x, y: i.y, w: i.w, h: cardHeight(i) };
-    if (i?.kind === "image") return i.collapsed ? { x: i.x, y: i.y - 26, w: i.w, h: 22 } : { x: i.x, y: i.y, w: i.w, h: i.h + (i.video ? STOP_BAR : 0) };
+    if (i?.kind === "image") return i.collapsed ? { x: i.x, y: i.y - 26, w: i.w, h: 22 } : { x: i.x, y: i.y, w: i.w, h: i.h + (i.video ? STOP_BAR : i.doc ? PAGER_BAR : 0) };
     return null;
   };
 
@@ -1121,6 +1121,45 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     return () => setExpected((all) => all.filter((q) => q.key !== key));
   };
 
+
+  // ---- PDFs: read a page at a time, and a page taken out to work on ----
+
+  // The page each PDF is open at, kept in this browser so it reopens where it was left.
+  const [docPages, setDocPages] = useState<Record<string, number>>({});
+  const docPage = (id: string) => {
+    if (docPages[id]) return docPages[id];
+    try {
+      return Number(localStorage.getItem(`librarian.docpage.${canvasId}.${id}`)) || 1;
+    } catch {
+      return 1;
+    }
+  };
+  const turnTo = (id: string, n: number) => {
+    setDocPages((all) => ({ ...all, [id]: n }));
+    try {
+      localStorage.setItem(`librarian.docpage.${canvasId}.${id}`, String(n));
+    } catch {
+      // Not kept: it opens at page 1 next time.
+    }
+  };
+
+  /** Takes a page out: beside the PDF, below the pages already taken from it. */
+  const takePage = async (doc: ImageItem, n: number) => {
+    const x = doc.x + doc.w + GAP;
+    let below = doc.y;
+    for (const m of images) if (m.pdf?.doc === doc.id) below = Math.max(below, m.y + m.h + STACK_GAP * 2);
+    const y = slotY(x, below);
+    const done = expect({ x, y, label: "", text: `Taking out page ${n}…` });
+    try {
+      const res = await api.takePage(doc.id, n, x, y);
+      added(`take out page ${n}`, [res.image.id]);
+      await refresh();
+    } catch (e) {
+      setError(`Couldn't take that page out: ${e}`);
+    } finally {
+      done();
+    }
+  };
 
   // ---- Video moments ----
 
@@ -1861,7 +1900,22 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 autoPlay={autoPlayId === img.id}
               />
             ))}
-          {images.filter((img) => !img.video).map((img) => (
+          {images
+            .filter((img) => img.doc)
+            .map((img) => (
+              <PdfReader
+                key={img.id}
+                item={img}
+                page={docPage(img.id)}
+                zoom={view.scale}
+                z={rank.get(img.id)}
+                selected={selected === img.id}
+                taken={new Set(images.filter((m) => m.pdf?.doc === img.id).map((m) => m.pdf!.page))}
+                onPage={(n) => turnTo(img.id, n)}
+                onTake={(n) => takePage(img, n)}
+              />
+            ))}
+          {images.filter((img) => !img.video && !img.doc).map((img) => (
             <img
               key={img.id}
               ref={(el) => {
@@ -1923,7 +1977,27 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 {img.collapsed ? "▸" : "▾"}
               </button>
               <span aria-hidden>⠿</span>{" "}
-              {img.pdf ? (
+              {img.doc ? (
+                <a href={img.doc.url} target="_blank" rel="noreferrer" title={img.doc.title} onPointerDown={(e) => e.stopPropagation()}>
+                  {img.doc.title} · {img.doc.pages} pages
+                </a>
+              ) : img.pdf?.doc && byId.has(img.pdf.doc) ? (
+                // A page taken out is also a bookmark: it takes the PDF back to this page.
+                <>
+                  <button
+                    type="button"
+                    className="resume-btn"
+                    title="Back to the PDF, open at this page"
+                    onClick={() => {
+                      turnTo(img.pdf!.doc!, img.pdf!.page);
+                      focusOn(img.pdf!.doc!);
+                    }}
+                  >
+                    ↩ p.{img.pdf.page}
+                  </button>{" "}
+                  {img.pdf.title}
+                </>
+              ) : img.pdf ? (
                 <a href={`${img.pdf.url}#page=${img.pdf.page}`} target="_blank" rel="noreferrer" title={img.pdf.title} onPointerDown={(e) => e.stopPropagation()}>
                   p.{img.pdf.page} of {img.pdf.pages} · {img.pdf.title}
                 </a>

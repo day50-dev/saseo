@@ -1,6 +1,7 @@
-// A PDF linked on the canvas becomes its pages: each one its own single-page PDF (sliced with
-// poppler's pdfseparate), drawn crisp at any zoom, with a rendering beside it (pdftoppm) for
-// boxing and for the vision model, and its exact text (pdftotext). Long documents stop at a cap.
+// A PDF linked on the canvas is kept whole and read in one place, a page at a time (openPdf). A page
+// the reader takes out (pageOfPdf) becomes its own single-page PDF (poppler's pdfseparate), drawn
+// crisp at any zoom, with a rendering beside it (pdftoppm) for boxing and for the vision model, and
+// its exact text (pdftotext). slicePdf, every page up to a cap, remains for whole-document use.
 import { execFile, spawn } from "node:child_process";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -127,3 +128,53 @@ export async function slicePdf(link: { arxiv?: string; url: string }): Promise<{
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+/** The title for a linked PDF: its own, or for arXiv the paper's. */
+async function titleFor(link: { arxiv?: string; url: string }, info: string): Promise<string> {
+  let named = titleIn(info);
+  if (!named && link.arxiv) named = (await arxivPaper(link.arxiv).catch(() => null))?.title?.replace(/\s+/g, " ").trim();
+  return link.arxiv ? `arXiv ${link.arxiv}${named ? `: ${named}` : ""}` : named || decodeURIComponent(link.url.split(/[?#]/)[0].split("/").pop() ?? "PDF");
+}
+
+/**
+ * Opens a linked PDF to read on the canvas: the whole file kept as an asset, its page count and
+ * title, and its first page drawn, for a picture of it before the reader has drawn anything.
+ */
+export async function openPdf(link: { arxiv?: string; url: string }): Promise<{ title: string; pages: number; asset: string; cover: { png: string; w: number; h: number } }> {
+  const bytes = link.arxiv ? await arxivPdf(link.arxiv) : await download(link.url);
+  const dir = await mkdtemp(path.join(tmpdir(), "librarian-pdf-"));
+  try {
+    const file = path.join(dir, "in.pdf");
+    await writeFile(file, bytes);
+    const info = (await run("pdfinfo", [file], { maxBuffer: 1 << 26 })).stdout;
+    const pages = Number(/^Pages:\s+(\d+)/m.exec(info)?.[1] ?? 0);
+    if (!pages) throw new Error("Couldn't read that PDF.");
+    await quiet("pdftoppm", ["-q", "-r", "110", "-png", "-f", "1", "-l", "1", "-singlefile", file, path.join(dir, "cover")]);
+    const png = await readFile(path.join(dir, "cover.png"));
+    return { title: await titleFor(link, info), pages, asset: await saveAsset(Buffer.from(bytes), "application/pdf"), cover: { png: await saveAsset(png, "image/png"), ...pngSize(png) } };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/** One page taken out of a kept PDF (a file on disk): its own single-page PDF, a drawing, its text. */
+export async function pageOfPdf(file: string, n: number): Promise<PdfPage> {
+  const dir = await mkdtemp(path.join(tmpdir(), "librarian-pdf-"));
+  try {
+    const one = path.join(dir, "page.pdf");
+    await quiet("pdfseparate", ["-f", String(n), "-l", String(n), file, one]);
+    await quiet("pdftoppm", ["-q", "-r", "110", "-png", "-f", String(n), "-l", String(n), "-singlefile", file, path.join(dir, "r")]);
+    const png = await readFile(path.join(dir, "r.png"));
+    const text = (await run("pdftotext", ["-q", "-layout", "-f", String(n), "-l", String(n), file, "-"], { maxBuffer: 1 << 24 }).catch(() => ({ stdout: "" }))).stdout;
+    return {
+      n,
+      pdf: await saveAsset(await readFile(one), "application/pdf"),
+      png: await saveAsset(png, "image/png"),
+      ...pngSize(png),
+      text: text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 20_000),
+    };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
