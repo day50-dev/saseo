@@ -2026,6 +2026,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               onAddPaper={(paper) => addPaperPages(paper, "1-2", { x: c.x + c.w + GAP, y: c.y })}
               onAddLink={(url) => startFrom(url, { x: c.x + c.w + GAP, y: slotY(c.x + c.w + GAP, c.y) }).then(() => {})}
               onPlayVideo={(videoId, url) => playOnCanvas(c, videoId, url)}
+              onPlaceImage={async (asset, name) => {
+                const blob = await fetch(assetUrl(asset)).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`HTTP ${r.status}`))));
+                const x = c.x + c.w + GAP;
+                await placeImage(new File([blob], name.slice(0, 80) || "picture", { type: blob.type }), { x, y: slotY(x, c.y) });
+              }}
               onOpenNotebook={() => setNotebook({ id: c.id, autoRun: false })}
               onAsk={async (text) => {
                 try {

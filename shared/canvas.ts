@@ -341,8 +341,24 @@ export interface SetEntry {
   unverified?: boolean;
 }
 
+/** A picture in a gallery: kept as an asset, with what it shows and where it was found. */
+export interface GalleryImage {
+  asset: string;
+  w: number;
+  h: number;
+  caption: string;
+  /** A year or period, when the source says. */
+  when?: string;
+  /** The page it was found on, and that site's name. */
+  page: string;
+  site: string;
+  /** Who made it and its license, when the source says (Commons does). */
+  credit?: string;
+}
+
 export type CardObject =
   | { type: "set"; title: string; caption?: string; entries: SetEntry[] }
+  | { type: "gallery"; title: string; caption?: string; images: GalleryImage[] }
   | { type: "notebook"; title: string; cells: NotebookCell[]; source?: NotebookSource; why?: string; language?: string }
   | { type: "videos"; videos: Video[] }
   | { type: "links"; links: FoundSource[] }

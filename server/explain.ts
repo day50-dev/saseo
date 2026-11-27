@@ -2,6 +2,7 @@
 // explanation from what was found, then check that it doesn't climb.
 import { addNote } from "./notes.ts";
 import { makeSet } from "./sets.ts";
+import { makeGallery } from "./gallery.ts";
 import { CARD_WIDTH, SOURCE_WIDTH, EXTENSION_SHAPES, RETRY_TRIES, retryDelay, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Paper, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { unescapeTwice } from "../shared/tex.ts";
@@ -1176,7 +1177,8 @@ const INTENT_CRITERIA: Record<Intent, string> = {
   note: "A request to note, jot down or remember something for later, rather than to answer it now.",
   videos: "A request for videos, lectures or talks to watch.",
   links: "A request for reading: articles, notes, papers, textbooks or other pages.",
-  diagram: "A request to draw, sketch, picture or diagram something.",
+  diagram: "A request to draw, sketch or diagram something: a picture made for them.",
+  gallery: "A request to see pictures, images, photographs, artwork or drawings of something, or what it looks or looked like.",
   papers: "A request for research papers, preprints or arXiv articles.",
   notebook: "A request for code, a worked example to run, or a Jupyter notebook.",
   table: "A request for data, figures, statistics or numbers, as a table or to compare.",
@@ -1189,10 +1191,12 @@ const isIntent = (v: unknown): v is Intent => typeof v === "string" && v in INTE
 
 const INTENT = `A reader typed a message in the conversation box on a card about a topic they are studying.
 Decide what they want: an answer in words, or an object made for them.
-Return JSON only: {"kind": "answer" | "note" | "set" | "videos" | "links" | "diagram" | "papers" | "notebook" | "table" | "plot" | "graph" | "map", "request": "what they asked for, restated in a few words"}
+Return JSON only: {"kind": "answer" | "note" | "set" | "gallery" | "videos" | "links" | "diagram" | "papers" | "notebook" | "table" | "plot" | "graph" | "map", "request": "what they asked for, restated in a few words"}
 - "videos": they ask for videos, lectures or talks to watch.
 - "links": they ask for things to read: articles, notes, papers, textbook chapters.
-- "diagram": they ask you to draw, sketch, picture or diagram something.
+- "diagram": they ask you to draw, sketch or diagram something (a drawing made for them).
+- "gallery": they ask to see real pictures: images, photographs, artwork, drawings, model sheets, what something looks or
+  looked like, how its look changed ("show me pictures of", "what did it look like", "images of the early designs").
 - "papers": they ask for research papers, preprints, or arXiv.
 - "notebook": they ask for code, an example to run or play with, or a Jupyter notebook.
 - "table": they ask for data, figures, statistics, numbers over time, or a comparison in numbers.
@@ -1235,7 +1239,7 @@ async function decideIntent(text: string, about: string): Promise<{ kind: Intent
 /** A card's likely height before it has ever been measured: object cards vary by what they hold. */
 function expectedHeight(c: CardItem): number {
   if (c.objectKind === "videos") return 1150;
-  if (c.objectKind === "set") return 1300;
+  if (c.objectKind === "set" || c.objectKind === "gallery") return 1300;
   if (c.objectKind === "diagram") return 1100;
   if (c.objectKind === "links") return 900;
   if (c.objectKind === "table" || c.objectKind === "plot" || c.objectKind === "graph" || c.objectKind === "map") return 800;
@@ -1378,6 +1382,9 @@ export function makeObject(store: CanvasStore, cardId: string) {
       await store.update(cardId, { stage: "writing" });
       const set = await makeSet(request, about.text.slice(0, 1500));
       await store.update(cardId, { stage: "done", subject: set.title, object: { type: "set", ...set } });
+    } else if (card.objectKind === "gallery") {
+      const g = await makeGallery(request, about.text, search, (stage) => void store.update(cardId, { stage }));
+      await store.update(cardId, { stage: "done", subject: g.title, object: { type: "gallery", ...g } });
     } else if (card.objectKind === "links") {
       await store.update(cardId, { stage: "searching" });
       const q = await queryFor(request, about.text, `${about.name} introduction`);
@@ -1470,6 +1477,7 @@ export function makeObject(store: CanvasStore, cardId: string) {
 
 const MADE: Record<ObjectKind, string> = {
   set: "Putting together a set",
+  gallery: "Finding pictures",
   videos: "Finding videos",
   links: "Finding reading",
   diagram: "Drawing a diagram",
@@ -1483,6 +1491,7 @@ const MADE: Record<ObjectKind, string> = {
 
 const REDOING: Record<ObjectKind, string> = {
   set: "Putting together another set",
+  gallery: "Finding other pictures",
   videos: "Finding other videos",
   links: "Finding other reading",
   diagram: "Drawing it again",
@@ -1495,7 +1504,7 @@ const REDOING: Record<ObjectKind, string> = {
 };
 
 const REFINE = `A card on a reader's study canvas holds something found or made for them: videos, reading, research
-papers, a diagram, a notebook, a table of data, a plot, a graph or a map. They wrote a message on that card.
+papers, pictures, a diagram, a notebook, a table of data, a plot, a graph or a map. They wrote a message on that card.
 Decide whether the message asks to change what the card holds: different, better, more academic, shorter, newer,
 in another language, from other sources, drawn differently, on another scale or range, with something added or taken out, and so on. A question about the content itself
 ("what does the second video cover?", "why is this arrow here?") is NOT a change.
@@ -1610,7 +1619,7 @@ async function addObject(store: CanvasStore, from: CardItem | undefined, kind: O
     x: at.x,
     y: at.y,
     // A set is a grid of tiles, three across: it needs the room.
-    w: kind === "set" ? SOURCE_WIDTH : CARD_WIDTH,
+    w: kind === "set" || kind === "gallery" ? SOURCE_WIDTH : CARD_WIDTH,
     stage: "reading",
     subject: request,
   };

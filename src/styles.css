@@ -1184,6 +1184,19 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .set-actions { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-top: 2px; }
 .set-tile.unverified .set-pic { border-style: dashed; }
 .set-caption { margin: 6px 0 0; }
+/* A gallery: each picture whole, on white, tapped to see it large. */
+.gallery-tile { margin: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.gallery-tile figcaption { display: flex; flex-direction: column; gap: 2px; }
+.gallery-pic { padding: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; aspect-ratio: 1; cursor: zoom-in; display: block; width: 100%; }
+.gallery-pic img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.gallery-caption { font-size: 13px; line-height: 1.35; }
+.gallery-view { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; }
+.gallery-view img { max-width: 100%; max-height: calc(100vh - 220px); object-fit: contain; background: #fff; border-radius: 4px; }
+.gallery-view-text { color: #fff; max-width: 760px; text-align: center; }
+.gallery-view-text p { margin: 0 0 6px; }
+.gallery-view-text a { color: #9fc0ff; }
+.gallery-view-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+.gallery-view-actions .link { color: #fff; }
 @media (max-width: 600px) { .card-set { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* ---- Sharing ---- */

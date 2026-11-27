@@ -1,5 +1,6 @@
 import { splitTabulars } from "./tabular.ts";
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { GraphView, PlotView, TableView } from "./Figures.tsx";
 import { fitSvg } from "./fitSvg.ts";
 // OpenLayers is large: loaded only when a map is on the canvas.
@@ -10,6 +11,7 @@ import {
   type Clarify,
   type CourseSighting,
   type FoundSource,
+  type GalleryImage,
   type ImageItem,
   type Paper,
   type Rect,
@@ -135,6 +137,8 @@ export function Card(props: {
   onAddLink?: (url: string) => Promise<void>;
   /** Plays a video from this card's set on the canvas, where it can be stopped and asked about. */
   onPlayVideo?: (videoId: string, url: string) => void;
+  /** Puts a picture from a gallery on the canvas, beside this card, to box and ask about. */
+  onPlaceImage?: (asset: string, name: string) => Promise<void>;
   /** Brings back what an object card held before a message redid it. */
   onObjectBack: () => void;
   /** Opens this card's notebook in the panel beside the canvas. */
@@ -379,7 +383,7 @@ export function Card(props: {
       {card.objectKind === "notebook" ? (
         <NotebookCard card={card} onOpen={props.onOpenNotebook} />
       ) : (
-        card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} onExplain={props.onDescend} onAddLink={props.onAddLink} onPlayVideo={props.onPlayVideo} />
+        card.object && <ObjectView card={card} onAddPaper={props.onAddPaper} onExplain={props.onDescend} onAddLink={props.onAddLink} onPlayVideo={props.onPlayVideo} onPlaceImage={props.onPlaceImage} />
       )}
       {card.replaced && card.stage === "done" && (
         <button type="button" className="link small object-back" onPointerDown={(e) => e.stopPropagation()} onClick={props.onObjectBack}>
@@ -601,7 +605,7 @@ function ChatBox({
         className="chat-input"
         rows={1}
         value={draft}
-        placeholder={messages.length ? "Ask a follow-up, or ask for videos, reading, a set to look through, a diagram, data, a plot, a map…" : "Ask about this, or ask for videos, reading, a set to look through, a diagram, data, a plot, a map…"}
+        placeholder={messages.length ? "Ask a follow-up, or ask for pictures, videos, reading, a set to look through, a diagram, data, a plot, a map…" : "Ask about this, or ask for pictures, videos, reading, a set to look through, a diagram, data, a plot, a map…"}
         disabled={card.chatPending}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
@@ -656,9 +660,11 @@ function ObjectView({
   onExplain,
   onAddLink,
   onPlayVideo,
+  onPlaceImage,
 }: {
   card: CardItem;
   onPlayVideo?: (videoId: string, url: string) => void;
+  onPlaceImage?: (asset: string, name: string) => Promise<void>;
   onAddPaper: (paper: Paper) => Promise<void>;
   onExplain?: (text: string, context: string, clientY: number) => void;
   onAddLink?: (url: string) => Promise<void>;
@@ -683,6 +689,7 @@ function ObjectView({
         {o.caption && <figcaption className="facet-text">{o.caption}</figcaption>}
       </figure>
     );
+  if (o.type === "gallery") return <Gallery images={o.images} caption={o.caption} onPlace={onPlaceImage} />;
   if (o.type === "set")
     return (
       <CardSet
@@ -1199,6 +1206,90 @@ function CardSet({ tiles, caption }: { tiles: Tile[]; caption?: string }) {
           ),
         )}
       </div>
+    </>
+  );
+}
+
+/**
+ * Pictures to look through: each whole (not cropped), with what it shows, when, and where it's from.
+ * A tap opens it large; "Put on the canvas" makes it an image there, to box parts of and ask about.
+ */
+function Gallery({ images, caption, onPlace }: { images: GalleryImage[]; caption?: string; onPlace?: (asset: string, name: string) => Promise<void> }) {
+  const [open, setOpen] = useState<number | null>(null);
+  const [placed, setPlaced] = useState<Record<string, "adding" | "added">>({});
+  const shown = open === null ? null : images[open];
+  const place = async (im: GalleryImage) => {
+    if (!onPlace || placed[im.asset]) return;
+    setPlaced((p) => ({ ...p, [im.asset]: "adding" }));
+    try {
+      await onPlace(im.asset, im.caption);
+      setPlaced((p) => ({ ...p, [im.asset]: "added" }));
+    } catch {
+      setPlaced(({ [im.asset]: _, ...rest }) => rest);
+    }
+  };
+  const placeLabel = (im: GalleryImage) => (placed[im.asset] === "added" ? "On the canvas" : placed[im.asset] === "adding" ? "Adding…" : "Put on the canvas");
+  return (
+    <>
+      {caption && <p className="set-caption muted small">{caption}</p>}
+      <div className="card-set gallery" onPointerDown={(e) => e.stopPropagation()}>
+        {images.map((im, i) => (
+          <figure key={im.asset} className="gallery-tile">
+            <button type="button" className="gallery-pic" onClick={() => setOpen(i)} title="See it large">
+              <img src={assetUrl(im.asset)} alt={im.caption} loading="lazy" draggable={false} />
+            </button>
+            <figcaption>
+              <span className="gallery-caption">{im.caption}</span>
+              <span className="set-subtitle">{[im.when, im.site].filter(Boolean).join(" · ")}</span>
+              <span className="set-actions">
+                {onPlace && (
+                  <button type="button" className="link small" disabled={Boolean(placed[im.asset])} onClick={() => void place(im)}>
+                    {placeLabel(im)}
+                  </button>
+                )}
+                <a href={im.page} target="_blank" rel="noreferrer" className="small">
+                  Source ↗
+                </a>
+              </span>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+      {shown &&
+        open !== null &&
+        // Outside the canvas, which is scaled and moved: the picture fills the screen as it is.
+        createPortal(
+          <div className="gallery-view" role="dialog" aria-label={shown.caption} onClick={() => setOpen(null)}>
+            <img src={assetUrl(shown.asset)} alt={shown.caption} onClick={(e) => e.stopPropagation()} />
+            <div className="gallery-view-text" onClick={(e) => e.stopPropagation()}>
+              <p>{shown.caption}</p>
+              <p className="small">
+                {[shown.when, shown.credit].filter(Boolean).join(" · ")}
+                {(shown.when || shown.credit) && " · "}
+                <a href={shown.page} target="_blank" rel="noreferrer">
+                  {shown.site} ↗
+                </a>
+              </p>
+              <div className="gallery-view-actions">
+                <button type="button" className="secondary" disabled={open === 0} onClick={() => setOpen(open - 1)}>
+                  ‹ Previous
+                </button>
+                {onPlace && (
+                  <button type="button" disabled={Boolean(placed[shown.asset])} onClick={() => void place(shown)}>
+                    {placeLabel(shown)}
+                  </button>
+                )}
+                <button type="button" className="secondary" disabled={open === images.length - 1} onClick={() => setOpen(open + 1)}>
+                  Next ›
+                </button>
+                <button type="button" className="link" onClick={() => setOpen(null)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

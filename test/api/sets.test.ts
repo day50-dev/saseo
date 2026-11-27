@@ -81,6 +81,6 @@ describe("F-SET: a set of cards to look through", () => {
     llm.on(/voice call/, { say: "I'll put together a set of them.", actions: [{ kind: "find", find: "set", request: "top talents of British post-punk" }] });
     const r = await s.api("POST", `${C}/call`, { text: "can you make a card that lists the top talents of the era so I can look at them", pointing: { cardId: "pp" } });
     assert.match(r.body.did, /finding set/);
-    assert.match(llm.askedFor(/voice call/)[0].system, /"set" \| "videos"/);
+    assert.match(llm.askedFor(/voice call/)[0].system, /"set" \| "gallery" \| "videos"/);
   });
 });

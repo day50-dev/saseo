@@ -44,6 +44,8 @@ export async function fakeLlm() {
   // A stand-in Wikipedia: article summaries by title, and what a search finds.
   const wiki = new Map<string, object>();
   const wikiSearch = new Map<string, string>();
+  // A stand-in Wikimedia Commons: what an image search finds, and the pictures themselves (PNG headers of a size).
+  let commons: { file: string; description: string; date?: string; w: number; h: number }[] = [];
 
   const server = createServer(async (req, res) => {
     const raw = await body(req);
@@ -69,6 +71,41 @@ export async function fakeLlm() {
       const title = decodeURIComponent(req.url.slice("/api/rest_v1/page/summary/".length)).replace(/_/g, " ");
       const page = wiki.get(title);
       return page ? json(200, page) : json(404, { type: "https://mediawiki.org/wiki/HyperSwitch/errors/not_found" });
+    }
+    if (req.url?.startsWith("/img/")) {
+      const [w, h] = (req.url.match(/(\d+)x(\d+)/) ?? ["", "800", "600"]).slice(1).map(Number);
+      const png = Buffer.alloc(64);
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png);
+      png.writeUInt32BE(13, 8);
+      png.write("IHDR", 12, "ascii");
+      png.writeUInt32BE(w, 16);
+      png.writeUInt32BE(h, 20);
+      // Different pictures have different bytes, so each is kept as its own asset.
+      png.write(req.url.slice(0, 40), 24, "ascii");
+      res.writeHead(200, { "content-type": "image/png" });
+      return res.end(png);
+    }
+    if (req.url?.startsWith("/w/api.php") && new URL(req.url, "http://x").searchParams.get("generator") === "search") {
+      const pages = Object.fromEntries(
+        commons.map((c, i) => [
+          String(i + 1),
+          {
+            title: `File:${c.file}`,
+            index: i + 1,
+            imageinfo: [
+              {
+                url: `${url}/img/${c.w}x${c.h}/${encodeURIComponent(c.file)}`,
+                mime: "image/png",
+                width: c.w,
+                height: c.h,
+                descriptionurl: `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(c.file)}`,
+                extmetadata: { ImageDescription: { value: c.description }, ...(c.date ? { DateTimeOriginal: { value: c.date } } : {}), LicenseShortName: { value: "Public domain" } },
+              },
+            ],
+          },
+        ]),
+      );
+      return json(200, { query: { pages } });
     }
     if (req.url?.startsWith("/w/api.php")) {
       const q = new URL(req.url, "http://x").searchParams.get("srsearch") ?? "";
@@ -129,11 +166,16 @@ export async function fakeLlm() {
       asked.length = 0;
       decide = null;
       decided.length = 0;
+      commons = [];
     },
     /** Adds an article to the stand-in Wikipedia; `found by` words that search finds it with. */
     wikiPage(title: string, page: object, foundBy?: string) {
       wiki.set(title, { type: "standard", title, ...page });
       if (foundBy) wikiSearch.set(foundBy, title);
+    },
+    /** What the stand-in Commons finds for any image search. */
+    commonsImages(list: typeof commons) {
+      commons = list;
     },
     /** Answers the decision model's yes/no questions: the probability of yes, from the state. */
     onDecide(fn: (state: Record<string, unknown>, instructions: string) => number) {
