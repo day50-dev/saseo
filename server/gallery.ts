@@ -13,7 +13,7 @@ const UA = "Librarian/1.0 (study canvas)";
 export const GALLERY_MAX = 12;
 /** More are picked than shown: looking at them drops the ones that turn out not to fit. */
 const GALLERY_PICK = 18;
-const PER_PAGE = 8;
+const PER_PAGE = 12;
 const MIN_SIDE = 240;
 const MAX_BYTES = 8_000_000;
 
@@ -164,9 +164,10 @@ export function imagesInHtml(html: string, pageUrl: string): Candidate[] {
 
 const QUERIES = `A reader on a study canvas asked to see pictures. Write two searches for them.
 "web": a web search that finds pages showing these pictures (galleries, museum and archive pages, articles about them).
-"commons": the bare name of the subject for Wikimedia Commons, which matches file descriptions: two or three words
-("Mickey Mouse", "Brutalist architecture", "Saturn V"), no "pictures" or "images".
-Return JSON only: {"web": "...", "commons": "..."}`;
+"commons": one to four searches for Wikimedia Commons, which matches file descriptions: each two to four words, no
+"pictures" or "images". The bare subject ("Mickey Mouse", "Brutalist architecture"), or when they want several artists,
+works or things, one search for each of the main ones ("Botticelli Birth of Venus", "Raphael School of Athens").
+Return JSON only: {"web": "...", "commons": ["...", "..."]}`;
 
 const PICK = `A reader on a study canvas asked to see pictures. You are given numbered candidate images, each with what it
 is said to show (its alt text, caption or description) and the page it's on. Choose the ones that best show what they asked
@@ -271,30 +272,31 @@ export async function makeGallery(
   onStage?.("searching");
   const config = await loadConfig();
   let query = request;
-  let subject = "";
+  let subjects: string[] = [];
   try {
-    const q = await chatJson<{ web?: string; commons?: string }>(config.llm, [
+    const q = await chatJson<{ web?: string; commons?: unknown }>(config.llm, [
       { role: "system", content: QUERIES },
       { role: "user", content: `The card is about: ${about.slice(0, 1000)}\n\nThey asked for: ${request}` },
     ]);
     query = String(q.web ?? "").trim() || request;
-    subject = String(q.commons ?? "").trim();
+    subjects = (Array.isArray(q.commons) ? q.commons : [q.commons]).map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 4);
   } catch {}
-  // Commons is searched by its file descriptions: a precise query often finds nothing, so the
-  // subject alone too.
-  const [precise, broad, found] = await Promise.all([
-    commonsCandidates(query),
-    subject && subject.toLowerCase() !== query.toLowerCase() ? commonsCandidates(subject) : Promise.resolve([] as Candidate[]),
+  // Commons matches file descriptions, so it gets short searches of its own: the bare subject, or
+  // one per artist or work asked for.
+  const [found, ...byCommons] = await Promise.all([
     search(query).catch(() => [] as FoundSource[]),
+    ...(subjects.length ? subjects : [query]).map((q) => commonsCandidates(q, subjects.length > 1 ? 8 : 16)),
   ]);
-  const commons = [...precise, ...broad];
+  // Taken in turns, so each search gets its best ones in.
+  const commons: Candidate[] = [];
+  for (let i = 0; byCommons.some((l) => l[i]); i++) for (const l of byCommons) if (l[i]) commons.push(l[i]);
   // A few from each page: one big gallery page mustn't make the whole gallery.
   const pages = (await Promise.all(found.slice(0, 6).map((f) => pageCandidates(f.url)))).map((list) => list.slice(0, PER_PAGE));
   // The pages' own figures first (they're about this), then Commons; one of each address.
   const seen = new Set<string>();
   // Room for both: a page with many figures mustn't crowd Commons out.
   const fresh = (list: Candidate[]) => list.filter((c) => !seen.has(c.url) && (seen.add(c.url), true));
-  const candidates = [...fresh(pages.flat()).slice(0, 32), ...fresh(commons).slice(0, 16)];
+  const candidates = [...fresh(pages.flat()).slice(0, 36), ...fresh(commons).slice(0, 24)];
   if (!candidates.length) throw new Error(`No pictures found for "${query}". Try asking differently.`);
 
   onStage?.("writing");
@@ -332,7 +334,7 @@ export async function makeGallery(
       ...(c.credit ? { credit: c.credit } : {}),
     });
   });
-  console.log(`gallery "${query}" / Commons "${subject}": ${candidates.length} candidates (${commons.length} from Commons), ${picked.length} picked, ${got.length} fetched, ${images.length} kept`);
+  console.log(`gallery "${query}" / Commons ${JSON.stringify(subjects)}: ${candidates.length} candidates (${commons.length} from Commons), ${picked.length} picked, ${got.length} fetched, ${images.length} kept`);
   if (images.length < 2) throw new Error(`Couldn't fetch enough pictures for "${query}". Try asking differently.`);
   return { title: String(r.title ?? "").trim().slice(0, 120) || `Pictures: ${request}`, caption: String(r.caption ?? "").trim().slice(0, 300) || undefined, images };
 }

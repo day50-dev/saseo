@@ -37,7 +37,7 @@ const card = async (id: string) => ((await s.api("GET", C)).body as CanvasState)
 describe("F-GALLERY: pictures to look through", () => {
   test("asked for in a card's conversation: picked, captioned, oldest first, each kept on the server", async () => {
     llm.on(/conversation box on a card/, { kind: "gallery", request: "Mickey's model sheets over the years" });
-    llm.on(/Write two searches/, { web: "Mickey Mouse model sheets history", commons: "Mickey Mouse" });
+    llm.on(/Write two searches/, { web: "Mickey Mouse model sheets history", commons: ["Mickey Mouse"] });
     llm.on(/numbered candidate images/, (a) => {
       assert.match(a.user, /Steamboat Willie/);
       assert.doesNotMatch(a.user, /A small Mickey/, "too small to be a candidate");
