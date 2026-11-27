@@ -297,8 +297,52 @@ async function write(
       // The check is advisory; a failure leaves the draft as written.
     }
   }
-  await store.update(card.id, { stage: "done", sem, sources, climb, rewritten, ...(flow ? { flow: true } : {}) });
+  const st = await store.getState();
+  const lens = goalsFor(st.goals ?? [], st.items, card).map((g) => g.text);
+  await store.update(card.id, { stage: "done", sem, sources, climb, rewritten, lens, ...(flow ? { flow: true } : {}) });
   void mapCourses(store, card.id, subject, sources);
+}
+
+/**
+ * Writes an explanation again through the learner's goal as it is now, from the sources it already
+ * found. What it said before is kept on the card (with what was grown from it, which belonged to
+ * those words), for undo to swap back.
+ */
+export function reExplain(store: CanvasStore, cardId: string) {
+  return guard(store, cardId, async () => {
+    const card = (await store.findItem(cardId)) as CardItem;
+    if (!card.sem) return;
+    await store.update(cardId, {
+      stage: "writing",
+      before: { sem: card.sem, ext: card.ext, sources: card.sources, climb: card.climb, rewritten: card.rewritten, lens: card.lens },
+      ext: [],
+    });
+    const selection = card.selection ?? "";
+    const { path, topic } = await ancestry(store, card);
+    const context = [await momentNote(store, card), await trail(store, card)].filter(Boolean).join("\n\n");
+    const quoted = card.context ? `“${selection}” in: ${card.context}` : selection;
+    const register = card.register;
+    const guidance = register ? `${REGISTER_GUIDANCE[register.register]}${register.means ? ` (${register.means})` : ""}` : "";
+    const sources = card.sources?.length ? card.sources : await search(card.searchQuery ?? `${selection} explained introduction`);
+    await write(store, card, card.subject ?? selection, quoted, topic, path, sources, [context, guidance].filter(Boolean).join("\n\n"), Boolean(card.flow));
+  });
+}
+
+/** Undo (and redo) of writing it again: what it says now and what it said before change places. */
+export async function swapExplanation(store: CanvasStore, cardId: string): Promise<boolean> {
+  const card = await store.findItem(cardId);
+  if (card?.kind !== "card" || !card.before || !card.sem || card.stage !== "done") return false;
+  const b = card.before;
+  await store.update(cardId, {
+    sem: b.sem,
+    ext: b.ext ?? [],
+    sources: b.sources,
+    climb: b.climb,
+    rewritten: b.rewritten,
+    lens: b.lens ?? [],
+    before: { sem: card.sem, ext: card.ext, sources: card.sources, climb: card.climb, rewritten: card.rewritten, lens: card.lens },
+  });
+  return true;
 }
 
 /**

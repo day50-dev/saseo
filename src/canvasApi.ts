@@ -125,6 +125,10 @@ export function canvasApi(cid: string) {
     objectBack: (cardId: string) => post(`${base}/cards/${cardId}/object/back`, {}).then((r) => json<{ ok: true }>(r)),
     /** A goal of your own, or one that something needs. */
     addGoal: (text: string, parentId?: string) => post(`${base}/goals`, { text, parentId }).then((r) => json<{ goal: Goal }>(r)),
+    /** Writes the cards this goal is now the lens for again, through it. */
+    reExplain: (goalId: string) => post(`${base}/goals/${goalId}/reexplain`, {}).then((r) => json<{ ids: string[] }>(r)),
+    /** Swaps a card rewritten through a goal with what it said before (undo, and redo). */
+    swapExplanation: (cardId: string) => post(`${base}/cards/${cardId}/swap`, {}).then((r) => json<{ ok: true }>(r)),
     /** Rewords, finishes, clears, reopens or moves a goal; `restore` puts one back exactly as it was. */
     changeGoal: (id: string, change: Partial<Goal> & { restore?: Goal }) => send("PATCH", `${base}/goals/${id}`, change).then((r) => json<{ goal: Goal }>(r)),
     /** Puts grown shapes back (undoing their removal). */

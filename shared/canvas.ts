@@ -568,6 +568,10 @@ export interface CardItem extends ItemState {
   /** Probability from the System One check that the explanation climbs (0 = clearly descends). */
   climb?: number;
   rewritten?: boolean;
+  /** The learner's goals it was written through, as worded then. */
+  lens?: string[];
+  /** What it said before it was written again through a goal: put back (and swapped) by undo. */
+  before?: { sem: Sem; ext?: Extension[]; sources?: FoundSource[]; climb?: number; rewritten?: boolean; lens?: string[] };
   error?: string;
   /** Tries made again by themselves after failing (up to RETRY_TRIES), and when the next one is due ("" when none is). */
   retries?: number;

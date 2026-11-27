@@ -19,7 +19,8 @@ import { besideOf, type CallContext, callTurn, canSpeak, listen, type Pointing, 
 import { around, captions, clock, heardAround, heardCaptions, hearWhole, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, diagramEndpoint, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { saveGoal } from "./goals.ts";
-import { continueAfterAnswer, restartCard, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, findFor, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
+import { cardsToReExplain } from "../shared/goals.ts";
+import { continueAfterAnswer, restartCard, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, findFor, makeObject, mapCourses, pointAt, readSource, reExplain, refillSections, shapeSections, swapExplanation } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { addNote, editNote, noteHistory } from "./notes.ts";
 import { arxivPdf, parseArxivId, searchArxiv } from "./arxiv.ts";
@@ -610,6 +611,30 @@ app.post("/api/canvases/:cid/goals", async (c) => {
   const goal: Goal = { id: newId(), text, ...(parentId ? { parentId } : {}), kind: parentId ? "subgoal" : "goal", status: "open", cards: [], by: "you", at: new Date().toISOString() };
   await saveGoal(store, goal);
   return c.json({ goal });
+});
+
+// Writes the cards this goal is now the lens for again, through it: one at a time, each from the
+// sources it already had. What each said before is kept for undo (the swap route below).
+app.post("/api/canvases/:cid/goals/:gid/reexplain", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const s = await store.getState();
+  const goal = (s.goals ?? []).find((g) => g.id === c.req.param("gid"));
+  if (!goal) return c.json({ error: "unknown goal" }, 404);
+  if (goal.by !== "you" || goal.status !== "open") return c.json({ error: "only an open goal of yours is a lens" }, 409);
+  const ids = cardsToReExplain(goal, s.goals ?? [], s.items).map((x) => x.id);
+  for (const id of ids) await store.update(id, { stage: "writing" });
+  void (async () => {
+    for (const id of ids) await reExplain(store, id);
+  })();
+  return c.json({ ids });
+});
+
+// Undo or redo of writing a card again through a goal: what it says and what it said change places.
+app.post("/api/canvases/:cid/cards/:id/swap", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  return (await swapExplanation(store, c.req.param("id"))) ? c.json({ ok: true }) : c.json({ error: "nothing to swap back" }, 409);
 });
 
 app.patch("/api/canvases/:cid/goals/:gid", async (c) => {

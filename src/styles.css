@@ -1066,6 +1066,8 @@ body.resizing iframe, body.resizing video { pointer-events: none; }
 @media (hover: none) { .goal-tools { opacity: 1; } }
 .goal-tools button { background: none; border: none; padding: 0 4px; color: var(--muted); cursor: pointer; font-size: 13px; }
 .goal-tools button:hover { color: var(--accent); }
+.goal-lens { padding-bottom: 4px; }
+.goal-lens .link { color: var(--accent); }
 .goal-was { font-size: 11.5px; color: var(--muted); padding-right: 8px; }
 .goal-was s { margin-right: 6px; }
 .goal-edit, .goal-add { flex: 1; padding: 2px 8px 2px 0; }
