@@ -765,6 +765,18 @@ app.post("/api/canvases/:cid/move", async (c) => {
   return result.ok ? c.json(result) : c.json(result, 409);
 });
 
+// Keeping a card to come back to: it's listed under Bookmarks.
+app.post("/api/canvases/:cid/cards/:id/bookmark", async (c) => {
+  const store = await canvasFor(c);
+  if (!store) return c.json({ error: "unknown canvas" }, 404);
+  const card = await store.findItem(c.req.param("id"));
+  if (card?.kind !== "card") return c.json({ error: "unknown card" }, 404);
+  const { on } = (await c.req.json()) as { on?: unknown };
+  if (typeof on !== "boolean") return c.json({ error: "on: boolean" }, 400);
+  await store.update(card.id, { bookmarked: on });
+  return c.json({ ok: true });
+});
+
 app.post("/api/canvases/:cid/collapse", async (c) => {
   const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);

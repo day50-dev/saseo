@@ -1363,7 +1363,21 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   }, [items]);
   const visibleRegions = regions.filter((r) => !folded.has(r.id));
   const visibleCards = cards.filter((c) => !folded.has(c.id));
+  const bookmarked = cards.filter((c) => c.bookmarked);
   const cardsBelow = (id: string) => subtree(id).filter((d) => d !== id && byId.get(d)?.kind === "card").length;
+
+  /** Bookmarks a card, or takes its bookmark off: shown at once, saved, and undoable. */
+  const bookmark = async (c: CardItem) => {
+    const next = !c.bookmarked;
+    setItems((all) => all.map((i) => (i.id === c.id ? { ...i, bookmarked: next } : i)));
+    try {
+      await api.bookmark(c.id, next);
+      pushStep({ label: next ? "bookmark" : "remove bookmark", undo: () => api.bookmark(c.id, !next), redo: () => api.bookmark(c.id, next) });
+    } catch (e) {
+      setError(`Couldn't bookmark it: ${e}`);
+    }
+    await refresh();
+  };
 
   const toggleCollapse = async (id: string) => {
     const item = byId.get(id);
@@ -1802,6 +1816,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         )}
         {/* The panel on the side. */}
         <div className="tb-group" role="group" aria-label="Goals">
+          {bookmarked.length > 0 && <Bookmarks cards={bookmarked} onShow={focusOn} />}
           <button
             type="button"
             className={goalsOpen ? "on goals-btn" : "secondary goals-btn"}
@@ -2243,6 +2258,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               onResize={(e) => startResize(c.id, e)}
               resizeArmed={resizeArmed === c.id}
               onPortDown={(side, e) => startLink(c.id, side, e)}
+              onBookmark={() => bookmark(c)}
               linking={!!link && link.from !== c.id}
               relatesNames={c.relates?.map((id) => {
                 const s = byId.get(id);
@@ -2737,5 +2753,42 @@ function relHead(p: Pt, dir: Pt, kind: "arrow" | "bar" | "hollow"): string {
   const ny = dir.x;
   if (kind === "bar") return `M${p.x + nx * 9} ${p.y + ny * 9} L${p.x - nx * 9} ${p.y - ny * 9}`;
   return `M${bx + nx * W} ${by + ny * W} L${p.x} ${p.y} L${bx - nx * W} ${by - ny * W} Z`;
+}
+
+/** The toolbar's list of bookmarked cards: pick one to go to it. */
+function Bookmarks({ cards, onShow }: { cards: CardItem[]; onShow: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener("pointerdown", away);
+    return () => window.removeEventListener("pointerdown", away);
+  }, [open]);
+  return (
+    <div className="bookmarks" ref={ref}>
+      <button type="button" className={open ? "on" : "secondary"} aria-expanded={open} title="Cards you bookmarked" onClick={() => setOpen(!open)}>
+        Bookmarks · {cards.length}
+      </button>
+      {open && (
+        <div className="switcher-menu bookmarks-menu" role="menu">
+          {cards.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              role="menuitem"
+              className="link switcher-item"
+              onClick={() => {
+                setOpen(false);
+                onShow(c.id);
+              }}
+            >
+              <span>{c.subject ?? c.selection ?? "A card"}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 

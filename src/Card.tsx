@@ -1,4 +1,5 @@
 import { AddToZotero } from "./Zotero.tsx";
+import { cardMarkdown } from "./cardText.ts";
 import { splitTabulars } from "./tabular.ts";
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -157,6 +158,8 @@ export function Card(props: {
   /** How many cards are folded away below this one while it's collapsed. */
   foldedCount: number;
   onToggleCollapse: () => void;
+  /** Bookmark the card, or take its bookmark off. */
+  onBookmark?: () => void;
   /** Pointer down on a side port: start dragging a connection to ask how this relates to another card. */
   onPortDown: (side: Side, e: React.PointerEvent) => void;
   /** A connection is being dragged from another card: this one can be dropped on. */
@@ -295,6 +298,20 @@ export function Card(props: {
         >
           {card.collapsed ? "▸" : "▾"}
         </button>
+        {props.onBookmark && (
+          <button
+            type="button"
+            className={`icon-btn bookmark-btn ${card.bookmarked ? "on" : ""}`}
+            aria-pressed={Boolean(card.bookmarked)}
+            title={card.bookmarked ? "Bookmarked: listed under Bookmarks. Click to remove the bookmark" : "Bookmark this card, to find it again under Bookmarks"}
+            onClick={props.onBookmark}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden>
+              <path d="M4 2.5h8v11l-4-3-4 3z" />
+            </svg>
+          </button>
+        )}
+        <CopyCard card={card} labels={card.relates ? RELATION_LABELS[card.relKind ?? "relates"] : undefined} />
         {/* With a Sem, the subject is drawn as the diagram's document title instead, unless collapsed. */}
         <h3>{showShapes && !card.collapsed ? "" : (card.subject ?? (card.stage === "reading" ? "…" : "Explanation"))}</h3>
         {card.climb !== undefined && (
@@ -1358,6 +1375,38 @@ function RelationAsked({ card, names }: { card: CardItem; names: string[] }) {
       You asked: {RELATION_ASK[kind]} <strong>{a}</strong>{" "}
       <span className={`relation-mark rel-${kind}`}>{found && kind === "within" ? "is part of" : RELATION_MARK[kind]}</span> <strong>{b}</strong>
     </>
+  );
+}
+
+/** Copies the whole card as text (Markdown): what was asked, the explanation, what was made, the sources. */
+function CopyCard({ card, labels }: { card: CardItem; labels?: Partial<Record<"why" | "what" | "parts" | "here", string>> }) {
+  const [done, setDone] = useState<"" | "ok" | "fail">("");
+  return (
+    <button
+      type="button"
+      className={`icon-btn copy-btn ${done}`}
+      title={done === "ok" ? "Copied" : done === "fail" ? "Couldn't copy" : "Copy this card's contents as text"}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(cardMarkdown(card, labels));
+          setDone("ok");
+        } catch {
+          setDone("fail");
+        }
+        setTimeout(() => setDone(""), 1500);
+      }}
+    >
+      <svg viewBox="0 0 16 16" aria-hidden>
+        {done === "ok" ? (
+          <path d="M3 8.5l3 3 7-7" className="tick" />
+        ) : (
+          <>
+            <rect x="5.5" y="5.5" width="8" height="8.5" rx="1.2" />
+            <path d="M10.5 3.5V3a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h.5" />
+          </>
+        )}
+      </svg>
+    </button>
   );
 }
 

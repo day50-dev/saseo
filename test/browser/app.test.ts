@@ -27,6 +27,7 @@ before(async () => {
     { id: "grph0001", name: "Graph", items: [objectCard("g", { type: "graph", title: "A tree", directed: true, nodes: [{ id: "r", label: "root" }, { id: "a", label: "left" }, { id: "b", label: "right" }], edges: [{ from: "r", to: "a" }, { from: "r", to: "b" }] })] },
     { id: "map00001", name: "Map", items: [objectCard("m", { type: "map", title: "Lagrange", route: true, places: [{ name: "Turin", lat: 45.07, lon: 7.69, note: "born" }, { name: "Berlin", lat: 52.52, lon: 13.4 }, { name: "Paris", lat: 48.86, lon: 2.35, approximate: true }] })] },
     { id: "undo0001", name: "Undo", items: [explained("u1", "Keep me", 0, 0), explained("u2", "Remove me", 800, 0)] },
+    { id: "mark0001", name: "Marks", items: [explained("m1", "Reconciliation", 0, 0, { sources: [{ n: 1, url: "https://example.org/rec", title: "A reconciliation", snippet: "", searcher: "keenable" }] })] },
     { id: "pick0001", name: "Pick", items: [explained("k1", "Keep this", 0, 0), explained("k2", "Delete this", 900, 0), explained("k3", "And this", 1700, 0)] },
     { id: "chat0001", name: "Chat", items: [explained("c1", "Eigenvalues", 0, 0)] },
     {
@@ -683,6 +684,31 @@ describe("F-PICK: Shift-drag a box round things to delete them together", () => 
     assert.equal(await p.locator(".picked-bar").count(), 0);
     await p.keyboard.press("Control+z");
     await until(async () => (await state("pick0001")).every((i) => !i.hidden), 5000, "undo brings them back");
+    assert.deepEqual(errorsOf(p), []);
+    await p.context().close();
+  });
+});
+
+describe("F-MARK: bookmark a card, copy a card", () => {
+  test("the bookmark is kept and listed; copy puts the card's text on the clipboard", async () => {
+    const p = await open("/c/mark0001");
+    const card = p.locator(cardSel("m1"));
+    await card.waitFor();
+    assert.equal(await p.locator(".bookmarks").count(), 0, "no list until something is bookmarked");
+    await card.locator(".bookmark-btn").click();
+    await until(async () => (await state("mark0001")).find((i) => i.id === "m1")?.kind === "card" && ((await state("mark0001")).find((i) => i.id === "m1") as CardItem).bookmarked === true, 5000, "bookmarked");
+    await p.locator(".bookmarks button").first().click();
+    await p.locator(".bookmarks-menu").getByText("Reconciliation").waitFor();
+    await p.keyboard.press("Escape");
+    await card.locator(".copy-btn").click();
+    await card.locator(".copy-btn.ok").waitFor();
+    const copied = await p.evaluate(() => navigator.clipboard.readText());
+    assert.match(copied, /^# Reconciliation/);
+    assert.match(copied, /## Why it exists\n1\. People needed Reconciliation/);
+    assert.match(copied, /\[A reconciliation\]\(https:\/\/example\.org\/rec\)/);
+    // Off again.
+    await card.locator(".bookmark-btn").click();
+    await until(async () => !((await state("mark0001")).find((i) => i.id === "m1") as CardItem).bookmarked, 5000, "unbookmarked");
     assert.deepEqual(errorsOf(p), []);
     await p.context().close();
   });

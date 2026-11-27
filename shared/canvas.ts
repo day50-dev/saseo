@@ -494,6 +494,8 @@ export interface CardItem extends ItemState {
    * a card or a whole image. `parentId` is the first of the two; the card depends on both.
    */
   relates?: [string, string];
+  /** Kept to come back to: listed under Bookmarks on the canvas. */
+  bookmarked?: boolean;
   /** What the learner asked about the two (RELATION_KINDS); none is "relates", the open question. */
   relKind?: RelationKind;
   /**

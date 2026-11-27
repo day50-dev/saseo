@@ -107,6 +107,7 @@ export function canvasApi(cid: string) {
     /** Hides items and whatever depends on them; returns everything that was hidden. */
     hide: (ids: string[]) => post(`${base}/hide`, { ids }).then((r) => json<{ ids: string[] }>(r)),
 
+    bookmark: (id: string, on: boolean) => post(`${base}/cards/${id}/bookmark`, { on }).then((r) => json<{ ok: true }>(r)),
     collapse: (ids: string[], collapsed: boolean) =>
       post(`${base}/collapse`, { ids, collapsed }).then((r) => json<{ ok: true }>(r)),
 

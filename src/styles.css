@@ -1358,3 +1358,15 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
   max-width: calc(100vw - 32px); white-space: nowrap;
 }
 .picked-bar .danger { background: var(--fail); border-color: var(--fail); color: #fff; }
+
+/* A card's header icons: bookmark it, copy it. */
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: none; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; flex: none; align-self: center; }
+.icon-btn:hover { background: var(--on); color: var(--text); }
+.icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
+.bookmark-btn.on { color: var(--accent); }
+.bookmark-btn.on svg { fill: currentColor; }
+.copy-btn.ok { color: var(--ok); }
+.copy-btn.ok .tick { stroke-width: 2; }
+.copy-btn.fail { color: var(--fail); }
+.bookmarks { position: relative; }
+.bookmarks-menu { right: 0; left: auto; top: 36px; }
