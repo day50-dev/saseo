@@ -1346,3 +1346,12 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .doc-pageno { display: flex; align-items: center; gap: 6px; }
 .doc-pageno input { width: 52px; text-align: center; padding: 4px; }
 .doc-take { margin-left: auto; font-size: 15px; font-weight: 600; padding: 7px 14px; white-space: nowrap; }
+
+/* Shift-drag: the box being drawn, and the bar for what it picked. */
+.marquee { position: absolute; border: solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); pointer-events: none; z-index: 1000000; }
+.picked-bar {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 1000002; display: flex; align-items: center; gap: 14px;
+  padding: 8px 10px 8px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  max-width: calc(100vw - 32px); white-space: nowrap;
+}
+.picked-bar .danger { background: var(--fail); border-color: var(--fail); color: #fff; }

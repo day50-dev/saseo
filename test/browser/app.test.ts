@@ -27,6 +27,7 @@ before(async () => {
     { id: "grph0001", name: "Graph", items: [objectCard("g", { type: "graph", title: "A tree", directed: true, nodes: [{ id: "r", label: "root" }, { id: "a", label: "left" }, { id: "b", label: "right" }], edges: [{ from: "r", to: "a" }, { from: "r", to: "b" }] })] },
     { id: "map00001", name: "Map", items: [objectCard("m", { type: "map", title: "Lagrange", route: true, places: [{ name: "Turin", lat: 45.07, lon: 7.69, note: "born" }, { name: "Berlin", lat: 52.52, lon: 13.4 }, { name: "Paris", lat: 48.86, lon: 2.35, approximate: true }] })] },
     { id: "undo0001", name: "Undo", items: [explained("u1", "Keep me", 0, 0), explained("u2", "Remove me", 800, 0)] },
+    { id: "pick0001", name: "Pick", items: [explained("k1", "Keep this", 0, 0), explained("k2", "Delete this", 900, 0), explained("k3", "And this", 1700, 0)] },
     { id: "chat0001", name: "Chat", items: [explained("c1", "Eigenvalues", 0, 0)] },
     {
       id: "set00001",
@@ -655,6 +656,34 @@ describe("F-PHONE: it works on a phone", () => {
     const p = await open("/c/diag0001", 375, 812);
     await p.locator(cardSel("eig")).waitFor();
     assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true);
+    await p.context().close();
+  });
+});
+
+describe("F-PICK: Shift-drag a box round things to delete them together", () => {
+  test("picks what the box touches, deletes them in one go, and undo brings them back", async () => {
+    const p = await open("/c/pick0001", 2700, 1000);
+    await p.locator(cardSel("k3")).waitFor();
+    const k2 = (await p.locator(cardSel("k2")).boundingBox())!;
+    const k3 = (await p.locator(cardSel("k3")).boundingBox())!;
+    // From empty canvas below the cards, up and across the last two.
+    const from = { x: k3.x + k3.width + 20, y: Math.max(k2.y + k2.height, k3.y + k3.height) + 30 };
+    await p.keyboard.down("Shift");
+    await p.mouse.move(from.x, from.y);
+    await p.mouse.down();
+    for (let i = 1; i <= 8; i++) await p.mouse.move(from.x + (k2.x + 40 - from.x) * (i / 8), from.y + (k2.y + 40 - from.y) * (i / 8));
+    await p.mouse.up();
+    await p.keyboard.up("Shift");
+    await p.locator(".picked-bar").getByText("2 selected").waitFor();
+    await p.keyboard.press("Delete");
+    await until(async () => {
+      const hidden = (await state("pick0001")).filter((i) => i.hidden).map((i) => i.id);
+      return hidden.length === 2 && hidden.includes("k2") && hidden.includes("k3");
+    }, 5000, "the two deleted");
+    assert.equal(await p.locator(".picked-bar").count(), 0);
+    await p.keyboard.press("Control+z");
+    await until(async () => (await state("pick0001")).every((i) => !i.hidden), 5000, "undo brings them back");
+    assert.deepEqual(errorsOf(p), []);
     await p.context().close();
   });
 });

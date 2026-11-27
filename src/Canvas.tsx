@@ -159,6 +159,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const [hover, setHover] = useState<string | null>(null);
   // The image or card the stacking buttons act on.
   const [selected, setSelected] = useState<string | null>(null);
+  // Several things chosen at once by Shift-dragging a box round them, to delete together.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [marquee, setMarquee] = useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   // The card whose border a tap has readied for resizing by touch; picking anything else unreadies it.
   const [resizeArmed, setResizeArmed] = useState<string | null>(null);
   useEffect(() => {
@@ -749,13 +752,74 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     return () => el.removeEventListener("wheel", stop);
   }, []);
 
+  // Shift-drag draws a box: whatever it touches is picked, to delete together. It starts anywhere
+  // but inside a card (where Shift extends a selection of words) or on a control.
+  const onStagePointerDownCapture = (e: React.PointerEvent) => {
+    if (!e.shiftKey || e.button !== 0 || panning) return;
+    const t = e.target as HTMLElement;
+    if (t.closest("button, a, input, textarea, select, [data-card-id], .relation-menu, .picked-bar")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const p = toWorld(e.clientX, e.clientY);
+    setMarquee({ start: p, end: p });
+    stageRef.current?.setPointerCapture(e.pointerId);
+  };
+
+  /** What a box drawn on the canvas touches: whole things (cards, images, PDFs, videos, notes). */
+  const touchedBy = (m: NonNullable<typeof marquee>): string[] => {
+    const x0 = Math.min(m.start.x, m.end.x);
+    const x1 = Math.max(m.start.x, m.end.x);
+    const y0 = Math.min(m.start.y, m.end.y);
+    const y1 = Math.max(m.start.y, m.end.y);
+    const hit = (b: { x: number; y: number; w: number; h: number }) => b.x < x1 && b.x + b.w > x0 && b.y < y1 && b.y + b.h > y0;
+    const out: string[] = [];
+    for (const i of shown) {
+      if (folded.has(i.id)) continue;
+      const b = i.kind === "card" || i.kind === "image" ? relBox(i.id) : i.kind === "note" ? { x: i.x, y: i.y, w: i.w, h: heights[i.id] ?? 120 } : null;
+      if (b && hit(b)) out.push(i.id);
+    }
+    return out;
+  };
+
+  /** Deletes everything picked (and what hangs off it), as one step to undo. */
+  const deletePicked = async () => {
+    const ids = [...picked];
+    if (!ids.length) return;
+    setPicked(new Set());
+    try {
+      const hidden = (await api.hide(ids)).ids;
+      pushStep({ label: `delete ${ids.length} thing${ids.length > 1 ? "s" : ""}`, undo: () => api.show(hidden), redo: () => api.hide(hidden) });
+      await refresh();
+    } catch (e) {
+      setError(`Couldn't delete them: ${e}`);
+    }
+  };
+  const deletePickedRef = useRef(deletePicked);
+  deletePickedRef.current = deletePicked;
+  const pickedCount = useRef(0);
+  pickedCount.current = picked.size;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!pickedCount.current || isTyping(e.target)) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        void deletePickedRef.current();
+      } else if (e.key === "Escape") setPicked(new Set());
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // Pan mode (or Space, or the middle button) drags from anywhere; select mode only from empty canvas.
   const onStagePointerDown = (e: React.PointerEvent) => {
     const onBackground = e.target === e.currentTarget || Boolean((e.target as HTMLElement).dataset.pan);
     const isButton = (e.target as HTMLElement).closest("button, a");
     if (!(panning || e.button === 1 || (onBackground && e.button === 0)) || (isButton && !panning)) return;
     e.preventDefault();
-    if (onBackground) setSelected(null);
+    if (onBackground) {
+      setSelected(null);
+      setPicked(new Set());
+    }
     pan.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
@@ -1018,6 +1082,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   };
 
   const onStagePointerMove = (e: React.PointerEvent) => {
+    if (marquee) return setMarquee({ ...marquee, end: toWorld(e.clientX, e.clientY) });
     if (pan.current) {
       const p = pan.current;
       setView((v) => ({ ...v, x: p.vx + e.clientX - p.x, y: p.vy + e.clientY - p.y }));
@@ -1052,6 +1117,13 @@ export function Canvas({ canvasId }: { canvasId: string }) {
 
   const onStagePointerUp = async (e: React.PointerEvent) => {
     pan.current = null;
+    if (marquee) {
+      const m = marquee;
+      setMarquee(null);
+      // Adds to what's already picked, so several boxes can gather things from around the canvas.
+      setPicked((was) => new Set([...was, ...touchedBy(m)]));
+      return;
+    }
     if (link) return finishLink(link, e.clientX, e.clientY);
     if (drag) return finishMove(drag);
     if (!draft) return;
@@ -1785,6 +1857,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         onDrop={onDrop}
         onWheel={onWheel}
         onPointerDown={onStagePointerDown}
+        onPointerDownCapture={onStagePointerDownCapture}
         onPointerMove={onStagePointerMove}
         onPointerUp={onStagePointerUp}
       >
@@ -1856,7 +1929,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               note={n}
               aboutName={n.on ? noteAboutName(byId.get(n.on.id)) : undefined}
               z={rank.get(n.id)}
-              selected={selected === n.id}
+              selected={selected === n.id || picked.has(n.id)}
               lit={hover === n.id || (!!n.on && hover === n.on.id)}
               moving={!!drag?.ids.includes(n.id)}
               onGrab={(e) => startMove(n.id, e)}
@@ -1894,7 +1967,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 key={img.id}
                 item={img}
                 z={rank.get(img.id)}
-                selected={selected === img.id}
+                selected={selected === img.id || picked.has(img.id)}
                 onStop={(t) => stopAt(img, t)}
                 onNeedCopy={() => api.hostVideo(img.id).then(refresh, (e) => setError(`Couldn't fetch a copy of the video: ${e}`))}
                 autoPlay={autoPlayId === img.id}
@@ -1909,7 +1982,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 page={docPage(img.id)}
                 zoom={view.scale}
                 z={rank.get(img.id)}
-                selected={selected === img.id}
+                selected={selected === img.id || picked.has(img.id)}
                 taken={new Set(images.filter((m) => m.pdf?.doc === img.id).map((m) => m.pdf!.page))}
                 onPage={(n) => turnTo(img.id, n)}
                 onTake={(n) => takePage(img, n)}
@@ -1925,7 +1998,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               alt={img.name}
               draggable={false}
               data-image-id={img.id}
-              className={`source-image ${selected === img.id ? "selected" : ""} ${link && link.from !== img.id ? "link-target" : ""}`}
+              className={`source-image ${selected === img.id || picked.has(img.id) ? "selected" : ""} ${link && link.from !== img.id ? "link-target" : ""}`}
               // A collapsed image stays loaded (retry reads its pixels) but out of view.
               style={{ left: img.x, top: img.y, width: img.w, height: img.h, display: img.collapsed ? "none" : undefined, zIndex: rank.get(img.id) }}
               onPointerDown={(e) => {
@@ -2086,6 +2159,18 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             );
           })}
 
+          {marquee && (
+            <div
+              className="marquee"
+              style={{
+                left: Math.min(marquee.start.x, marquee.end.x),
+                top: Math.min(marquee.start.y, marquee.end.y),
+                width: Math.abs(marquee.end.x - marquee.start.x),
+                height: Math.abs(marquee.end.y - marquee.start.y),
+                borderWidth: 1.5 / view.scale,
+              }}
+            />
+          )}
           {(link ?? relAsk?.line) && (
             <svg className="connectors link-preview">
               <path d={`M${(link ?? relAsk!.line).start.x} ${(link ?? relAsk!.line).start.y} L${(link ?? relAsk!.line).end.x} ${(link ?? relAsk!.line).end.y}`} className="connector relation lit" />
@@ -2162,7 +2247,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               })}
               moving={drag?.ids.includes(c.id) ?? false}
               z={rank.get(c.id) ?? 0}
-              selected={selected === c.id}
+              selected={selected === c.id || picked.has(c.id)}
               lookImage={c.lookImage ? (byId.get(c.lookImage) as ImageItem | undefined) : undefined}
               onPeek={setPeek}
               onGrow={(r) => api.extend(c.id, r).then(({ ext }) => (grewStep(c.id, ext.id), refresh()), (e) => setError(`Couldn't grow that: ${e}`))}
@@ -2220,6 +2305,19 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           onKeep={keepChange}
           onDone={doneReviewing}
         />
+      )}
+      {picked.size > 0 && (
+        <div className="picked-bar" role="toolbar">
+          <span>
+            {picked.size} selected <span className="muted small">· Shift-drag to add more</span>
+          </span>
+          <button type="button" className="danger" onClick={deletePicked} title="Delete them and what hangs off them (Delete). Undo brings them back.">
+            Delete
+          </button>
+          <button type="button" className="link" onClick={() => setPicked(new Set())}>
+            Cancel
+          </button>
+        </div>
       )}
       {relAsk && <RelationMenu at={relAsk} onPick={relateAs} onCancel={() => setRelAsk(null)} />}
       {shareOpen && (
