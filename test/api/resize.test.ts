@@ -13,8 +13,8 @@ const env = testEnv(llm.url);
 let s: TestServer;
 const C = "/api/canvases/size0001";
 
-const video: ImageItem = { kind: "image", id: "vid", x: 0, y: 0, w: 720, h: 405, asset: "v.jpg", name: "A lecture", video: { videoId: "abc123", title: "A lecture", url: "https://www.youtube.com/watch?v=abc123" } } as ImageItem;
-const picture: ImageItem = { kind: "image", id: "pic", x: 0, y: 1000, w: 400, h: 300, asset: "p.png", name: "A picture" };
+const video: ImageItem = { kind: "image", id: "vid", x: 0, y: 0, w: 720, h: 405, naturalW: 1280, naturalH: 720, asset: "v.jpg", name: "A lecture", video: { videoId: "abc123", title: "A lecture", channel: "A channel", duration: 600 } };
+const picture: ImageItem = { kind: "image", id: "pic", x: 0, y: 1000, w: 400, h: 300, naturalW: 400, naturalH: 300, asset: "p.png", name: "A picture" };
 
 before(async () => {
   seed(env.LIBRARIAN_DATA, [{ id: "size0001", name: "Sizes", items: [video, picture] }]);

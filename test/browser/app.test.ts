@@ -682,6 +682,8 @@ describe("F-PICK: Shift-drag a box round things to delete them together", () => 
       return hidden.length === 2 && hidden.includes("k2") && hidden.includes("k3");
     }, 5000, "the two deleted");
     assert.equal(await p.locator(".picked-bar").count(), 0);
+    // The server has them hidden a moment before the page has the undo step: wait for that.
+    await p.locator('button[aria-label="Undo"][title^="Undo delete"]').waitFor();
     await p.keyboard.press("Control+z");
     await until(async () => (await state("pick0001")).every((i) => !i.hidden), 5000, "undo brings them back");
     assert.deepEqual(errorsOf(p), []);

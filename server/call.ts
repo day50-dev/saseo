@@ -6,6 +6,7 @@ import { CARD_WIDTH, type CardItem, EXTENSION_SHAPES, type Extension, type Exten
 import { type CanvasStore, getCanvasInfo, newId } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { chat, type Message } from "./llm.ts";
+import { goalsFor } from "./goals.ts";
 import { speak } from "./providers.ts";
 
 // Listening is a server named in the environment; speaking is set up in Settings (config.tts).
@@ -302,10 +303,12 @@ export async function callTurn(
   const note = pointing.cardId ? canvasNotes.find((n) => n.id === pointing.cardId) : undefined;
   const info = await getCanvasInfo(store.id);
   const notes = (info?.reader ?? []).map((n) => n.a).filter(Boolean);
+  const goals = goalsFor(state.goals ?? [], state.items, card);
 
   // The glance: only what nearly every turn needs.
   const distinct = said.filter((d, i) => said.findIndex((e) => e.p.cardId === d.p.cardId && e.p.key === d.p.key && e.p.figure === d.p.figure) === i);
   const lines = [
+    goals.length ? `Their goal on this canvas, the lens for everything you say: ${goals.map((g) => g.text).join("; then ")}` : "",
     notes.length ? `About them: ${notes.join("; ")}` : "",
     pointing.selection
       ? `They have SELECTED: "${pointing.selection}"${pointing.selectionContext ? ` (in: "${pointing.selectionContext}")` : ""}${card ? `, on "${card.subject ?? card.selection}"` : note ? `, in ${describePointing(pointing, cards, canvasNotes)}` : ""}`

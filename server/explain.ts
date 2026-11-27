@@ -15,6 +15,7 @@ import { diagramEndpoint, loadConfig } from "./config.ts";
 import { logCourses } from "./curriculum.ts";
 import { snap } from "./snap.ts";
 import { exampleNotebook } from "./notebooks.ts";
+import { goalLens, goalsFor } from "./goals.ts";
 import { bestRead, editVersion, hashText, pageVersion, readOf, remember } from "./pagecache.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, metered, systemOneConfigured } from "./llm.ts";
 import { arxivPaper, parseArxivId, searchArxiv } from "./arxiv.ts";
@@ -235,7 +236,7 @@ async function write(
   flow = false,
 ) {
   const config = await loadConfig();
-  const told = await readerNotes(store);
+  const told = await readerNotes(store, card);
   const lines = [
     `Subject: ${subject}`,
     `What the reader selected: ${quoted}`,
@@ -650,7 +651,7 @@ export async function extendPiece(store: CanvasStore, cardId: string, extId: str
     const all = [...(card.ext ?? []), ...(card.sections ?? []).flatMap((sec) => sec.blocks ?? [])];
     const chain = lineage(card.sem, all, ext.at);
     const sources = card.sources ?? [];
-    const told = await readerNotes(store);
+    const told = await readerNotes(store, card);
     // "Yo I need more", "expand", "keep going": more of the same kind as what they pointed at,
     // decided here rather than left to the model, which reads a vague ask too freely.
     const vague = Boolean(ext.ask && ext.ask.split(/\s+/).length <= 6 && /\b(more|expand|elaborate|continue|keep going|go on|deeper|further|detail)\b/i.test(ext.ask));
@@ -988,13 +989,25 @@ Return JSON only, no prose:
  "question": "if asking: one short, friendly question in plain words",
  "options": ["if asking: 2 to 4 likely answers, a few words each, that the reader can click"]}`;
 
-/** What the reader has said about their goal and background on this canvas, for a prompt. */
-async function readerNotes(store: CanvasStore): Promise<string> {
+/**
+ * What's known of the reader on this canvas, for a prompt: the goal they set (the lens it's written
+ * through, see goals.ts) and what they've said about themselves.
+ */
+async function readerNotes(store: CanvasStore, card?: CardItem): Promise<string> {
   const notes = (await getCanvasInfo(store.id))?.reader ?? [];
-  if (!notes.length) return "";
-  return `What the reader has told you about themselves and their goal:\n${notes
-    .map((n) => `- Asked "${n.q}": ${n.a || "they preferred not to say; just explain"}`)
-    .join("\n")}`;
+  const s = await store.getState();
+  const lens = goalLens(s.goals ?? [], s.items, card);
+  const told = notes.length
+    ? `What the reader has told you about themselves:\n${notes.map((n) => `- Asked "${n.q}": ${n.a || "they preferred not to say; just explain"}`).join("\n")}`
+    : "";
+  return [lens, told].filter(Boolean).join("\n\n");
+}
+
+/** Just the goal, for a short prompt (a search query, a pick of videos): "" if they've set none. */
+async function goalLine(store: CanvasStore, card?: CardItem): Promise<string> {
+  const s = await store.getState();
+  const lens = goalsFor(s.goals ?? [], s.items, card);
+  return lens.length ? `The reader's goal, which this is for: ${lens.map((g) => g.text).join("; then ")}` : "";
 }
 
 /** Asks the reader a question first when the model judges it would change the answer; true if it asked. */
@@ -1010,7 +1023,7 @@ async function askFirst(store: CanvasStore, cardId: string): Promise<boolean> {
     card.topic ? `The page is about: ${card.topic}` : "",
     path.length ? `They got here by asking about: ${path.join(" → ")}` : "",
     (card.pageText ?? root?.pageText) ? `The page begins:\n${(card.pageText ?? root?.pageText ?? "").slice(0, 1500)}` : "",
-    (await readerNotes(store)) || "They haven't told you anything about themselves or their goal yet.",
+    (await readerNotes(store, card)) || "They haven't told you anything about themselves or their goal yet.",
   ].filter(Boolean);
   try {
     const r = await chatJson<{ ask?: unknown; question?: unknown; options?: unknown }>((await loadConfig()).llm, [
@@ -1151,7 +1164,8 @@ export function explainRelation(store: CanvasStore, cardId: string) {
     const a = await describe(store, aId);
     const b = await describe(store, bId);
     const config = await loadConfig();
-    const both = `FIRST: ${a.text}\n\nSECOND: ${b.text}`;
+    const goal = await goalLine(store, card);
+    const both = `FIRST: ${a.text}\n\nSECOND: ${b.text}${goal ? `\n\n${goal}. Compare them as it matters for that.` : ""}`;
 
     const kind = card.relKind ?? "relates";
     let relation = `${a.name} and ${b.name}`;
@@ -1196,10 +1210,11 @@ export async function chatAbout(store: CanvasStore, cardId: string) {
   const card = (await store.findItem(cardId)) as CardItem;
   try {
     const about = await describe(store, cardId);
+    const told = await readerNotes(store, card);
     const sources = (card.sources ?? []).map((s) => `[${s.n}] ${s.title} (${s.url})\n${s.snippet}`).join("\n\n");
     const history: Message[] = (card.chat ?? []).slice(-20).map((m) => ({ role: m.role, content: m.text }));
     const reply = await chat(config.llm, [
-      { role: "system", content: `${CHAT}\n\nThe card:\n${about.text}${sources ? `\n\nIts sources:\n${sources}` : ""}` },
+      { role: "system", content: `${CHAT}\n\nThe card:\n${about.text}${sources ? `\n\nIts sources:\n${sources}` : ""}${told ? `\n\n${told}` : ""}` },
       ...history,
     ]);
     await store.record({ type: "chat", id: cardId, message: { role: "assistant", text: reply.trim(), at: new Date().toISOString() } });
@@ -1395,7 +1410,10 @@ export function makeObject(store: CanvasStore, cardId: string) {
     const from = await store.findItem(card.parentId);
     const whole = from?.kind === "card" ? await describe(store, from.id) : { name: "this", text: "" };
     // Asked for about particular words of that card: those words are the subject.
-    const about = card.selection ? { ...whole, text: `${whole.text}\n\nSpecifically this part of it: "${card.selection}"` } : whole;
+    const asked = card.selection ? { ...whole, text: `${whole.text}\n\nSpecifically this part of it: "${card.selection}"` } : whole;
+    // What's found is found for their purpose: a game-maker's videos aren't an exam-taker's.
+    const goal = await goalLine(store, card);
+    const about = goal ? { ...asked, text: `${asked.text}\n\n${goal}` } : asked;
     const request = card.request ?? "";
     const config = await loadConfig();
     const enabled = SEARCHER_IDS.filter((id) => config.searchers[id].enabled);
@@ -1425,7 +1443,7 @@ export function makeObject(store: CanvasStore, cardId: string) {
       // Who posted each one, then a second look at which really fit what was asked (a university's
       // lecture, not a hobby channel's, when that's what they want).
       await store.update(cardId, { stage: "writing" });
-      const judged = await judgeVideos(await withChannels(videos.slice(0, 15)), request, about.name);
+      const judged = await judgeVideos(await withChannels(videos.slice(0, 15)), request, goal ? `${about.name}\n${goal}` : about.name);
       await store.update(cardId, { stage: "done", subject: `Videos: ${request}`, object: { type: "videos", videos: judged.slice(0, 6) } });
     } else if (card.objectKind === "set") {
       await store.update(cardId, { stage: "writing" });
@@ -1879,7 +1897,7 @@ export async function shapeSections(store: CanvasStore, cardId: string) {
   if (!card?.pageText) return;
   const paras = paragraphs(card.pageText);
   const secs = sectionsOf(paras, card.origin?.title ?? card.subject ?? "The page");
-  const told = await readerNotes(store);
+  const told = await readerNotes(store, card);
   // Sections already restructured for this text (on any canvas) are used as they are.
   const url = card.origin?.kind === "page" ? card.origin.url : "";
   const textHash = hashText(card.pageText);
@@ -1959,7 +1977,7 @@ export async function shapePage(store: CanvasStore, cardId: string) {
       numbered = paras.map((p, i) => line(p, i, cap));
       if (numbered.join("\n\n").length <= 60_000) break;
     }
-    const told = await readerNotes(store);
+    const told = await readerNotes(store, card);
     const raw = await chatJson<Record<string, unknown>>((await loadConfig()).llm, [
       { role: "system", content: RESTRUCTURE },
       {
