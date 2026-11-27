@@ -47,6 +47,8 @@ export function SemShapes({
   labels,
   head,
   belowParts,
+  layout,
+  sides,
 }: {
   title: string;
   sem: Sem;
@@ -62,6 +64,15 @@ export function SemShapes({
    * into its narrow box, with the part's name.
    */
   belowParts?: (key: string, name: string) => ReactNode;
+  /**
+   * How the parts are shaped, for a relation card. "compare": what both share forks into two
+   * columns, a row for each point (meaning is the first's side, note the second's). "sequence": the
+   * two in order, a story arrow from the one to the other carrying `together`. "within": the whole,
+   * with the part hanging off it by the description bend. None: a bus into each part and a Y-connector.
+   */
+  layout?: "compare" | "sequence" | "within";
+  /** For "compare": the names heading the two columns. */
+  sides?: string[];
   /** The title doubles as the card's move handle. */
   onTitlePointerDown?: (e: React.PointerEvent) => void;
 }) {
@@ -140,6 +151,41 @@ export function SemShapes({
           const top = cat.y + cat.h;
           d.plain.push(`M${busX + 12} ${top} L${busX} ${top + 12} V${descs[descs.length - 1].y + LINE_MID}`);
           for (const t of descs) d.thin.push(`M${busX} ${t.y + LINE_MID} H${Math.max(busX + 6, t.x - 3 - ARROW)}`);
+        } else if (s.key === "parts" && layout === "compare") {
+          // Bifurcation: the category into what both share, which forks into the two columns; each
+          // column is a category with descriptions, a bus down its side and an arrow to each cell.
+          const shared = box("together");
+          const heads = [box("col-0"), box("col-1")].filter((b): b is Box => !!b);
+          const sx = cat.x + 22;
+          if (shared) d.thin.push(`M${sx} ${cat.y + cat.h} V${shared.y + LINE_MID} H${shared.x - 3 - ARROW}`);
+          const from = shared ? { x: shared.x + 40, y: shared.y + shared.h } : { x: sx, y: cat.y + cat.h };
+          for (const [i, h] of heads.entries()) {
+            const tx = h.x + 14;
+            const ty = h.y - 2 - ARROW;
+            const fy = (from.y + ty) / 2;
+            d.thick.push(`M${from.x} ${from.y} V${fy - 8} L${from.x + Math.sign(tx - from.x) * 8} ${fy} H${tx - Math.sign(tx - from.x) * 8} L${tx} ${fy + 8} V${ty}`);
+            const cells = all(`cmp-`).filter((_, k) => k % 2 === i);
+            if (!cells.length) continue;
+            const bx = h.x + 4;
+            d.plain.push(`M${bx} ${h.y + h.h} V${cells[cells.length - 1].y + LINE_MID}`);
+            for (const c of cells) d.thin.push(`M${bx} ${c.y + LINE_MID} H${Math.max(bx + 6, c.x - 3 - ARROW)}`);
+          }
+        } else if (s.key === "parts" && layout === "sequence") {
+          // Path: the category's line into the first, which leads on to the second (the story arrow, drawn in place).
+          const first = box("part-0");
+          if (first) d.thin.push(`M${cat.x + 22} ${cat.y + cat.h} V${first.y - 2 - ARROW}`);
+        } else if (s.key === "parts" && layout === "within") {
+          // The whole, and the part hanging off it by the description bend.
+          const whole = box("part-0");
+          const part = box("part-1");
+          if (whole) d.thick.push(`M${cat.x + 22} ${cat.y + cat.h} V${whole.y - 2 - ARROW}`);
+          if (whole && part) {
+            const bx = whole.x + 20;
+            d.plain.push(`M${bx + 12} ${whole.y + whole.h} L${bx} ${whole.y + whole.h + 12} V${part.y + LINE_MID}`);
+            d.thin.push(`M${bx} ${part.y + LINE_MID} H${part.x - 3 - ARROW}`);
+          }
+          const join = box("together");
+          if (join && part) d.thin.push(`M${part.x + 14} ${part.y + part.h} V${join.y - 2 - ARROW}`);
         } else if (s.key === "parts") {
           // Horizontal category bus down into each part, then a Y-connector to what they add up to.
           const parts = all("part-");
@@ -166,7 +212,7 @@ export function SemShapes({
     return () => ro.disconnect();
     // `present` is derived from `sem`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sem]);
+  }, [sem, layout]);
 
   return (
     <div className="sem" ref={root}>
@@ -217,7 +263,82 @@ export function SemShapes({
                     {extra?.(`what-${i}`)}
                   </div>
                 ))}
-              {s.key === "parts" && (
+              {s.key === "parts" && layout === "compare" && (
+                <>
+                  {sem.together && (
+                    <div className="sem-together sem-shared" data-a="together">
+                      {render(sem.together)}
+                      {extra?.("together")}
+                    </div>
+                  )}
+                  <div className="sem-compare">
+                    <div className="sem-compare-aspect" />
+                    {[0, 1].map((i) => (
+                      <div key={i} className="sem-compare-head" data-a={`col-${i}`}>
+                        {sides?.[i] ?? (i ? "Second" : "First")}
+                      </div>
+                    ))}
+                    {sem.parts.map((p, i) => (
+                      <div key={i} className="sem-compare-row" data-a={`part-${i}`}>
+                        <div className="sem-compare-aspect">
+                          <code>{p.symbol}</code>
+                          {extra?.(`part-${i}`)}
+                        </div>
+                        <div className="sem-compare-cell" data-a={`cmp-${i}-0`}>
+                          {render(p.meaning)}
+                        </div>
+                        <div className="sem-compare-cell" data-a={`cmp-${i}-1`}>
+                          {render(p.note)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {s.key === "parts" && layout === "sequence" && (
+                <>
+                  <div className="sem-sequence">
+                    {sem.parts.slice(0, 2).map((p, i) => (
+                      <div key={i} className="sem-part" data-a={`part-${i}`} style={{ gridColumn: i ? 3 : 1 }}>
+                        <code>{p.symbol}</code>
+                        <div className="sem-part-meaning">{render(p.meaning)}</div>
+                        {p.note && <div className="sem-part-note">{render(p.note)}</div>}
+                        {extra?.(`part-${i}`)}
+                      </div>
+                    ))}
+                    <div className="sem-sequence-arrow" style={{ gridColumn: 2, gridRow: 1 }}>
+                      <svg viewBox="0 0 40 24" preserveAspectRatio="none" aria-hidden>
+                        <polygon points="0,7 26,7 26,0 40,12 26,24 26,17 0,17" className="sem-story" />
+                      </svg>
+                    </div>
+                  </div>
+                  {sem.together && (
+                    <div className="sem-together sem-via" data-a="together">
+                      {render(sem.together)}
+                      {extra?.("together")}
+                    </div>
+                  )}
+                </>
+              )}
+              {s.key === "parts" && layout === "within" && (
+                <>
+                  {sem.parts.slice(0, 2).map((p, i) => (
+                    <div key={i} className={`sem-part ${i ? "sem-within-part" : "sem-within-whole"}`} data-a={`part-${i}`}>
+                      <code>{p.symbol}</code>
+                      <div className="sem-part-meaning">{render(p.meaning)}</div>
+                      {p.note && <div className="sem-part-note">{render(p.note)}</div>}
+                      {extra?.(`part-${i}`)}
+                    </div>
+                  ))}
+                  {sem.together && (
+                    <div className="sem-together" data-a="together">
+                      {render(sem.together)}
+                      {extra?.("together")}
+                    </div>
+                  )}
+                </>
+              )}
+              {s.key === "parts" && !layout && (
                 <>
                   <div className="sem-parts">
                     {sem.parts.map((p, i) => (

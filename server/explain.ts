@@ -1071,7 +1071,7 @@ const RELATION_GUIDANCE: Record<RelationKind, string> = {
 - "here": where on this page the link matters, if it does.`,
   differs: `The reader asked how the two things below are DIFFERENT. They are probably close cousins, so the differences are what's hard to see. Be exact:
 - "what": the core difference in one sentence (gist). If they don't really differ, say so plainly.
-- "parts": the points of difference, 2 to 6, the most consequential first. "symbol" names the point (a few words: "Inventory", "When revenue counts"); "meaning" says what the first does, then what the second does, side by side; "note" why that matters, if it does.
+- "parts": the points of difference, 2 to 6, the most consequential first, drawn as a table with a column for each. "symbol" names the point (a few words: "Inventory", "When revenue counts"); "meaning" is the FIRST's side of it only, "note" the SECOND's side of it only, each a short phrase without naming which it is.
 - "why": why they differ: where each comes from, the thinking or circumstances behind each.
 - "together": what they share, the common ground both stand on.
 - "here": when the difference matters in practice: who has to care, and what changes.`,
@@ -1085,7 +1085,7 @@ const RELATION_GUIDANCE: Record<RelationKind, string> = {
 - "what": how the one leads to the other, in one sentence (gist), naming which comes first.
 - "why": the chain from the one to the other, step by step, in order.
 - "parts": exactly two entries in the order it goes, the one that comes first first; "symbol" is its name, "meaning" its role.
-- "together": the mechanism that carries the one to the other.
+- "together": the mechanism that carries the one to the other, in one sentence: it labels the arrow between them.
 - "here": where on this page that matters, if it does.`,
   within: `The reader asked whether one of the two things below is PART OF the other: a piece of it, a kind or case of it, contained in it. Say which, and what kind of part. If neither is, say so plainly.
 - "what": how the one sits within the other, in one sentence (gist).

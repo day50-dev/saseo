@@ -403,6 +403,8 @@ export function Card(props: {
           render={(t) => withRegister(t, card.sem!, sources)}
           onTitlePointerDown={props.onGrab}
           labels={pageCard ? { here: "Where the page goes" } : card.flow ? { here: "How it unfolds" } : card.relates ? RELATION_LABELS[card.relKind ?? "relates"] : undefined}
+          layout={card.relates ? RELATION_LAYOUT[card.relKind ?? "relates"] : undefined}
+          sides={props.relatesNames}
           head={(key) => <GrowButton at={key} onGrow={props.onGrow} title="Grow more here" />}
           belowParts={(key, name) => (
             <Grown ext={card.ext ?? []} at={key} from={name} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} onShow={props.onFocus} />
@@ -1334,6 +1336,15 @@ const RELATION_LABELS: Record<RelationKind, Partial<Record<"why" | "what" | "par
   disputes: { why: "How it arose", what: "The question", parts: "Each side", here: "Where it matters" },
   leads: { why: "Step by step", what: "How one leads to the other", parts: "In order", here: "Where it matters" },
   within: { why: "Why it belongs", what: "How it fits", parts: "Whole and part", here: "Where it matters" },
+};
+
+/** The shape a relation card's parts take, from the semshapes vocabulary (SemShapes `layout`). */
+const RELATION_LAYOUT: Record<RelationKind, "compare" | "sequence" | "within" | undefined> = {
+  relates: undefined,
+  differs: "compare",
+  disputes: undefined,
+  leads: "sequence",
+  within: "within",
 };
 
 /** On a relation card: what was asked about which two, and (once found) which way it goes. */

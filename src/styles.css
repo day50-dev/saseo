@@ -1291,7 +1291,13 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .connector.rel-disputes { stroke: var(--rel-disputes); stroke-dasharray: 10 4 2 4; opacity: 0.9; }
 .connector.rel-disputes.rel-mark { stroke-dasharray: none; stroke-width: 2.5; }
 .connector.rel-leads { stroke: var(--sem-why); stroke-dasharray: none; stroke-width: 2; opacity: 0.9; }
-.connector.rel-within { stroke: var(--sem-parts); stroke-dasharray: none; stroke-width: 2; opacity: 0.9; }
+.connector.rel-within { stroke: var(--sem-parts); stroke-dasharray: none; stroke-width: 1.5; opacity: 0.9; }
+/* The whole comes down as a category line: heavier, like a section's bus. */
+.connector.rel-within.rel-whole { stroke-width: 3.5; }
+.connector.relation { stroke-linejoin: round; }
+.rel-head.bar { fill: none; stroke: var(--rel-disputes); stroke-width: 3; }
+.rel-head.rel-relates { fill: var(--sem-line); }
+.rel-head.rel-differs { fill: var(--sem-what); }
 .connector.relation.lit { opacity: 1; }
 .connector.rel-differs.lit { stroke-width: 6; }
 .rel-head { fill: var(--sem-line); stroke: none; }
@@ -1311,3 +1317,19 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .relation-swatch .connector { opacity: 1; }
 .relation-swatch .connector.rel-differs { stroke-width: 4; }
 .relation-cancel { align-self: flex-end; margin: 4px 6px 2px; }
+
+/* Relation cards: the parts take the shape of what was asked (SemShapes layout). */
+.sem-shared { margin: 4px 0 18px 36px; }
+.sem-compare { display: grid; grid-template-columns: minmax(84px, 0.55fr) 1fr 1fr; gap: 8px 14px; margin: 26px 0 8px; }
+.sem-compare-row { display: contents; }
+.sem-compare-head { font-weight: 600; padding: 4px 8px 6px 10px; border-bottom: 2px solid var(--sem-parts); }
+.sem-compare-aspect { padding-top: 2px; }
+.sem-compare-aspect code { font-size: 12px; white-space: normal; }
+.sem-compare-cell { padding: 0 0 0 22px; line-height: 1.45; }
+.sem-sequence { display: grid; grid-template-columns: 1fr 64px 1fr; align-items: stretch; gap: 8px; margin: 18px 0 6px; }
+.sem-sequence-arrow { align-self: center; }
+.sem-sequence > * { grid-row: 1; }
+.sem-sequence-arrow svg { width: 100%; height: 26px; display: block; }
+.sem-via { margin: 6px 0 0; text-align: center; font-style: italic; }
+.sem-within-whole { margin: 18px 0 0; }
+.sem-within-part { margin: 18px 0 8px 64px; }

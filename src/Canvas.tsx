@@ -1376,45 +1376,52 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   // ---- Connectors ----
 
   const connectors = visibleCards.flatMap((c) => {
-    // A relation hangs from both things it relates, a line from the bottom of each. What was asked
-    // (its kind) decides the line: a stylesheet draws each kind its own way (rel-<kind>), and a
-    // directed kind marks which way it goes, once the librarian has found that.
+    // A relation joins the two things it relates to its card with semshapes connectors: straight
+    // runs, 45° bends, heads. What was asked (its kind) picks the shape: a Y-connector for "related",
+    // a line into each column for "different" and "disagree" (a bar for opposing), a path through
+    // the card for "leads to", a category line from the whole for "part of". Colours are the theme.
     if (c.relates) {
       const kind = c.relKind ?? "relates";
-      const directed = DIRECTED.includes(kind) && c.relFrom !== undefined;
-      return c.relates.flatMap((id, i) => {
-        const s = byId.get(id);
-        const box = relBox(id);
-        if (!s || !box || folded.has(id)) return [];
-        const from = { x: box.x + box.w / 2, y: box.y + box.h };
-        const to = { x: c.x + c.w / 2 + (i === 0 ? -40 : 40), y: c.y };
-        const my = (from.y + to.y) / 2;
-        const lit = hover === c.id || hover === id;
-        const cls = `connector relation rel-${kind}${lit ? " lit" : ""}`;
-        const d = `M${from.x} ${from.y} C${from.x} ${my} ${to.x} ${my} ${to.x} ${to.y}`;
-        const key = `${c.id}-${i}`;
-        // Which way the line runs where it meets the card (down, usually), and where it meets the thing.
-        const dir = to.y >= from.y ? 1 : -1;
-        const head = (p: { x: number; y: number }, down: number, hollow = false) => (
-          <path
-            key={`${key}-h`}
-            d={`M${p.x - 6} ${p.y - 11 * down} L${p.x + 6} ${p.y - 11 * down} L${p.x} ${p.y} Z`}
-            className={`rel-head rel-${kind}${hollow ? " hollow" : ""}${lit ? " lit" : ""}`}
-          />
-        );
-        const out = [<path key={key} d={d} data-card={c.id} className={cls} />];
-        if (kind === "differs") out.push(<path key={`${key}-g`} d={d} className="connector rel-differs-gap" />);
-        if (kind === "disputes")
-          // A bar across where it meets the card: the two positions push against each other.
-          out.push(<path key={`${key}-t`} d={`M${to.x - 8} ${to.y - 3 * dir} L${to.x + 8} ${to.y - 3 * dir}`} className={`${cls} rel-mark`} />);
-        if (directed && kind === "leads")
-          // From the one that leads, into the card; from the card, on into the one it leads to.
-          out.push(i === c.relFrom ? head(to, dir) : head(from, -dir));
-        if (directed && kind === "within" && i !== c.relFrom)
-          // A hollow triangle at the whole: the other is a part or a kind of it.
-          out.push(head(from, -dir, true));
-        return out;
-      });
+      const boxes = c.relates.map((id) => (folded.has(id) ? null : relBox(id)));
+      const card = { x: c.x, y: c.y, w: c.w, h: cardHeight(c) };
+      const lit = hover === c.id || c.relates.some((id) => hover === id);
+      const cls = (extra = "") => `connector relation rel-${kind}${extra}${lit ? " lit" : ""}`;
+      const out: React.JSX.Element[] = [];
+      const draw = (key: string, r: Routed | null, head: "arrow" | "bar" | "hollow" | null, extra = "") => {
+        if (!r) return;
+        out.push(<path key={key} d={r.d} data-card={c.id} className={cls(extra)} />);
+        if (kind === "differs") out.push(<path key={`${key}-g`} d={r.d} className="connector rel-differs-gap" />);
+        if (head) out.push(<path key={`${key}-h`} d={relHead(r.end, r.dir, head)} className={`rel-head rel-${kind}${head === "hollow" ? " hollow" : ""}${head === "bar" ? " bar" : ""}`} />);
+      };
+      if (kind === "relates") {
+        // Y-connector: both run to a junction over the card, and one stem carries on into it.
+        const entry = relEntry(card, boxes.find(Boolean) ?? card);
+        const j = { x: entry.x, y: entry.y - 30 * entry.dir };
+        boxes.forEach((b, i) => b && draw(`${c.id}-${i}`, relRoute(b, j), null));
+        out.push(<path key={`${c.id}-stem`} d={`M${j.x} ${j.y} L${entry.x} ${entry.y - 9 * entry.dir}`} className={cls()} />);
+        out.push(<path key={`${c.id}-stem-h`} d={relHead({ x: entry.x, y: entry.y }, { x: 0, y: entry.dir }, "arrow")} className="rel-head rel-relates" />);
+      } else if (kind === "differs" || kind === "disputes") {
+        // Each into its own side of the card, kept apart: they are compared, not joined.
+        boxes.forEach((b, i) => b && draw(`${c.id}-${i}`, relRoute(b, relEntry(card, b, i === 0 ? 0.34 : 0.68), i === 0 ? 0.4 : 0.6), kind === "disputes" ? "bar" : "arrow"));
+      } else if (kind === "leads") {
+        // Path: from the one that leads into the card, and out of the card on into the other.
+        const f = c.relFrom;
+        boxes.forEach((b, i) => {
+          if (!b) return;
+          if (f === undefined) return draw(`${c.id}-${i}`, relRoute(b, relEntry(card, b)), null);
+          if (i === f) draw(`${c.id}-${i}`, relRoute(b, relEntry(card, b)), "arrow");
+          else draw(`${c.id}-${i}`, relRouteOut(card, b), "arrow");
+        });
+      } else {
+        // Part of: the whole comes down as a category line; the part joins by the description bend.
+        const f = c.relFrom;
+        boxes.forEach((b, i) => {
+          if (!b) return;
+          const whole = f !== undefined && i !== f;
+          draw(`${c.id}-${i}`, relRoute(b, relEntry(card, b, i === 0 ? 0.4 : 0.6)), whole ? "arrow" : null, whole ? " rel-whole" : "");
+        });
+      }
+      return out;
     }
     // What was said at a stopped moment describes its frame: the semshapes description connector
     // (a 45° bend off the frame, a straight bus, an arrowhead into the words), not the soft curve
@@ -2497,5 +2504,63 @@ function RelationSample({ kind }: { kind: RelationKind }) {
       </>
     );
   return <path d="M2 6 H26" className={cls} />;
+}
+
+// ---- Relation connectors: semshapes runs between boxes ----
+
+type RBox = { x: number; y: number; w: number; h: number };
+type Pt = { x: number; y: number };
+/** A routed connector: its path, where it ends, and the way it is travelling there. */
+type Routed = { d: string; end: Pt; dir: Pt };
+
+/**
+ * Where a connector meets the card: its top when the thing is above it, its bottom when below,
+ * at `at` of its width. `dir` is the way the line travels into it (1 down, -1 up).
+ */
+function relEntry(card: RBox, from: RBox, at = 0.5): Pt & { dir: number } {
+  const x = card.x + card.w * at;
+  return from.y + from.h / 2 <= card.y + card.h / 2 ? { x, y: card.y, dir: 1 } : { x, y: card.y + card.h, dir: -1 };
+}
+
+/** Straight runs with 45° corners: out of a box vertically, across, and into `to` vertically. */
+function relRoute(from: RBox, to: Pt, level = 0.5): Routed {
+  const down = to.y >= from.y + from.h / 2;
+  const p = { x: from.x + from.w / 2, y: down ? from.y + from.h : from.y };
+  const dir = down ? 1 : -1;
+  const m = p.y + (to.y - p.y) * level;
+  const dx = to.x - p.x;
+  if (Math.abs(dx) < 2) return { d: `M${p.x} ${p.y} V${to.y}`, end: to, dir: { x: 0, y: dir } };
+  const sx = Math.sign(dx);
+  const r = Math.min(14, Math.abs(dx) / 2, Math.abs(m - p.y), Math.abs(to.y - m));
+  return { d: `M${p.x} ${p.y} V${m - dir * r} L${p.x + sx * r} ${m} H${to.x - sx * r} L${to.x} ${m + dir * r} V${to.y}`, end: to, dir: { x: 0, y: dir } };
+}
+
+/** Out of the card's side toward a box, across, and into the box from below (or above). */
+function relRouteOut(card: RBox, to: RBox): Routed {
+  const tx = to.x + to.w / 2;
+  const right = tx > card.x + card.w / 2;
+  const p = { x: right ? card.x + card.w : card.x, y: card.y + 48 };
+  const above = to.y + to.h <= p.y;
+  const ty = above ? to.y + to.h : to.y;
+  const dir = above ? -1 : 1;
+  const sx = right ? 1 : -1;
+  if ((tx - p.x) * sx < 16) {
+    // The box is straight over the card's edge: up (or down) and in.
+    return { d: `M${p.x} ${p.y} H${p.x + sx * 16} V${ty}`, end: { x: p.x + sx * 16, y: ty }, dir: { x: 0, y: dir } };
+  }
+  const r = Math.min(14, Math.abs(tx - p.x) / 2, Math.abs(ty - p.y) / 2);
+  return { d: `M${p.x} ${p.y} H${tx - sx * r} L${tx} ${p.y + dir * r} V${ty}`, end: { x: tx, y: ty }, dir: { x: 0, y: dir } };
+}
+
+/** A connector's head at `p`, travelling `dir`: an arrow, a bar across it, or a hollow triangle. */
+function relHead(p: Pt, dir: Pt, kind: "arrow" | "bar" | "hollow"): string {
+  const L = 11;
+  const W = 6;
+  const bx = p.x - dir.x * L;
+  const by = p.y - dir.y * L;
+  const nx = -dir.y;
+  const ny = dir.x;
+  if (kind === "bar") return `M${p.x + nx * 9} ${p.y + ny * 9} L${p.x - nx * 9} ${p.y - ny * 9}`;
+  return `M${bx + nx * W} ${by + ny * W} L${p.x} ${p.y} L${bx - nx * W} ${by - ny * W} Z`;
 }
 
