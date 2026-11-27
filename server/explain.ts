@@ -16,7 +16,7 @@ import { logCourses } from "./curriculum.ts";
 import { snap } from "./snap.ts";
 import { exampleNotebook } from "./notebooks.ts";
 import { bestRead, editVersion, hashText, pageVersion, readOf, remember } from "./pagecache.ts";
-import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, systemOneConfigured } from "./llm.ts";
+import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, metered, systemOneConfigured } from "./llm.ts";
 import { arxivPaper, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { matchWikiLink, readPage as readWebPage, wikiLead, wikiLinks } from "./pages.ts";
 import { runSearch } from "./providers.ts";
@@ -260,14 +260,7 @@ async function write(
     { role: "system", content: system },
     { role: "user", content: lines.join("\n\n") },
   ];
-  // The card shows the tokens coming in, so a long write is visibly working.
-  const began = Date.now();
-  let first: Record<string, unknown>;
-  try {
-    first = await chatJson<Record<string, unknown>>(config.llm, messages, (tokens) => store.setLive(card.id, { progress: { tokens, ms: Date.now() - began } }));
-  } finally {
-    store.clearLive(card.id);
-  }
+  const first = await chatJson<Record<string, unknown>>(config.llm, messages);
   let sem = cleanSem(first, flow ? 6 : 3);
   if (!sem.why.length && !sem.what.gist) {
     console.warn("explanation without why or what; the reply had:", JSON.stringify(first).slice(0, 600));
@@ -380,8 +373,11 @@ export async function pdfTitle(url: string): Promise<string> {
 
 async function guard(store: CanvasStore, cardId: string, run: () => Promise<void>) {
   const limit = (await loadConfig()).llm.timeoutSeconds;
+  // The card shows the tokens every model call of the job has received, and the seconds since it
+  // began, so a long job is visibly working whatever stage it is at.
+  store.startProgress(cardId);
   try {
-    await run();
+    await metered((tokens) => store.setLive(cardId, { progress: { tokens, ms: 0 } }), run);
     // It worked: a later failure gets all its tries again.
     const now = await store.findItem(cardId);
     if (now?.kind === "card" && now.retries && now.stage !== "failed") await store.update(cardId, { retries: 0, retryAt: "" });
@@ -394,6 +390,8 @@ async function guard(store: CanvasStore, cardId: string, run: () => Promise<void
       timedOut ? `The language model didn't answer within ${limit} seconds. Retry, or raise the timeout in Settings.` : message,
       err instanceof Permanent,
     );
+  } finally {
+    store.endProgress(cardId);
   }
 }
 
@@ -1441,7 +1439,7 @@ export function makeObject(store: CanvasStore, cardId: string) {
           },
         );
       } finally {
-        store.clearLive(cardId);
+        store.setLive(cardId, { object: undefined });
       }
       const svg = sanitizeSvg(drawn);
       if (!svg) throw new Error("The model's drawing wasn't a usable SVG. Try again.");

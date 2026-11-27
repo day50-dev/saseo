@@ -343,7 +343,8 @@ export function Card(props: {
           <span className="spinner" /> {card.origin?.kind === "page" ? "Reading the page…" : STAGE_TEXT[card.stage]}
           {card.progress && (
             <span className="card-progress">
-              {card.progress.tokens.toLocaleString()} tokens · {Math.round(card.progress.ms / 1000)} s
+              {card.progress.tokens > 0 && `${card.progress.tokens.toLocaleString()} tokens · `}
+              {Math.round(card.progress.ms / 1000)} s
             </span>
           )}
         </p>

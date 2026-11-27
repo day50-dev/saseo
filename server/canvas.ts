@@ -469,19 +469,42 @@ export class CanvasStore {
    */
   private live = new Map<string, Partial<CardItem>>();
 
+  /** When each card's job began, for the seconds its progress shows. */
+  private began = new Map<string, number>();
+
+  /** Merged into what's already held: a diagram drawn so far and the tokens so far sit side by side. */
   setLive(id: string, patch: Partial<CardItem>) {
-    this.live.set(id, patch);
+    const next = { ...this.live.get(id), ...patch };
+    for (const k of Object.keys(next) as (keyof CardItem)[]) if (next[k] === undefined) delete next[k];
+    this.live.set(id, next);
   }
 
   clearLive(id: string) {
     this.live.delete(id);
   }
 
+  /** A card's job begins: it shows 0 tokens and counts the seconds until endProgress. */
+  startProgress(id: string) {
+    this.began.set(id, Date.now());
+    this.setLive(id, { progress: { tokens: 0, ms: 0 } });
+  }
+
+  endProgress(id: string) {
+    this.began.delete(id);
+    this.clearLive(id);
+  }
+
   /** The canvas as viewers should see it: the log's state with any work in progress laid over. */
   async view(): Promise<CanvasState> {
     const s = await this.getState();
     if (!this.live.size) return s;
-    return { ...s, items: s.items.map((i) => (i.kind === "card" && this.live.has(i.id) ? { ...i, ...this.live.get(i.id) } : i)) };
+    const now = Date.now();
+    const over = (id: string) => {
+      const patch = this.live.get(id)!;
+      const began = this.began.get(id);
+      return patch.progress && began ? { ...patch, progress: { ...patch.progress, ms: now - began } } : patch;
+    };
+    return { ...s, items: s.items.map((i) => (i.kind === "card" && this.live.has(i.id) ? { ...i, ...over(i.id) } : i)) };
   }
 
   /** The whole log, oldest first: for looking back at what happened (a note's history). */

@@ -1,6 +1,37 @@
 // Thin clients for the configured LLM (OpenAI-compatible, or Anthropic's API: anthropic.ts) and System One endpoints.
 import { anthropicChat, anthropicStream } from "./anthropic.ts";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Endpoint } from "./config.ts";
+
+/**
+ * Counts the tokens every model call makes while a card's job runs, calls made side by side
+ * included, so the card can show the whole job working, not just its longest write.
+ */
+interface Meter {
+  done: number;
+  flowing: Set<{ n: number }>;
+  report: (tokens: number) => void;
+}
+const meter = new AsyncLocalStorage<Meter>();
+
+/** Runs `job`, reporting the tokens all its model calls have received so far as they come. */
+export function metered<T>(report: (tokens: number) => void, job: () => Promise<T>): Promise<T> {
+  return meter.run({ done: 0, flowing: new Set(), report }, job);
+}
+
+function tally(m: Meter) {
+  let n = m.done;
+  for (const f of m.flowing) n += f.n;
+  m.report(n);
+}
+
+/** Adds a finished reply to the job's count. */
+function counted(tokens: number) {
+  const m = meter.getStore();
+  if (!m) return;
+  m.done += tokens;
+  tally(m);
+}
 
 type Part = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 export interface Message {
@@ -38,7 +69,11 @@ const noJsonMode = new Set<string>();
  */
 export async function chat(ep: Endpoint, messages: Message[], timeoutMs = ep.timeoutSeconds * 1000, json = false): Promise<string> {
   if (!ep.baseUrl || !ep.model) throw new Error("The language model isn't configured (Settings)");
-  if (ep.protocol === "anthropic") return anthropicChat(ep, messages, timeoutMs);
+  if (ep.protocol === "anthropic") {
+    const text = await anthropicChat(ep, messages, timeoutMs);
+    counted(Math.round(text.length / 4));
+    return text;
+  }
   const jsonMode = json && !noJsonMode.has(ep.baseUrl);
   const res = await send(`${ep.baseUrl}/chat/completions`, {
     method: "POST",
@@ -58,6 +93,7 @@ export async function chat(ep: Endpoint, messages: Message[], timeoutMs = ep.tim
   const data = await res.json();
   const text = data?.choices?.[0]?.message?.content;
   if (typeof text !== "string") throw new Error("LLM: response had no message content");
+  counted(data?.usage?.completion_tokens ?? Math.round(text.length / 4));
   return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 }
 
@@ -71,6 +107,23 @@ const visible = (text: string) => text.replace(/<think>[\s\S]*?(<\/think>|$)/g, 
  * reply. `json` asks for JSON mode, as `chat` does.
  */
 export async function chatStream(ep: Endpoint, messages: Message[], onText: (soFar: string, tokens: number) => void, json = false): Promise<string> {
+  const m = meter.getStore();
+  if (!m) return streamOnce(ep, messages, onText, json);
+  const mine = { n: 0 };
+  m.flowing.add(mine);
+  try {
+    return await streamOnce(ep, messages, (soFar, tokens) => {
+      mine.n = tokens;
+      tally(m);
+      onText(soFar, tokens);
+    }, json);
+  } finally {
+    m.flowing.delete(mine);
+    m.done += mine.n;
+  }
+}
+
+async function streamOnce(ep: Endpoint, messages: Message[], onText: (soFar: string, tokens: number) => void, json: boolean): Promise<string> {
   if (!ep.baseUrl || !ep.model) throw new Error("The language model isn't configured (Settings)");
   if (ep.protocol === "anthropic") return anthropicStream(ep, messages, onText);
   const jsonMode = json && !noJsonMode.has(ep.baseUrl);
@@ -84,7 +137,7 @@ export async function chatStream(ep: Endpoint, messages: Message[], onText: (soF
     const body = await res.text();
     if (jsonMode && (res.status === 400 || res.status === 422 || /response_format|json/i.test(body))) {
       noJsonMode.add(ep.baseUrl);
-      return chatStream(ep, messages, onText, false);
+      return streamOnce(ep, messages, onText, false);
     }
     throw new Error(`LLM: HTTP ${res.status} ${body.slice(0, 300)}`);
   }
@@ -152,9 +205,13 @@ export function repairTexEscapes(json: string): string {
 }
 
 /** Asks for JSON and parses the first object in the reply, tolerating code fences and prose around it. */
-/** `onTokens`, when given, streams the first try and reports the tokens received as they come. */
+/**
+ * `onTokens`, when given, streams the first try and reports the tokens received as they come. So
+ * does a call inside a card's job (`metered`), which the card shows.
+ */
 export async function chatJson<T>(ep: Endpoint, messages: Message[], onTokens?: (tokens: number) => void): Promise<T> {
-  let text = onTokens ? await chatStream(ep, messages, (_t, n) => onTokens(n), true) : await chat(ep, messages, undefined, true);
+  let text =
+    onTokens || meter.getStore() ? await chatStream(ep, messages, (_t, n) => onTokens?.(n), true) : await chat(ep, messages, undefined, true);
   // A reply that won't parse gets one more try, told why (a long reply sometimes slips).
   for (let attempt = 0; ; attempt++) {
     const start = text.indexOf("{");

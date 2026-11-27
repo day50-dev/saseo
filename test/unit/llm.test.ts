@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, describe, test } from "node:test";
 import { fakeLlm } from "../helpers/fakeLlm.ts";
-import { chat, chatJson, chatStream } from "../../server/llm.ts";
+import { chat, chatJson, chatStream, metered } from "../../server/llm.ts";
 
 const llm = await fakeLlm();
 const ep = { baseUrl: `${llm.url}/v1`, model: "fake-model", apiKey: "k", timeoutSeconds: 10, protocol: "openai" as const };
@@ -188,5 +188,19 @@ describe("F-TTS: speaking through an OpenAI-compatible speech server", () => {
     assert.equal((await testTts(tts)).ok, true);
     assert.equal((await testTts({ ...tts, baseUrl: "" })).ok, false);
     server.close();
+  });
+
+  test("a card's job counts the tokens of every call in it, side by side ones included", async () => {
+    llm.on(/meter one/, '{"a": 1, "pad": "' + "x".repeat(40) + '"}', 1);
+    llm.on(/meter two/, '{"b": 2}', 1);
+    llm.on(/meter three/, "plain words here", 1);
+    const seen: number[] = [];
+    await metered((n) => seen.push(n), async () => {
+      await Promise.all([chatJson(ep, [{ role: "user", content: "meter one" }]), chatJson(ep, [{ role: "user", content: "meter two" }])]);
+      await chat(ep, [{ role: "user", content: "meter three" }]);
+    });
+    assert.ok(seen.length >= 3, `reported as it went: ${seen}`);
+    for (let i = 1; i < seen.length; i++) assert.ok(seen[i] >= seen[i - 1], `never goes down: ${seen}`);
+    assert.ok(seen.at(-1)! > seen[0]);
   });
 });
