@@ -164,14 +164,15 @@ export function imagesInHtml(html: string, pageUrl: string): Candidate[] {
 
 const QUERIES = `A reader on a study canvas asked to see pictures. Write two searches for them.
 "web": a web search that finds pages showing these pictures (galleries, museum and archive pages, articles about them).
-"commons": one to four searches for Wikimedia Commons, which matches file descriptions: each two to four words, no
+"commons": one to eight searches for Wikimedia Commons, which matches file descriptions: each two to four words, no
 "pictures" or "images". The bare subject ("Mickey Mouse", "Brutalist architecture"), or when they want several artists,
 works or things, one search for each of the main ones ("Botticelli Birth of Venus", "Raphael School of Athens").
 Return JSON only: {"web": "...", "commons": ["...", "..."]}`;
 
 const PICK = `A reader on a study canvas asked to see pictures. You are given numbered candidate images, each with what it
 is said to show (its alt text, caption or description) and the page it's on. Choose the ones that best show what they asked
-for, at most ${GALLERY_PICK}: real artwork, photographs, drawings, model sheets, scans and figures of the subject itself.
+for, at most ${GALLERY_PICK} and 8 to 12 when there are that many good ones (one of each work or thing they named, if it's
+there): real artwork, photographs, drawings, model sheets, scans and figures of the subject itself.
 Leave out logos, site decoration, ads, author photos, merchandise and anything only loosely related. Don't choose two that
 are surely the same picture. Draw from several sources when they serve equally well, so it isn't one site's selection.
 When they asked how something changed over time, order them by date, oldest first; otherwise
@@ -279,13 +280,13 @@ export async function makeGallery(
       { role: "user", content: `The card is about: ${about.slice(0, 1000)}\n\nThey asked for: ${request}` },
     ]);
     query = String(q.web ?? "").trim() || request;
-    subjects = (Array.isArray(q.commons) ? q.commons : [q.commons]).map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 4);
+    subjects = (Array.isArray(q.commons) ? q.commons : [q.commons]).map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 8);
   } catch {}
   // Commons matches file descriptions, so it gets short searches of its own: the bare subject, or
   // one per artist or work asked for.
   const [found, ...byCommons] = await Promise.all([
     search(query).catch(() => [] as FoundSource[]),
-    ...(subjects.length ? subjects : [query]).map((q) => commonsCandidates(q, subjects.length > 1 ? 8 : 16)),
+    ...(subjects.length ? subjects : [query]).map((q) => commonsCandidates(q, subjects.length > 1 ? 6 : 16)),
   ]);
   // Taken in turns, so each search gets its best ones in.
   const commons: Candidate[] = [];
@@ -296,7 +297,7 @@ export async function makeGallery(
   const seen = new Set<string>();
   // Room for both: a page with many figures mustn't crowd Commons out.
   const fresh = (list: Candidate[]) => list.filter((c) => !seen.has(c.url) && (seen.add(c.url), true));
-  const candidates = [...fresh(pages.flat()).slice(0, 36), ...fresh(commons).slice(0, 24)];
+  const candidates = [...fresh(pages.flat()).slice(0, 36), ...fresh(commons).slice(0, 32)];
   if (!candidates.length) throw new Error(`No pictures found for "${query}". Try asking differently.`);
 
   onStage?.("writing");
