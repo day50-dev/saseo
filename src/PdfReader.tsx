@@ -1,7 +1,7 @@
 // A whole PDF on the canvas, read in one place a page at a time, with a pager, the way a video plays
 // in one place with its timeline. Where a page is worth working on, "Take this page out" puts it on
 // the canvas as its own page (as stopping a video puts its frame there), to box and select on.
-import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy, Util } from "pdfjs-dist/legacy/build/pdf.mjs";
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { useEffect, useRef, useState } from "react";
 import type { ImageItem } from "../shared/canvas.ts";
@@ -22,6 +22,27 @@ function docOf(file: string): Promise<PDFDocumentProxy> {
   }
   return p;
 }
+
+const texts = new Map<string, Promise<string[]>>();
+/** Every page's words, lower-cased and run together, read once per PDF for finding in it. */
+function textsOf(file: string): Promise<string[]> {
+  let p = texts.get(file);
+  if (!p) {
+    p = docOf(file).then(async (doc) => {
+      const out: string[] = [];
+      for (let n = 1; n <= doc.numPages; n++) {
+        const tc = await (await doc.getPage(n)).getTextContent();
+        out.push(squash(tc.items.map((i) => ("str" in i ? i.str : "")).join(" ")));
+      }
+      return out;
+    });
+    texts.set(file, p);
+    p.catch(() => texts.delete(file));
+  }
+  return p;
+}
+/** Lower case, one space between words: so a phrase split across lines is still found. */
+const squash = (s: string) => s.toLowerCase().replace(/\s+/g, " ");
 
 export function PdfReader({
   item,
@@ -54,6 +75,33 @@ export function PdfReader({
   const [failed, setFailed] = useState<string | null>(null);
   const lastTurn = useRef(0);
   useEffect(() => setTyped(String(page)), [page]);
+  // Finding: the words looked for, the pages that have them, and which of those is showing.
+  const [find, setFind] = useState("");
+  const [found, setFound] = useState<{ q: string; pages: number[] } | null>(null);
+  const [finding, setFinding] = useState(false);
+  const look = async (back: boolean) => {
+    const q = squash(find).trim();
+    if (!q) return setFound(null);
+    let pages = found?.q === q ? found.pages : null;
+    if (!pages) {
+      setFinding(true);
+      try {
+        pages = (await textsOf(d.file)).flatMap((t, i) => (t.includes(q) ? [i + 1] : []));
+      } finally {
+        setFinding(false);
+      }
+      setFound({ q, pages });
+      // A new search starts from the page showing (this one, if it has them).
+      const here = pages.find((n) => n >= page) ?? pages[0];
+      if (here) go(here);
+      return;
+    }
+    if (!pages.length) return;
+    // Again: on to the next page that has them, or back to the one before; round at the ends.
+    const next = back ? ([...pages].reverse().find((n) => n < page) ?? pages[pages.length - 1]) : (pages.find((n) => n > page) ?? pages[0]);
+    go(next);
+  };
+  const mark = found?.pages.length ? found.q : "";
 
   // The page, sharp for the zoom, fitted inside the frame (pages needn't share a shape).
   useEffect(() => {
@@ -79,6 +127,22 @@ export function PdfReader({
         task = r;
         await r.promise;
         if (cancelled) return;
+        // What's being found, marked where it is on the page (each run of text that has it).
+        if (mark) {
+          const tc = await pg.getTextContent();
+          ctx.fillStyle = "rgba(255, 196, 0, 0.38)";
+          for (const it of tc.items) {
+            if (!("str" in it) || !squash(it.str).includes(mark)) continue;
+            const t = Util.transform(viewport.transform, it.transform);
+            const h = Math.hypot(t[2], t[3]);
+            const w = it.width * viewport.scale;
+            // Within the run, roughly where the words fall, by their share of its characters.
+            const at = squash(it.str).indexOf(mark) / Math.max(1, it.str.length);
+            const len = mark.length / Math.max(1, it.str.length);
+            ctx.fillRect(t[4] + w * at - 1, t[5] - h, w * len + 2, h * 1.25);
+          }
+          if (cancelled) return;
+        }
         c.width = off.width;
         c.height = off.height;
         c.style.width = `${base.width * fit}px`;
@@ -96,7 +160,7 @@ export function PdfReader({
       task?.cancel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.file, page, item.w, item.h, zoom]);
+  }, [d.file, page, item.w, item.h, zoom, mark]);
 
   const go = (n: number) => onPage(Math.min(Math.max(1, n), d.pages));
   const take = async () => {
@@ -159,6 +223,35 @@ export function PdfReader({
         <button type="button" className="secondary doc-turn" disabled={page >= d.pages} onClick={() => go(page + 1)} title="Next page (→)">
           ›
         </button>
+        <form
+          className="doc-find"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void look(false);
+          }}
+        >
+          <input
+            value={find}
+            onChange={(e) => {
+              setFind(e.target.value);
+              if (!e.target.value.trim()) setFound(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.shiftKey) (e.preventDefault(), void look(true));
+              if (e.key === "Escape") (setFind(""), setFound(null));
+            }}
+            placeholder="Find"
+            aria-label="Find in this PDF"
+            title="Find in this PDF: Enter for the next page with it, Shift+Enter for the one before"
+          />
+          {finding ? (
+            <span className="spinner" />
+          ) : found ? (
+            <span className="muted small doc-found">
+              {found.pages.length ? `${found.pages.includes(page) ? found.pages.indexOf(page) + 1 : "–"}/${found.pages.length} ${found.pages.length === 1 ? "page" : "pages"}` : "Not found"}
+            </span>
+          ) : null}
+        </form>
         <button type="button" className="doc-take" disabled={busy} onClick={take} title="Put this page on the canvas, to box anything on it or select its words">
           {busy ? (
             <>

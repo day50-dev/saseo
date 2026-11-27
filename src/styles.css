@@ -1343,8 +1343,11 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .doc-failed { position: absolute; left: 12px; right: 12px; bottom: 8px; }
 .doc-bar { display: flex; align-items: center; gap: 8px; padding: 0 10px; border-top: 1px solid var(--line); }
 .doc-turn { font-size: 20px; line-height: 1; padding: 4px 12px; }
-.doc-pageno { display: flex; align-items: center; gap: 6px; }
+.doc-pageno { display: flex; align-items: center; gap: 6px; white-space: nowrap; flex: none; }
 .doc-pageno input { width: 52px; text-align: center; padding: 4px; }
+.doc-find { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; margin-left: 6px; }
+.doc-find input { flex: 1 1 120px; min-width: 60px; padding: 4px 8px; }
+.doc-found { white-space: nowrap; }
 .doc-take { margin-left: auto; font-size: 15px; font-weight: 600; padding: 7px 14px; white-space: nowrap; }
 
 /* Shift-drag: the box being drawn, and the bar for what it picked. */
