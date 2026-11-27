@@ -88,7 +88,7 @@ export function canvasApi(cid: string) {
       post(`${base}/videos/${videoId}/moments`, { t, x, y }).then((r) => json<{ image: ImageItem; card?: CardItem }>(r)),
 
     /** Asks how two cards are related; the answer is a new card between them. */
-    relate: (body: { a: string; b: string; x: number; y: number }) =>
+    relate: (body: { a: string; b: string; x: number; y: number; kind?: string }) =>
       post(`${base}/relate`, body).then((r) => json<{ card: CardItem }>(r)),
 
     descend: (body: { parentId: string; selection: string; context: string; x: number; y: number }) =>

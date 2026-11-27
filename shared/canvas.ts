@@ -488,6 +488,13 @@ export interface CardItem extends ItemState {
    * a card or a whole image. `parentId` is the first of the two; the card depends on both.
    */
   relates?: [string, string];
+  /** What the learner asked about the two (RELATION_KINDS); none is "relates", the open question. */
+  relKind?: RelationKind;
+  /**
+   * For a directed kind (leads, within): which of the two leads to the other, or is the part of the
+   * other, as the librarian found it. None: neither does.
+   */
+  relFrom?: 0 | 1;
   /** Height as last drawn, recorded with moves. */
   h?: number;
   /**
@@ -725,3 +732,25 @@ export function substantive(text: string): boolean {
   if (words.length >= 2) return true;
   return words.length === 1 && (words[0].length >= 3 || ["no", "ok", "go"].includes(words[0]));
 }
+
+// ---- Relations: what a connection between two things asks ----
+// A connection carries meaning, and the meaning decides how it is drawn (a theme), never the reverse.
+
+export const RELATION_KINDS = ["relates", "differs", "disputes", "leads", "within"] as const;
+export type RelationKind = (typeof RELATION_KINDS)[number];
+
+/** The question each kind asks, as the reader chooses it when connecting two things. */
+export const RELATION_ASK: Record<RelationKind, string> = {
+  relates: "How are they related?",
+  differs: "How are they different?",
+  disputes: "Where do they disagree?",
+  leads: "Does one lead to the other?",
+  within: "Is one part of the other?",
+};
+
+/** Between the two names while the librarian works out the relation's own name. */
+export const RELATION_MARK: Record<RelationKind, string> = { relates: "⟷", differs: "≠", disputes: "vs", leads: "→", within: "⊂" };
+
+/** Kinds where one of the two comes first: it leads to the other, or is a part of it. */
+export const DIRECTED: RelationKind[] = ["leads", "within"];
+

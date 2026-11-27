@@ -101,7 +101,11 @@ export function describeEvent(e: LoggedEvent, byId: Map<string, Item>): { what: 
       }
       if (i.objectKind) return { what: `Asked for ${i.objectKind === "links" ? "reading" : i.objectKind}: ${short(i.request ?? "", 100)}`, id: i.id };
       if (i.origin) return { what: `Started from ${itemName(i)}`, id: i.id };
-      if (i.relates) return { what: `Asked how ${itemName(byId.get(i.relates[0]))} and ${itemName(byId.get(i.relates[1]))} relate`, id: i.id };
+      if (i.relates) {
+        const [x, y] = i.relates.map((r) => itemName(byId.get(r)));
+        const asked = { relates: `how ${x} and ${y} relate`, differs: `how ${x} and ${y} differ`, disputes: `where ${x} and ${y} disagree`, leads: `whether ${x} or ${y} leads to the other`, within: `whether ${x} or ${y} is part of the other` }[i.relKind ?? "relates"];
+        return { what: `Asked ${asked}`, id: i.id };
+      }
       if (i.selection) return { what: `Asked what “${short(i.selection, 60)}” means, on ${itemName(byId.get(i.parentId))}`, id: i.id };
       return { what: `Opened ${itemName(i)}`, id: i.id };
     }

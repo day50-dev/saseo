@@ -2,7 +2,7 @@ import { GoalsPanel } from "./GoalsPanel.tsx";
 import { Logo } from "./Logo.tsx";
 import { ChangesPanel, colourFor, names, ShareDialog } from "./Sharing.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type Change, type Member, type Role, type ShareLink, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, type Rect, type RegionItem, VIDEO_WIDTH } from "../shared/canvas.ts";
+import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type Change, type Member, type Role, type ShareLink, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, RELATION_ASK, RELATION_KINDS, type RelationKind, DIRECTED, type Rect, type RegionItem, VIDEO_WIDTH } from "../shared/canvas.ts";
 import { Note } from "./Note.tsx";
 import { Card, type Side } from "./Card.tsx";
 import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
@@ -144,6 +144,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   // A container being dragged, with everything that hangs off it.
   // A connection being dragged from one card's port, to ask how it relates to another card.
   const [link, setLink] = useState<{ from: string; side: Side; start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
+  // A connection just dropped on another card: what to ask about the two, chosen from a menu there.
+  const [relAsk, setRelAsk] = useState<{ a: string; b: string; x: number; y: number; left: number; top: number; line: { start: { x: number; y: number }; end: { x: number; y: number } } } | null>(null);
   const [drag, setDrag] = useState<{
     ids: string[];
     start: { x: number; y: number };
@@ -998,12 +1000,20 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     } else {
       y = slotY(x, Math.round(bottom + 64));
     }
+    // What to ask about them: chosen from a menu where the connection was dropped.
+    setRelAsk({ a: aId, b: bId, x, y, left: clientX, top: clientY, line: { start: l.start, end: l.end } });
+  };
+
+  const relateAs = async (kind: RelationKind) => {
+    const r = relAsk;
+    setRelAsk(null);
+    if (!r) return;
     try {
-      const res = await api.relate({ a: aId, b: bId, x, y });
+      const res = await api.relate({ a: r.a, b: r.b, x: r.x, y: r.y, kind });
       added("relate", [res.card.id]);
       await refresh();
     } catch (e) {
-      setError(`Couldn't ask how they relate: ${e}`);
+      setError(`Couldn't ask about them: ${e}`);
     }
   };
 
@@ -1366,8 +1376,12 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   // ---- Connectors ----
 
   const connectors = visibleCards.flatMap((c) => {
-    // A relation hangs from both things it relates: a dashed line from the bottom of each.
+    // A relation hangs from both things it relates, a line from the bottom of each. What was asked
+    // (its kind) decides the line: a stylesheet draws each kind its own way (rel-<kind>), and a
+    // directed kind marks which way it goes, once the librarian has found that.
     if (c.relates) {
+      const kind = c.relKind ?? "relates";
+      const directed = DIRECTED.includes(kind) && c.relFrom !== undefined;
       return c.relates.flatMap((id, i) => {
         const s = byId.get(id);
         const box = relBox(id);
@@ -1376,14 +1390,30 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         const to = { x: c.x + c.w / 2 + (i === 0 ? -40 : 40), y: c.y };
         const my = (from.y + to.y) / 2;
         const lit = hover === c.id || hover === id;
-        return [
+        const cls = `connector relation rel-${kind}${lit ? " lit" : ""}`;
+        const d = `M${from.x} ${from.y} C${from.x} ${my} ${to.x} ${my} ${to.x} ${to.y}`;
+        const key = `${c.id}-${i}`;
+        // Which way the line runs where it meets the card (down, usually), and where it meets the thing.
+        const dir = to.y >= from.y ? 1 : -1;
+        const head = (p: { x: number; y: number }, down: number, hollow = false) => (
           <path
-            key={`${c.id}-${i}`}
-            d={`M${from.x} ${from.y} C${from.x} ${my} ${to.x} ${my} ${to.x} ${to.y}`}
-            data-card={c.id}
-            className={lit ? "connector relation lit" : "connector relation"}
-          />,
-        ];
+            key={`${key}-h`}
+            d={`M${p.x - 6} ${p.y - 11 * down} L${p.x + 6} ${p.y - 11 * down} L${p.x} ${p.y} Z`}
+            className={`rel-head rel-${kind}${hollow ? " hollow" : ""}${lit ? " lit" : ""}`}
+          />
+        );
+        const out = [<path key={key} d={d} data-card={c.id} className={cls} />];
+        if (kind === "differs") out.push(<path key={`${key}-g`} d={d} className="connector rel-differs-gap" />);
+        if (kind === "disputes")
+          // A bar across where it meets the card: the two positions push against each other.
+          out.push(<path key={`${key}-t`} d={`M${to.x - 8} ${to.y - 3 * dir} L${to.x + 8} ${to.y - 3 * dir}`} className={`${cls} rel-mark`} />);
+        if (directed && kind === "leads")
+          // From the one that leads, into the card; from the card, on into the one it leads to.
+          out.push(i === c.relFrom ? head(to, dir) : head(from, -dir));
+        if (directed && kind === "within" && i !== c.relFrom)
+          // A hollow triangle at the whole: the other is a part or a kind of it.
+          out.push(head(from, -dir, true));
+        return out;
       });
     }
     // What was said at a stopped moment describes its frame: the semshapes description connector
@@ -1975,9 +2005,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             );
           })}
 
-          {link && (
+          {(link ?? relAsk?.line) && (
             <svg className="connectors link-preview">
-              <path d={`M${link.start.x} ${link.start.y} L${link.end.x} ${link.end.y}`} className="connector relation lit" />
+              <path d={`M${(link ?? relAsk!.line).start.x} ${(link ?? relAsk!.line).start.y} L${(link ?? relAsk!.line).end.x} ${(link ?? relAsk!.line).end.y}`} className="connector relation lit" />
             </svg>
           )}
 
@@ -2110,6 +2140,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           onDone={doneReviewing}
         />
       )}
+      {relAsk && <RelationMenu at={relAsk} onPick={relateAs} onCancel={() => setRelAsk(null)} />}
       {shareOpen && (
         <ShareDialog
           name={name}
@@ -2395,3 +2426,76 @@ export function Examples({ onPick }: { onPick: (ex: Example) => void }) {
     </div>
   );
 }
+
+/** Where a connection was dropped: what the reader wants to know about the two things. */
+function RelationMenu({ at, onPick, onCancel }: { at: { left: number; top: number }; onPick: (kind: RelationKind) => void; onCancel: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const away = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onCancel();
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onCancel();
+    window.addEventListener("pointerdown", away);
+    window.addEventListener("keydown", esc);
+    ref.current?.querySelector("button")?.focus();
+    return () => {
+      window.removeEventListener("pointerdown", away);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [onCancel]);
+  // Beside the drop point, kept on screen.
+  const W = 260;
+  const H = 44 * RELATION_KINDS.length + 52;
+  const left = Math.max(8, Math.min(at.left + 12, window.innerWidth - W - 8));
+  const top = Math.max(8, Math.min(at.top - 20, window.innerHeight - H - 8));
+  return (
+    <div ref={ref} className="relation-menu" role="menu" style={{ left, top, width: W }}>
+      {RELATION_KINDS.map((k) => (
+        <button key={k} type="button" role="menuitem" className={`relation-choice rel-${k}`} onClick={() => onPick(k)}>
+          <svg className="relation-swatch" viewBox="0 0 28 12" aria-hidden="true">
+            <RelationSample kind={k} />
+          </svg>
+          {RELATION_ASK[k]}
+        </button>
+      ))}
+      <button type="button" className="link small relation-cancel" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+/** A short run of each kind's line, as the menu shows it beside its question. */
+function RelationSample({ kind }: { kind: RelationKind }) {
+  const cls = `connector relation rel-${kind}`;
+  if (kind === "differs")
+    return (
+      <>
+        <path d="M2 6 H26" className={cls} />
+        <path d="M2 6 H26" className="connector rel-differs-gap" />
+      </>
+    );
+  if (kind === "disputes")
+    return (
+      <>
+        <path d="M2 6 H24" className={cls} />
+        <path d="M24 1 V11" className={`${cls} rel-mark`} />
+      </>
+    );
+  if (kind === "leads")
+    return (
+      <>
+        <path d="M2 6 H20" className={cls} />
+        <path d="M19 2 L26 6 L19 10 Z" className={`rel-head rel-${kind}`} />
+      </>
+    );
+  if (kind === "within")
+    return (
+      <>
+        <path d="M2 6 H19" className={cls} />
+        <path d="M19 2 L26 6 L19 10 Z" className={`rel-head hollow rel-${kind}`} />
+      </>
+    );
+  return <path d="M2 6 H26" className={cls} />;
+}
+

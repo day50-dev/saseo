@@ -21,6 +21,10 @@ import {
   RETRY_TRIES,
   type RegisterNote,
   type Sem,
+  DIRECTED,
+  RELATION_ASK,
+  type RelationKind,
+  RELATION_MARK,
 } from "../shared/canvas.ts";
 import { PaperRow } from "./ArxivPanel.tsx";
 import { colored } from "./NotebookPanel.tsx";
@@ -327,7 +331,7 @@ export function Card(props: {
       )}
       {props.relatesNames && (
         <div className="relation-banner">
-          You asked how these relate: <strong>{props.relatesNames[0]}</strong> ⟷ <strong>{props.relatesNames[1]}</strong>
+          <RelationAsked card={card} names={props.relatesNames} />
         </div>
       )}
       {card.register && <RegisterBanner note={card.register} />}
@@ -398,7 +402,7 @@ export function Card(props: {
           sem={card.sem}
           render={(t) => withRegister(t, card.sem!, sources)}
           onTitlePointerDown={props.onGrab}
-          labels={pageCard ? { here: "Where the page goes" } : card.flow ? { here: "How it unfolds" } : undefined}
+          labels={pageCard ? { here: "Where the page goes" } : card.flow ? { here: "How it unfolds" } : card.relates ? RELATION_LABELS[card.relKind ?? "relates"] : undefined}
           head={(key) => <GrowButton at={key} onGrow={props.onGrow} title="Grow more here" />}
           belowParts={(key, name) => (
             <Grown ext={card.ext ?? []} at={key} from={name} render={(t) => withRegister(t, card.sem!, sources)} onGrow={props.onGrow} onRemove={props.onUngrow} onShow={props.onFocus} />
@@ -1322,3 +1326,27 @@ function AddLink({ url, onAdd }: { url: string; onAdd?: (url: string) => Promise
     </button>
   );
 }
+
+/** A relation card's headings say what each section holds for the question asked. */
+const RELATION_LABELS: Record<RelationKind, Partial<Record<"why" | "what" | "parts" | "here", string>>> = {
+  relates: { why: "How they connect", what: "The relationship", parts: "Each one's role", here: "Where it matters" },
+  differs: { why: "Why they differ", what: "The difference", parts: "Point by point", here: "When it matters" },
+  disputes: { why: "How it arose", what: "The question", parts: "Each side", here: "Where it matters" },
+  leads: { why: "Step by step", what: "How one leads to the other", parts: "In order", here: "Where it matters" },
+  within: { why: "Why it belongs", what: "How it fits", parts: "Whole and part", here: "Where it matters" },
+};
+
+/** On a relation card: what was asked about which two, and (once found) which way it goes. */
+function RelationAsked({ card, names }: { card: CardItem; names: string[] }) {
+  const kind = card.relKind ?? "relates";
+  // A directed kind, once found, reads in the order it goes: the one that leads first, or the part first.
+  const [a, b] = card.relFrom === 1 && DIRECTED.includes(kind) ? [names[1], names[0]] : names;
+  const found = DIRECTED.includes(kind) && card.relFrom !== undefined;
+  return (
+    <>
+      You asked: {RELATION_ASK[kind]} <strong>{a}</strong>{" "}
+      <span className={`relation-mark rel-${kind}`}>{found && kind === "within" ? "is part of" : RELATION_MARK[kind]}</span> <strong>{b}</strong>
+    </>
+  );
+}
+

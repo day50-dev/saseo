@@ -1282,3 +1282,32 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
 .zotero-items li { padding: 14px 0; border-bottom: 1px solid var(--line); }
 .zotero-title { font-weight: 600; line-height: 1.4; }
 .zotero-actions { display: flex; gap: 14px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+
+/* ---- Relations: each kind of question draws its own line (semantics first, this is the theme) ---- */
+:root { --rel-disputes: #b5653a; }
+@media (prefers-color-scheme: dark) { :root { --rel-disputes: #d4895e; } }
+.connector.rel-differs { stroke: var(--sem-what); stroke-width: 5; stroke-dasharray: none; opacity: 0.85; }
+.connector.rel-differs-gap { stroke: var(--bg); stroke-width: 1.6; opacity: 1; }
+.connector.rel-disputes { stroke: var(--rel-disputes); stroke-dasharray: 10 4 2 4; opacity: 0.9; }
+.connector.rel-disputes.rel-mark { stroke-dasharray: none; stroke-width: 2.5; }
+.connector.rel-leads { stroke: var(--sem-why); stroke-dasharray: none; stroke-width: 2; opacity: 0.9; }
+.connector.rel-within { stroke: var(--sem-parts); stroke-dasharray: none; stroke-width: 2; opacity: 0.9; }
+.connector.relation.lit { opacity: 1; }
+.connector.rel-differs.lit { stroke-width: 6; }
+.rel-head { fill: var(--sem-line); stroke: none; }
+.rel-head.rel-leads { fill: var(--sem-why); }
+.rel-head.rel-within { fill: var(--sem-parts); }
+.rel-head.hollow { fill: var(--bg); stroke: var(--sem-parts); stroke-width: 2; }
+.relation-menu {
+  position: fixed; z-index: 1000002; display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+.relation-choice {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 6px 10px; border: none; border-radius: 6px;
+  background: none; color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer;
+}
+.relation-choice:hover, .relation-choice:focus-visible { background: var(--on); outline: none; }
+.relation-swatch { flex: 0 0 28px; width: 28px; height: 12px; overflow: visible; }
+.relation-swatch .connector { opacity: 1; }
+.relation-swatch .connector.rel-differs { stroke-width: 4; }
+.relation-cancel { align-self: flex-end; margin: 4px 6px 2px; }

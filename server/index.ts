@@ -7,7 +7,7 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
-import { CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type Role, type CardItem, type Goal, type ImageItem, type NoteItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
+import { RELATION_KINDS, RELATION_MARK, type RelationKind, CARD_WIDTH, EXTENSION_SHAPES, type NotebookCell, substantive, type Extension, MOMENT_WIDTH, VIDEO_WIDTH, type CanvasInfo, SOURCE_WIDTH, type CanvasSummary, type Role, type CardItem, type Goal, type ImageItem, type NoteItem, type Move, type Rect, type RegionItem } from "../shared/canvas.ts";
 import { type ConfigUpdate, SEARCHER_IDS, type SearcherId } from "../shared/providers.ts";
 import { remember } from "./pagecache.ts";
 import { pdfLink, servesPdf, slicePdf } from "./pdf.ts";
@@ -783,9 +783,10 @@ app.post("/api/canvases/:cid/collapse", async (c) => {
 app.post("/api/canvases/:cid/relate", async (c) => {
   const store = await canvasFor(c);
   if (!store) return c.json({ error: "unknown canvas" }, 404);
-  const body = (await c.req.json()) as { a: string; b: string; x: number; y: number };
+  const body = (await c.req.json()) as { a: string; b: string; x: number; y: number; kind?: string };
   if (!Number.isFinite(body.x) || !Number.isFinite(body.y)) return c.json({ error: "x and y are required" }, 400);
-  const card = await relate(store, body.a, body.b, { x: body.x, y: body.y });
+  const kind = (RELATION_KINDS as readonly string[]).includes(body.kind ?? "") ? (body.kind as RelationKind) : "relates";
+  const card = await relate(store, body.a, body.b, { x: body.x, y: body.y }, kind);
   return card ? c.json({ card }) : c.json({ error: "two different cards or images are required" }, 400);
 });
 
@@ -793,7 +794,7 @@ app.post("/api/canvases/:cid/relate", async (c) => {
  * Asks how two things are related: a relation card hung from both (the Y connector), explained.
  * Either may be a card or a whole image. Without a place, it goes below the two, between them.
  */
-async function relate(store: CanvasStore, aId: string, bId: string, at?: { x: number; y: number }): Promise<CardItem | null> {
+async function relate(store: CanvasStore, aId: string, bId: string, at?: { x: number; y: number }, kind: RelationKind = "relates"): Promise<CardItem | null> {
   const [a, b] = await Promise.all([store.findItem(aId), store.findItem(bId)]);
   const relatable = (i: typeof a): i is CardItem | ImageItem => i?.kind === "card" || i?.kind === "image";
   if (!relatable(a) || !relatable(b) || a.id === b.id) return null;
@@ -805,11 +806,12 @@ async function relate(store: CanvasStore, aId: string, bId: string, at?: { x: nu
     id: newId(),
     parentId: a.id,
     relates: [a.id, b.id],
+    ...(kind !== "relates" ? { relKind: kind } : {}),
     x: Math.round(place.x),
     y: Math.round(place.y),
     w: CARD_WIDTH,
     stage: "reading",
-    subject: `${label(a)} ⟷ ${label(b)}`,
+    subject: `${label(a)} ${RELATION_MARK[kind]} ${label(b)}`,
   };
   await store.add(card);
   void explainRelation(store, card.id);

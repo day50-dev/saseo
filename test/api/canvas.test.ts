@@ -187,6 +187,33 @@ describe("F-RELATE: ask how two things are related", () => {
     assert.ok(hidden.includes(r.body.card.id), "removing either side removes the relation");
     await s.api("POST", "/api/canvases/desk0001/show", { ids: hidden });
   });
+
+  test("what was asked of the two decides the question, and a directed one finds which way it goes", async () => {
+    llm.reset();
+    llm.on(/./, "{}");
+    llm.on(/dragged a connection/, { relation: "Determinants detect eigenvalues", first: "SECOND", searchQuery: "determinant eigenvalue" });
+    const r = await s.api("POST", "/api/canvases/desk0001/relate", { a: "a", b: "d", x: 500, y: 1400, kind: "leads" });
+    assert.equal(r.body.card.relKind, "leads");
+    assert.equal(r.body.card.subject, "Eigenvectors → Unrelated");
+    const id = r.body.card.id;
+    const card = await until(async () => {
+      const c = (await s.api("GET", "/api/canvases/desk0001")).body.items.find((i: { id: string }) => i.id === id);
+      return c?.relFrom === 1 && c;
+    }, 10000, "which way it goes");
+    assert.equal(card.subject, "Determinants detect eigenvalues");
+    assert.match(llm.askedFor(/dragged a connection/).at(-1)!.system, /whether one leads to the other/);
+    await until(() => llm.askedFor(/LEADS TO/).length > 0, 10000, "the explanation asked as leads-to");
+    await s.api("POST", "/api/canvases/desk0001/hide", { ids: [id] });
+  });
+
+  test("an unknown kind is the open question", async () => {
+    llm.reset();
+    llm.on(/./, "{}");
+    const r = await s.api("POST", "/api/canvases/desk0001/relate", { a: "a", b: "d", x: 500, y: 1800, kind: "nonsense" });
+    assert.equal(r.body.card.relKind, undefined);
+    assert.equal(r.body.card.subject, "Eigenvectors ⟷ Unrelated");
+    await s.api("POST", "/api/canvases/desk0001/hide", { ids: [r.body.card.id] });
+  });
 });
 
 describe("F-SETTINGS: your models, your sources", () => {

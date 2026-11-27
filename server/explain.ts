@@ -3,7 +3,7 @@
 import { addNote } from "./notes.ts";
 import { makeSet } from "./sets.ts";
 import { makeGallery } from "./gallery.ts";
-import { CARD_WIDTH, SOURCE_WIDTH, EXTENSION_SHAPES, RETRY_TRIES, retryDelay, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Paper, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
+import { DIRECTED, RELATION_ASK, type RelationKind, CARD_WIDTH, SOURCE_WIDTH, EXTENSION_SHAPES, RETRY_TRIES, retryDelay, type Extension, type ExtensionShape, type PageSection, paragraphs, type CardItem, type FoundSource, type ImageItem, type Item, type ObjectKind, type Paper, type Rect, type Register, type RegisterNote, type Sem, type Video } from "../shared/canvas.ts";
 import { SEARCHER_IDS } from "../shared/providers.ts";
 import { unescapeTwice } from "../shared/tex.ts";
 import { execFile } from "node:child_process";
@@ -1038,18 +1038,62 @@ export function continueAfterAnswer(store: CanvasStore, cardId: string) {
 
 // ---- Relations: the learner asks how two things are related ----
 
-const RELATE = `A reader dragged a connection between two things they are studying and asked how they are related.
-They are not claiming they ARE related; they want to find out.
-Return JSON only, no prose:
-{"relation": "a short name for how they relate, 3-8 words, or 'only loosely related' if that's the truth",
- "searchQuery": "2-6 plain words for BEGINNER material on the relationship between the two ideas, without terms specific to the page"}`;
+/**
+ * What the reader asked when they connected the two, for naming the relation and finding material.
+ * A directed kind also says which way it goes.
+ */
+const RELATE_ASK: Record<RelationKind, string> = {
+  relates: `asked how they are related. They are not claiming they ARE related; they want to find out.
+{"relation": "a short name for how they relate, 3-8 words, or 'only loosely related' if that's the truth",`,
+  differs: `asked how they are different. They are usually close: rival standards, schools, methods or versions of one idea (US GAAP and IFRS, two ways to value inventory).
+{"relation": "a short name for the main difference, 3-8 words, or 'no real difference' if that's the truth",`,
+  disputes: `asked where they disagree: two positions, schools of thought or claims that compete.
+{"relation": "a short name for the question they disagree on, 3-8 words, or 'they don't really disagree' if that's the truth",`,
+  leads: `asked whether one leads to the other: causes it, makes it possible, comes before it or is derived into it.
+{"relation": "a short name for how one leads to the other, 3-8 words, or 'neither leads to the other' if that's the truth",
+ "first": "FIRST if the first leads to the second, SECOND if the second leads to the first, NEITHER if neither does",`,
+  within: `asked whether one is part of the other: a piece of it, a kind or case of it, or contained in it.
+{"relation": "a short name for how one sits within the other, 3-8 words, or 'neither is part of the other' if that's the truth",
+ "first": "FIRST if the first is part of the second, SECOND if the second is part of the first, NEITHER if neither is",`,
+};
 
-const RELATION_GUIDANCE = `The reader asked how the two things below are related; they are not claiming they are. Explain the ACTUAL relationship:
+const relatePrompt = (kind: RelationKind) => `A reader dragged a connection between two things they are studying and ${RELATE_ASK[kind]}
+ "searchQuery": "2-6 plain words for BEGINNER material on this, without terms specific to the page"}
+Return only that JSON, no prose.`;
+
+/** How the explanation's shapes are filled for each kind of question. */
+const RELATION_GUIDANCE: Record<RelationKind, string> = {
+  relates: `The reader asked how the two things below are related; they are not claiming they are. Explain the ACTUAL relationship:
 - "why": the chain that links the first to the second, step by step.
 - "what": the relationship in one sentence (gist). If they are only loosely related or not related at all, say so plainly here.
 - "parts": exactly two entries, the first thing then the second; "symbol" is its name, "meaning" its role in the relationship.
 - "together": the connecting idea that joins them.
-- "here": where on this page the link matters, if it does.`;
+- "here": where on this page the link matters, if it does.`,
+  differs: `The reader asked how the two things below are DIFFERENT. They are probably close cousins, so the differences are what's hard to see. Be exact:
+- "what": the core difference in one sentence (gist). If they don't really differ, say so plainly.
+- "parts": the points of difference, 2 to 6, the most consequential first. "symbol" names the point (a few words: "Inventory", "When revenue counts"); "meaning" says what the first does, then what the second does, side by side; "note" why that matters, if it does.
+- "why": why they differ: where each comes from, the thinking or circumstances behind each.
+- "together": what they share, the common ground both stand on.
+- "here": when the difference matters in practice: who has to care, and what changes.`,
+  disputes: `The reader asked where the two things below DISAGREE. Be fair to both: neither side is a straw man, and say plainly where the evidence stands.
+- "what": the question they disagree on, in one sentence (gist). If they don't really disagree, say so plainly.
+- "parts": exactly two entries, the first position then the second; "symbol" names it, "meaning" its answer to the question and its strongest reason; "note" the best evidence or example on its side.
+- "why": how the disagreement arose, and why it hasn't been settled.
+- "together": the common ground: what both accept, and what would settle it.
+- "here": where the disagreement matters in practice.`,
+  leads: `The reader asked whether one of the two things below LEADS TO the other. Say which way it goes, and how: a cause, a precondition, a step before, a derivation. If neither leads to the other, say so plainly.
+- "what": how the one leads to the other, in one sentence (gist), naming which comes first.
+- "why": the chain from the one to the other, step by step, in order.
+- "parts": exactly two entries in the order it goes, the one that comes first first; "symbol" is its name, "meaning" its role.
+- "together": the mechanism that carries the one to the other.
+- "here": where on this page that matters, if it does.`,
+  within: `The reader asked whether one of the two things below is PART OF the other: a piece of it, a kind or case of it, contained in it. Say which, and what kind of part. If neither is, say so plainly.
+- "what": how the one sits within the other, in one sentence (gist).
+- "parts": exactly two entries, the whole first, then the part; "symbol" is its name, "meaning" what it is in this relation.
+- "why": why the part belongs to the whole: what it does there, or what makes it a case of it.
+- "together": what the whole is, taken with this part.
+- "here": where on this page that matters, if it does.`,
+};
 
 /** One side of a relation, with everything known about where it came from. */
 const READ_PAGE = `Read this whole page for a reader who will study it.
@@ -1109,23 +1153,30 @@ export function explainRelation(store: CanvasStore, cardId: string) {
     const config = await loadConfig();
     const both = `FIRST: ${a.text}\n\nSECOND: ${b.text}`;
 
+    const kind = card.relKind ?? "relates";
     let relation = `${a.name} and ${b.name}`;
-    let query = `${a.name} ${b.name} relationship`;
+    let query = `${a.name} ${b.name} ${kind === "differs" ? "difference" : kind === "disputes" ? "debate" : "relationship"}`;
+    let relFrom: 0 | 1 | undefined;
     try {
-      const r = await chatJson<{ relation?: string; searchQuery?: string }>(config.llm, [
-        { role: "system", content: RELATE },
+      const r = await chatJson<{ relation?: string; searchQuery?: string; first?: string }>(config.llm, [
+        { role: "system", content: relatePrompt(kind) },
         { role: "user", content: both },
       ]);
       relation = str(r.relation) || relation;
       query = str(r.searchQuery) || query;
+      const first = str(r.first).toUpperCase();
+      if (DIRECTED.includes(kind)) relFrom = first.startsWith("FIRST") ? 0 : first.startsWith("SECOND") ? 1 : undefined;
     } catch {
       // Fall back to searching the two names together.
     }
     const subject = relation;
-    await store.update(cardId, { stage: "searching", subject });
+    await store.update(cardId, { stage: "searching", subject, relFrom });
     const sources = await search(`${query} introduction`);
     await store.update(cardId, { stage: "writing", sources });
-    await write(store, card, subject, `How are "${a.name}" and "${b.name}" related?`, undefined, [], sources, `${RELATION_GUIDANCE}\n\n${both}`);
+    const pair = `"${a.name}" and "${b.name}"`;
+    const ask = RELATION_ASK[kind];
+    const asked = ask.includes("they") ? ask.replace("they", pair) : ask.replace("one", `one of ${pair}`);
+    await write(store, card, subject, asked, undefined, [], sources, `${RELATION_GUIDANCE[kind]}\n\n${both}`);
   });
 }
 
