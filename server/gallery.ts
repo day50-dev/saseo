@@ -56,7 +56,12 @@ export async function commonsCandidates(query: string, limit = 16): Promise<Cand
   }))
     api.searchParams.set(k, v);
   try {
-    const r = await fetch(api, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(12_000) });
+    // Commons sometimes turns a burst of searches away for a moment: once more, after a pause.
+    let r = await fetch(api, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(12_000) }).catch(() => null);
+    if (!r?.ok) {
+      await new Promise((done) => setTimeout(done, 1500 + Math.random() * 1500));
+      r = await fetch(api, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(12_000) });
+    }
     if (!r.ok) return [];
     const data = (await r.json()) as {
       query?: {
