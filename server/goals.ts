@@ -3,12 +3,9 @@
 // out to need), or a detour (curiosity off to the side). The first card on a canvas starts its first
 // goal. The learner can add, reword, finish and clear goals; the librarian only guesses.
 import type { CardItem, Goal, Item } from "../shared/canvas.ts";
-import { goalsFor } from "../shared/goals.ts";
 import { type CanvasStore, newId, onCardDone } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
 import { chatJson } from "./llm.ts";
-
-export { goalsFor };
 
 const PLACE = `You keep track of what a learner is after while they study on a canvas of cards.
 Goals form a tree. A "goal" is something they're trying to understand, decide or do, with an end to it.
@@ -24,6 +21,29 @@ A new card has just been made. Decide which goal it works toward.
 Word a new goal as what the learner is after, briefly and in plain words: "Understand why Yugoslavia broke up",
 "Know what a generalized coordinate is, to read the Lagrangian". Never more than 12 words.
 Return JSON only: {"goal": "<id of an existing goal>"} or {"new": {"text": "...", "parent": "<goal id or null>", "kind": "goal" | "subgoal" | "detour"}}`;
+
+/**
+ * The goals the learner wrote that a card serves, outermost first: the lens it's written through.
+ * Found by the goal its source card (or theirs, on up) was placed under, walking up to the top; where
+ * that finds none the learner wrote, every open goal of theirs at the top of the tree.
+ */
+export function goalsFor(goals: Goal[], items: Item[], card?: CardItem): Goal[] {
+  const live = goals.filter((g) => g.status !== "dropped");
+  const mine = live.filter((g) => g.by === "you" && g.status === "open");
+  if (!mine.length) return [];
+  const byId = new Map(items.map((i) => [i.id, i]));
+  // The goal of this card, or of the nearest card it came out of.
+  let start: Goal | undefined;
+  for (let id: string | undefined = card?.id, n = 0; id && !start && n < 50; n++) {
+    start = live.find((g) => g.cards.includes(id!));
+    const it = byId.get(id);
+    id = it?.kind === "card" ? it.parentId : undefined;
+  }
+  const chain: Goal[] = [];
+  for (let g = start, n = 0; g && n < 20; n++, g = live.find((x) => x.id === g!.parentId)) chain.unshift(g);
+  const theirs = chain.filter((g) => g.by === "you");
+  return theirs.length ? theirs : mine.filter((g) => !g.parentId);
+}
 
 /** The learner's goals, as a lens for a prompt that writes for them; "" if they've set none. */
 export function goalLens(goals: Goal[], items: Item[], card?: CardItem): string {

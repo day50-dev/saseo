@@ -2414,13 +2414,6 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               return refresh();
             }, (e) => setError(`Couldn't change that goal: ${e}`))
           }
-          onReExplain={(goal) =>
-            api.reExplain(goal.id).then(({ ids }) => {
-              const swap = () => Promise.all(ids.map((id) => api.swapExplanation(id)));
-              pushStep({ label: `re-explain ${ids.length === 1 ? "a card" : `${ids.length} cards`}`, undo: swap, redo: swap });
-              return refresh();
-            }, (e) => setError(`Couldn't re-explain them: ${e}`))
-          }
           onFocus={focusOn}
           onLight={(ids) => setGoalLit(new Set(ids))}
           onClose={() => {

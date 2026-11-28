@@ -4,7 +4,6 @@
 // goal walks through its cards on the canvas; hovering lights them up.
 import { useState } from "react";
 import type { CardItem, Goal } from "../shared/canvas.ts";
-import { cardsToReExplain } from "../shared/goals.ts";
 
 const MARK: Record<Goal["kind"], string> = { goal: "◎", subgoal: "↳", detour: "⤳" };
 const KIND: Record<Goal["kind"], string> = { goal: "Goal", subgoal: "Needed for the goal above", detour: "A side trip" };
@@ -15,7 +14,6 @@ export function GoalsPanel({
   current,
   onAdd,
   onChange,
-  onReExplain,
   onFocus,
   onLight,
   onClose,
@@ -26,8 +24,6 @@ export function GoalsPanel({
   current?: string;
   onAdd: (text: string, parentId?: string) => void;
   onChange: (goal: Goal, change: Partial<Goal>) => void;
-  /** Write the cards it's now the lens for again, through it. */
-  onReExplain: (goal: Goal) => void;
   onFocus: (cardId: string) => void;
   /** Light these cards up on the canvas (none: stop). */
   onLight: (ids: string[]) => void;
@@ -146,24 +142,6 @@ export function GoalsPanel({
             ))}
           </div>
         ) : null}
-        {g.by === "you" && g.status === "open" && (() => {
-          // Cards written before this goal (or before it was worded this way) read as they did.
-          const stale = cardsToReExplain(g, goals, [...cards.values()]);
-          return stale.length ? (
-            <div className="goal-lens" style={{ paddingLeft: 30 + depth * 16 }}>
-              <button
-                type="button"
-                className="link small"
-                title="Write them again with this goal in mind, from the sources they found. What you grew from them is set aside with the old words; undo brings both back."
-                onMouseEnter={() => onLight(stale.map((c) => c.id))}
-                onMouseLeave={() => onLight([])}
-                onClick={() => onReExplain(g)}
-              >
-                ↻ Re-explain {stale.length === 1 ? "1 card" : `${stale.length} cards`} for this goal
-              </button>
-            </div>
-          ) : null;
-        })()}
         {adding === g.id && <div style={{ paddingLeft: 24 + depth * 16 }}>{addBox(g.id)}</div>}
         <ul>{kids(g.id).map((k) => row(k, depth + 1))}</ul>
       </li>
