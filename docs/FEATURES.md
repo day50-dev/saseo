@@ -133,7 +133,7 @@ Each feature has an ID. The tests carry the same ID in their `describe` names, s
 
 | ID | Feature | Checked by |
 |---|---|---|
-| F-RETRY | A card that fails tries again by itself, waiting longer each time (2, 4, 8, 16, then 32 seconds), up to 5 tries. The card counts down to the next try ("Trying again in 6 s, try 2 of 5"). After the last, it says so and waits for **↻ Retry**, which tries at once and gives back all 5 tries. A card a server restart interrupted starts over by itself within a second, and a card waiting for your answer to its question just keeps waiting. Tries that were due when the server stopped are picked up again when it starts. A box on a slide is retried by the page, which draws its crop. | `api/retry` |
+| F-RETRY | A card that fails tries again by itself, waiting longer each time (2, 4, 8, 16, then 32 seconds), up to 5 tries. The card counts down to the next try ("Trying again in 6 s, try 2 of 5"). After the last, it says so and waits for **↻ Retry**, which tries at once and gives back all 5 tries. A card a server restart interrupted starts over by itself within a second, and a card waiting for your answer to its question just keeps waiting. Tries that were due when the server stopped are picked up again when it starts. A box on a slide is retried by the page, which draws its crop. A failure trying again can't fix (a linked page too large to read, a PDF, a link that can't be opened here) says so once and doesn't retry by itself. | `api/retry` |
 
 ## F-NOTES: notes, from you or the librarian
 

@@ -15,6 +15,9 @@ const MAX_BYTES = 3_000_000;
 const MAX_TEXT = 400_000;
 const MAX_REDIRECTS = 4;
 
+/** A failure trying again won't fix (nothing exists to find, or the link can't ever be read here): the card says so and doesn't retry by itself. */
+export class Permanent extends Error {}
+
 function privateV4(ip: string): boolean {
   const [a, b] = ip.split(".").map(Number);
   return (
@@ -38,15 +41,15 @@ function privateAddress(ip: string): boolean {
 
 /** Refuses anything but a public http(s) address on the usual ports. */
 async function checkUrl(url: URL): Promise<void> {
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Only http and https links can be opened.");
-  if (url.username || url.password) throw new Error("Links with a username or password can't be opened.");
-  if (url.port && url.port !== "80" && url.port !== "443") throw new Error("Only links on the usual web ports can be opened.");
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Permanent("Only http and https links can be opened.");
+  if (url.username || url.password) throw new Permanent("Links with a username or password can't be opened.");
+  if (url.port && url.port !== "80" && url.port !== "443") throw new Permanent("Only links on the usual web ports can be opened.");
   const host = url.hostname.replace(/^\[|\]$/g, "");
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) {
-    throw new Error("That link points inside a private network.");
+    throw new Permanent("That link points inside a private network.");
   }
   const addresses = net.isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
-  if (!addresses.length || addresses.some((a) => privateAddress(a.address))) throw new Error("That link points inside a private network.");
+  if (!addresses.length || addresses.some((a) => privateAddress(a.address))) throw new Permanent("That link points inside a private network.");
 }
 
 /** Fetches a public URL, following up to a few redirects, each checked, and reads at most MAX_BYTES. */
@@ -73,13 +76,13 @@ async function fetchPublic(start: string): Promise<{ url: URL; type: string; bod
       size += value.length;
       if (size > MAX_BYTES) {
         await reader.cancel();
-        throw new Error("That page is too large to read.");
+        throw new Permanent("That page is too large to read.");
       }
       chunks.push(value);
     }
     return { url, type: res.headers.get("content-type") ?? "", body: Buffer.concat(chunks).toString("utf8") };
   }
-  throw new Error("That link redirects too many times.");
+  throw new Permanent("That link redirects too many times.");
 }
 
 // ---- A page's own LaTeX shorthands ----
@@ -428,7 +431,7 @@ export async function readPage(link: string): Promise<ReadPage> {
   // Said where the source is shown, so nobody takes an old copy for today's page.
   const archivedNote = page.archived ? ` (archived copy, ${page.archived.toISOString().slice(0, 10)})` : "";
   if (/pdf/i.test(page.type)) {
-    throw new Error(/arxiv\.org/.test(page.url.hostname) ? "That's an arXiv PDF: use the arXiv button to add its pages." : "PDF links can't be read yet.");
+    throw new Permanent(/arxiv\.org/.test(page.url.hostname) ? "That's an arXiv PDF: use the arXiv button to add its pages." : "PDF links can't be read yet.");
   }
   if (/text\/plain/i.test(page.type)) {
     return { url: page.url.toString(), title: page.url.pathname.split("/").pop() || page.url.hostname, site: page.url.hostname + archivedNote, text: tidy(page.body) };

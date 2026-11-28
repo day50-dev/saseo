@@ -24,6 +24,8 @@ before(async () => {
         // Left mid-flight when the server stopped.
         // Interrupted too, but it has used all its tries.
         { ...objectCard("spent", { type: "plot", title: "", plot: { x: {}, y: {}, series: [] } }, 900, 900), object: undefined, objectKind: "plot", request: "x", stage: "writing", retries: 5 } as CardItem,
+        // A linked page that can never be read here (it points inside a private network).
+        { kind: "card", id: "never", parentId: "", origin: { kind: "page", url: "http://localhost/notes", title: "notes" }, x: 0, y: 900, w: 600, stage: "reading", subject: "notes" } as CardItem,
         { ...objectCard("stuck", { type: "plot", title: "", plot: { x: {}, y: {}, series: [] } }, 900, 0), object: undefined, objectKind: "plot", request: "sin x", stage: "writing" } as CardItem,
       ],
     },
@@ -75,6 +77,19 @@ describe("F-RETRY: failed cards try again by themselves", () => {
     assert.equal(c.retryAt, "");
     await new Promise((r) => setTimeout(r, 1500));
     assert.equal((await card("spent")).stage, "failed", "it didn't start over");
+  });
+
+  test("a failure trying again can't fix (a link that can't be read here) says so once, and doesn't retry", async () => {
+    const c = await until(async () => {
+      const x = await card("never");
+      return x.stage === "failed" ? x : null;
+    }, 15_000, "the page to fail");
+    assert.match(c.error ?? "", /private network/);
+    assert.equal(c.retryAt ?? "", "", "no next try is set");
+    await new Promise((r) => setTimeout(r, 2500));
+    const later = await card("never");
+    assert.equal(later.stage, "failed", "it didn't start over");
+    assert.equal(later.retries, c.retries, "it didn't try again");
   });
 
   test("Retry by hand gives back every try", async () => {

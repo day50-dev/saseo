@@ -19,7 +19,7 @@ import { goalLens, goalsFor } from "./goals.ts";
 import { bestRead, editVersion, hashText, pageVersion, readOf, remember } from "./pagecache.ts";
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, metered, systemOneConfigured } from "./llm.ts";
 import { arxivPaper, parseArxivId, searchArxiv } from "./arxiv.ts";
-import { matchWikiLink, readPage as readWebPage, wikiLead, wikiLinks } from "./pages.ts";
+import { matchWikiLink, Permanent, readPage as readWebPage, wikiLead, wikiLinks } from "./pages.ts";
 import { runSearch } from "./providers.ts";
 import { partialSvg, sanitizeSvg, svgLabels } from "./svg.ts";
 import { makeGraph, makePlot, makeTable } from "./figures.ts";
@@ -1640,8 +1640,7 @@ export async function onTopic(papers: Paper[], topic: string): Promise<Paper[]> 
   }
 }
 
-/** A failure trying again won't fix (nothing exists to find): the card says so and doesn't retry by itself. */
-export class Permanent extends Error {}
+export { Permanent };
 
 const PAPER_QUERY = `Write an arXiv search for research papers on what the reader asked for, given the card it was asked about.
 Use 2-5 precise technical keywords that would appear in paper titles or abstracts (names of equations, objects, methods).
