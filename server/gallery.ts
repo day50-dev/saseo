@@ -203,7 +203,9 @@ async function keep(c: Candidate): Promise<{ asset: string; w: number; h: number
   }
 }
 
-const LOOK_BATCH = 4;
+// One picture per look: shown several at once, the model can give one's caption to another (two
+// kneeling angels in pink), so each is looked at on its own, all at the same time.
+const LOOK_BATCH = 1;
 
 const LOOK = `A reader on a study canvas asked to see pictures, and these images were found for them, each with what its
 source says about it. Look at each image, in order. For each: "keep" (false if it doesn't show what they asked for: a

@@ -52,10 +52,12 @@ describe("F-GALLERY: pictures to look through", () => {
         ],
       };
     });
-    // Looking at them: the logo doesn't show what was asked.
+    // Looking at them, each on its own (so one's caption can't land on another): the logo doesn't show what was asked.
     llm.on(/Look at each image/, (a) => {
-      assert.equal((a.messages.at(-1)!.content as { type: string }[]).filter((x) => x.type === "image_url").length, 3, "the pictures themselves, to look at");
-      return { images: [{ keep: true, caption: "Mickey at the wheel of the steamboat, pie-cut eyes." }, { keep: true, caption: "A 1940 model sheet." }, { keep: false }] };
+      assert.equal((a.messages.at(-1)!.content as { type: string }[]).filter((x) => x.type === "image_url").length, 1, "one picture per look");
+      if (/Steamboat/.test(a.user)) return { images: [{ keep: true, caption: "Mickey at the wheel of the steamboat, pie-cut eyes." }] };
+      if (/1940/.test(a.user)) return { images: [{ keep: true, caption: "A 1940 model sheet." }] };
+      return { images: [{ keep: false }] };
     });
     await s.api("POST", `${C}/cards/mm/chat`, { text: "show me pictures of his model sheets over the years" });
     const id = (await until(async () => (await card("mm")).chat?.at(-1)?.objectId, 10_000, "the gallery card")) as string;
