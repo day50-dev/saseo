@@ -641,7 +641,7 @@ function ChatBox({
         className="chat-input"
         rows={1}
         value={draft}
-        placeholder={messages.length ? "Ask a follow-up, or ask for pictures, videos, reading, a set to look through, a diagram, data, a plot, a map…" : "Ask about this, or ask for pictures, videos, reading, a set to look through, a diagram, data, a plot, a map…"}
+        placeholder={messages.length ? "Ask a follow-up…" : "Ask about this…"}
         disabled={card.chatPending}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
