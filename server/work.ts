@@ -78,11 +78,11 @@ export function checkWork(store: CanvasStore, cardId: string, images: { marked: 
       .map((s) => ({ latex: unescapeTwice(str(s.latex)).slice(0, 600), sympy: str(s.sympy).slice(0, 600) }))
       .filter((s) => s.latex || s.sympy)
       .slice(0, 40);
-    if (!lines.length) throw new Error("Couldn't find any working in the box. Try a box round the lines of working, in a sharper photo.");
+    if (!lines.length) throw new Error("Couldn't find any math in the box. Try a box around the lines of work, in a sharper photo.");
     const problem = str(read.problem).slice(0, 400);
     await store.update(cardId, {
       stage: "checking",
-      subject: problem || "Your working",
+      subject: problem || "Your work",
       work: { problem, steps: lines.map((l) => ({ ...l, status: "unchecked" as const })), verdict: "" },
     });
 

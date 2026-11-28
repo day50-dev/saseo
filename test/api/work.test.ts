@@ -63,12 +63,12 @@ describe("F-CHECK: checking the working in a box", () => {
     assert.equal(w.wrongAt, undefined);
     assert.equal(w.why, undefined);
     assert.equal(w.hint, undefined);
-    assert.equal((await card(id)).subject, "Your working");
+    assert.equal((await card(id)).subject, "Your work");
   });
   test("nothing to read in the box: the card says so", async () => {
     llm.on(/own written working/, { problem: "", steps: [] });
     const id = ((await s.api("POST", `${C}/regions`, { imageId: "hw", rect: { x: 0, y: 0, w: 50, h: 50 }, card: { x: 1000, y: 1800 }, marked: PNG, crop: PNG, check: true })).body as { card: CardItem }).card.id;
     await until(async () => (await card(id)).stage === "failed", 20000, "failed");
-    assert.match((await card(id)).error ?? "", /Couldn't find any working/);
+    assert.match((await card(id)).error ?? "", /Couldn.t find any math/);
   });
 });

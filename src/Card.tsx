@@ -49,7 +49,7 @@ const STAGE_TEXT: Record<CardStage, string> = {
 
 /** A card checking someone's working says what it's doing in those terms. */
 const CHECK_TEXT: Partial<Record<CardStage, string>> = {
-  reading: "Reading your working…",
+  reading: "Reading your work…",
   checking: "Checking each step…",
   writing: "Working out what went wrong…",
 };

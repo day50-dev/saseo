@@ -737,7 +737,7 @@ function whitePng(w: number, h: number): Buffer {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-describe("F-CHECK: a photo of your working, checked", () => {
+describe("F-CHECK: a photo of your work, checked", () => {
   test("a photo goes on the canvas; a box on it asks: explain it, or check the working", async () => {
     llm.on(/own written working/, { problem: "Solve for x", steps: [{ latex: "2x = 8", sympy: "2*x = 8" }, { latex: "x = 5", sympy: "x = 5" }] });
     llm.on(/patient tutor/, { verdict: "Line 2 doesn't follow.", why: "\\(8/2\\) is 4.", hint: "Divide both sides by 2 again." });
@@ -759,7 +759,7 @@ describe("F-CHECK: a photo of your working, checked", () => {
     assert.equal(await p.locator(".box-ask").count(), 0);
     assert.equal((await state("phot0001")).filter((i) => i.kind === "region").length, 0);
     await drag();
-    await p.locator(".box-ask").getByText("Check my working").click();
+    await p.locator(".box-ask").getByText("Check my work").click();
     const card = p.locator(".card-item").first();
     await card.locator(".work-step.first-wrong").waitFor({ timeout: 20000 });
     assert.match(await card.locator(".work-why").innerText(), /What went wrong on line 2/);

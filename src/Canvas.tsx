@@ -1229,11 +1229,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     if (!el) return;
     const cardX = img.x + img.w + GAP;
     const cardY = slotY(cardX, Math.round(y0));
-    const done = expect({ x: cardX, y: cardY, label: text ?? "", ...(check ? { text: "Reading your working…" } : {}), box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } });
+    const done = expect({ x: cardX, y: cardY, label: text ?? "", ...(check ? { text: "Reading your work…" } : {}), box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } });
     try {
       const { marked, crop } = renderRegion(el, rect);
       const res = await api.addRegion({ imageId: img.id, rect, card: { x: cardX, y: cardY }, marked, crop, ...(text ? { text } : {}), ...(check ? { check: true } : {}) });
-      added(check ? "check working" : "box", [res.region.id]);
+      added(check ? "check work" : "box", [res.region.id]);
       await refresh();
       // On a narrow screen the card lands off it, beside the photo: go to it, wide enough to read.
       const r = stageRef.current!.getBoundingClientRect();
@@ -2320,8 +2320,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                   <button type="button" autoFocus onClick={() => go(false)} title="Explain what's in the box">
                     Explain this
                   </button>
-                  <button type="button" className="secondary" onClick={() => go(true)} title="Read the working in the box and check each step, to find where it went wrong">
-                    ✓ Check my working
+                  <button type="button" className="secondary" onClick={() => go(true)} title="Read the work in the box and check each step, to find where it went wrong">
+                    ✓ Check my work
                   </button>
                   <button type="button" className="link" aria-label="Cancel" onClick={() => setBoxAsk(null)}>
                     ✕
@@ -2908,7 +2908,7 @@ function Bookmarks({ cards, onShow }: { cards: CardItem[]; onShow: (id: string) 
 /** Takes a photo with the camera (on a phone), or picks a picture (elsewhere). */
 function PhotoButton({ onPhoto, label = "Photo" }: { onPhoto: (f: File) => void; label?: string }) {
   return (
-    <label className="secondary photo-btn" title="Take a photo of your working (or pick one), then box the part to explain or check">
+    <label className="secondary photo-btn" title="Take a photo of your work (or pick one), then box the part to explain or check">
       <svg viewBox="0 0 16 16" aria-hidden>
         <path d="M2 5h2.5l1.2-1.8h4.6L11.5 5H14v8H2z" />
         <circle cx="8" cy="9" r="2.4" />
