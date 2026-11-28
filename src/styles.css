@@ -734,7 +734,7 @@ body.resizing, body.resizing * { cursor: ew-resize !important; user-select: none
   width: calc(18px / var(--zoom, 1)); height: calc(18px / var(--zoom, 1));
   background: linear-gradient(135deg, transparent 50%, var(--line) 50%, var(--line) 58%, transparent 58%, transparent 70%, var(--line) 70%, var(--line) 78%, transparent 78%);
 }
-.video-item:hover .video-resize-grip { background: linear-gradient(135deg, transparent 50%, var(--accent) 50%, var(--accent) 58%, transparent 58%, transparent 70%, var(--accent) 70%, var(--accent) 78%, transparent 78%); }
+.video-item:hover .video-resize-grip, .doc-item:hover .video-resize-grip { background: linear-gradient(135deg, transparent 50%, var(--accent) 50%, var(--accent) 58%, transparent 58%, transparent 70%, var(--accent) 70%, var(--accent) 78%, transparent 78%); }
 /* While resizing, the player mustn't swallow the drag. */
 body.resizing iframe, body.resizing video { pointer-events: none; }
 .video-stop { font-size: 15px; font-weight: 600; padding: 7px 14px; white-space: nowrap; }

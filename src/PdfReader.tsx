@@ -53,6 +53,7 @@ export function PdfReader({
   taken,
   onPage,
   onTake,
+  onResize,
 }: {
   item: ImageItem;
   /** The page showing, 1-based. */
@@ -66,6 +67,8 @@ export function PdfReader({
   onPage: (n: number) => void;
   /** Take this page out onto the canvas. */
   onTake: (n: number) => Promise<void>;
+  /** Drag its right edge or corner to make it bigger or smaller. */
+  onResize: (e: React.PointerEvent) => void;
 }) {
   const d = item.doc!;
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -264,6 +267,8 @@ export function PdfReader({
           )}
         </button>
       </div>
+      <div className="video-resize" title="Drag to make this PDF bigger or smaller" onPointerDown={onResize} />
+      <div className="video-resize-grip" title="Drag to make this PDF bigger or smaller" onPointerDown={onResize} />
     </div>
   );
 }

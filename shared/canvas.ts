@@ -71,6 +71,16 @@ export const VIDEO_WIDTH = 720;
 /** How narrow and how wide a video on the canvas can be dragged. */
 export const VIDEO_MIN_WIDTH = 320;
 export const VIDEO_MAX_WIDTH = 1920;
+/** How narrow and how wide a PDF on the canvas can be dragged: narrow enough to sit beside its notes, wide enough for its pager. */
+export const DOC_MIN_WIDTH = 480;
+export const DOC_MAX_WIDTH = 1920;
+/** The width bounds of an image that can be resized (a video or a PDF), or null for one that can't. */
+export function resizeBounds(item: { kind: string; video?: unknown; doc?: unknown }): { min: number; max: number } | null {
+  if (item.kind !== "image") return null;
+  if (item.video) return { min: VIDEO_MIN_WIDTH, max: VIDEO_MAX_WIDTH };
+  if (item.doc) return { min: DOC_MIN_WIDTH, max: DOC_MAX_WIDTH };
+  return null;
+}
 export const MOMENT_WIDTH = 640;
 
 export interface VideoMeta {

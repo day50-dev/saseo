@@ -2,7 +2,7 @@ import { GoalsPanel } from "./GoalsPanel.tsx";
 import { Logo } from "./Logo.tsx";
 import { ChangesPanel, colourFor, names, ShareDialog } from "./Sharing.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type Change, type Member, type Role, type ShareLink, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, RELATION_ASK, RELATION_KINDS, type RelationKind, DIRECTED, type Rect, type RegionItem, VIDEO_MAX_WIDTH, VIDEO_MIN_WIDTH, VIDEO_WIDTH } from "../shared/canvas.ts";
+import { CARD_MAX_WIDTH, CARD_MIN_WIDTH, CARD_WIDTH, type CanvasSummary, type Change, type Member, type Role, type ShareLink, type CardItem, type CardStage, type Extension, type Goal, type ImageItem, type Item, MIN_CHILD_GAP, NOTE_WIDTH, type NoteItem, type Paper, RELATION_ASK, RELATION_KINDS, type RelationKind, DIRECTED, type Rect, type RegionItem, resizeBounds, VIDEO_WIDTH } from "../shared/canvas.ts";
 import { Note } from "./Note.tsx";
 import { Card, type Side } from "./Card.tsx";
 import { STOP_BAR, VideoPlayer } from "./VideoPlayer.tsx";
@@ -984,11 +984,12 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     window.addEventListener("pointerup", up);
   };
 
-  /** Drags a video's corner or right edge: bigger or smaller, keeping its shape. One undoable step. */
+  /** Drags a video's or a PDF's corner or right edge: bigger or smaller, keeping its shape. One undoable step. */
   const startVideoResize = (id: string, e: React.PointerEvent) => {
     if (e.button !== 0) return;
     const img = byId.get(id);
-    if (img?.kind !== "image" || !img.video) return;
+    const b = img && resizeBounds(img);
+    if (img?.kind !== "image" || !b) return;
     e.stopPropagation();
     e.preventDefault();
     pan.current = null;
@@ -998,7 +999,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     const h0 = img.h;
     let w = w0;
     const move = (ev: PointerEvent) => {
-      w = Math.round(Math.min(VIDEO_MAX_WIDTH, Math.max(VIDEO_MIN_WIDTH, w0 + (ev.clientX - x0) / view.scale)));
+      w = Math.round(Math.min(b.max, Math.max(b.min, w0 + (ev.clientX - x0) / view.scale)));
       setItems((all) => all.map((i) => (i.id === id && i.kind === "image" ? { ...i, w, h: Math.round((w * h0) / w0) } : i)));
     };
     const up = async () => {
@@ -2089,6 +2090,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                 taken={new Set(images.filter((m) => m.pdf?.doc === img.id).map((m) => m.pdf!.page))}
                 onPage={(n) => turnTo(img.id, n)}
                 onTake={(n) => takePage(img, n)}
+                onResize={(e) => startVideoResize(img.id, e)}
               />
             ))}
           {images.filter((img) => !img.video && !img.doc).map((img) => (
