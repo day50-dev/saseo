@@ -34,7 +34,13 @@ before(async () => {
   const doc: ImageItem = { kind: "image", id: "doc1", x: 0, y: 0, w: 600, h: 776, naturalW: 612, naturalH: 792, asset: "fedcba9876543210.png", name: "A Paper on Folding", doc: { file: FILE, pages: 2, url: "https://example.org/folding.pdf", title: "A Paper on Folding" } };
   // Its reading, left mid-flight: the server starts it over when it starts.
   const reading: CardItem = { kind: "card", id: "read1", parentId: "", origin: { kind: "page", url: doc.doc!.url, title: doc.doc!.title, site: "PDF, 2 pages", doc: "doc1" }, x: 664, y: 0, w: 960, stage: "reading", subject: doc.doc!.title };
-  seed(env.LIBRARIAN_DATA, [{ id: "pdfr0001", name: "Folding", items: [doc, reading] }]);
+  // A PDF from before readings: none beside it, and a card where one would go.
+  const older: ImageItem = { ...doc, id: "doc2" };
+  const inTheWay: CardItem = { kind: "card", id: "way", parentId: "", x: 664, y: 0, w: 720, h: 400, stage: "done", subject: "In the way", origin: { kind: "note", title: "In the way" }, pageText: "In the way" };
+  seed(env.LIBRARIAN_DATA, [
+    { id: "pdfr0001", name: "Folding", items: [doc, reading] },
+    { id: "pdfr0002", name: "Older", items: [older, inTheWay] },
+  ]);
   // Drawing its shapes isn't what's tested here: anything else gets an empty answer.
   llm.on(/./, "{}");
   s = await startServer(env);
@@ -65,6 +71,15 @@ describe("F-PDF-READ: a PDF's reading", () => {
     assert.equal(c.paraPages!.length, paras.length);
     assert.equal(c.paraPages![paras.findIndex((p) => p.includes("Huzita"))], 2);
     assert.equal(c.origin?.kind === "page" && c.origin.doc, "doc1", "it still reads that PDF");
+  });
+
+  test("a PDF from before readings gets one when the server starts, on free space; one that has one doesn't get another", async () => {
+    const items = async (id: string) => ((await s.api("GET", `/api/canvases/${id}`)).body as CanvasState).items;
+    const r = await until(async () => (await items("pdfr0002")).find((i): i is CardItem => i.kind === "card" && i.origin?.kind === "page" && i.origin.doc === "doc2"), 15_000, "the older PDF's reading");
+    assert.ok(r.x >= 664 + 720 + 64, `placed past the card in the way: x ${r.x}`);
+    await until(async () => ((await items("pdfr0002")).find((i) => i.id === r.id) as CardItem).stage === "done", 15_000, "it read");
+    const readings = (await items("pdfr0001")).filter((i) => i.kind === "card" && i.origin?.kind === "page" && i.origin.doc === "doc1");
+    assert.equal(readings.length, 1);
   });
 
   test("its passages are embedded in the background", async () => {

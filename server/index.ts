@@ -1270,4 +1270,49 @@ void (async () => {
   }
   for (const [store, id] of pages) await refillSections(store, id).catch(() => {});
   if (pages.length) console.log(`page store: ${pages.length} linked pages remembered`);
+  // PDFs added before they came with a reading get one now, one at a time.
+  let read = 0;
+  for (const info of await listCanvases()) {
+    const store = await canvasStore(info.id).catch(() => undefined);
+    if (store) read += await readingsForPdfs(store).catch(() => 0);
+  }
+  if (read) console.log(`PDF readings: ${read} added beside PDFs that had none`);
 })();
+
+/**
+ * Gives every PDF on a canvas that has no reading one, beside it on free space (the canvas is a
+ * record: nothing already there moves). Returns how many it added.
+ */
+export async function readingsForPdfs(store: CanvasStore): Promise<number> {
+  const { items } = await store.getState();
+  const shown = items.filter((i) => !i.hidden && i.kind !== "region") as (CardItem | ImageItem | NoteItem)[];
+  const reads = new Set(items.flatMap((i) => (i.kind === "card" && i.origin?.kind === "page" && i.origin.doc ? [i.origin.doc] : [])));
+  const placed: Rect[] = shown.map((i) => ({ x: i.x, y: i.y, w: i.w, h: i.h ?? 900 }));
+  let added = 0;
+  for (const img of shown) {
+    if (img.kind !== "image" || !img.doc || reads.has(img.id)) continue;
+    // To its right, past anything in the way.
+    const at = { x: img.x + img.w + 64, y: img.y, w: SOURCE_WIDTH, h: 1600 };
+    for (let tries = 0; tries < 200; tries++) {
+      const hit = placed.find((r) => at.x < r.x + r.w + 32 && r.x < at.x + at.w + 32 && at.y < r.y + r.h + 32 && r.y < at.y + at.h + 32);
+      if (!hit) break;
+      at.x = hit.x + hit.w + 64;
+    }
+    placed.push(at);
+    const reading: CardItem = {
+      kind: "card",
+      id: newId(),
+      parentId: "",
+      origin: { kind: "page", url: img.doc.url, title: img.doc.title, site: `PDF, ${img.doc.pages} pages`, doc: img.id },
+      x: at.x,
+      y: at.y,
+      w: SOURCE_WIDTH,
+      stage: "reading",
+      subject: img.doc.title,
+    };
+    await store.add(reading);
+    await readSource(store, reading.id);
+    added++;
+  }
+  return added;
+}
