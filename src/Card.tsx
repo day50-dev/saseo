@@ -76,7 +76,15 @@ function withCitations(text: string, sources: FoundSource[]): ReactNode[] {
 }
 
 function citations(text: string, sources: FoundSource[]): ReactNode[] {
-  return text.split(/(\[\d+\])/g).map((part, i) => {
+  // A reply's **bold** reads as bold, not as asterisks.
+  return text.split(/(\*\*[^*\n]+\*\*)/g).flatMap((seg, j): ReactNode[] =>
+    /^\*\*[^*\n]+\*\*$/.test(seg) ? [<strong key={`b${j}`}>{seg.slice(2, -2)}</strong>] : citeNumbers(seg, sources, j),
+  );
+}
+
+function citeNumbers(text: string, sources: FoundSource[], j: number): ReactNode[] {
+  return text.split(/(\[\d+\])/g).map((part, k) => {
+    const i = `${j}-${k}`;
     const m = part.match(/^\[(\d+)\]$/);
     const src = m && sources.find((s) => s.n === Number(m[1]));
     if (!src) return part;

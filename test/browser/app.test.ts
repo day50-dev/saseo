@@ -366,12 +366,13 @@ describe("F-ASK: a card's conversation", () => {
   test("Enter sends; the answer appears on the card", async () => {
     llm.reset();
     llm.on(/conversation box on a card/, { kind: "answer", request: "x" });
-    llm.on(/talking with a curious/, "An eigenvalue is how much the arrow stretches.");
+    llm.on(/talking with a curious/, "An eigenvalue is how much the arrow **stretches**.");
     const p = await open("/c/chat0001");
     const box = p.locator(`${cardSel("c1")} textarea.chat-input`);
     await box.fill("What's an eigenvalue?");
     await box.press("Enter");
     await p.getByText("An eigenvalue is how much the arrow stretches.").waitFor();
+    assert.equal(await p.textContent(`${cardSel("c1")} .chat-text strong`), "stretches", "its **bold** is bold, not asterisks");
     assert.ok((await p.textContent(cardSel("c1")))!.includes("What's an eigenvalue?"));
     await p.context().close();
   });
