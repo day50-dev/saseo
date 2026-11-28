@@ -558,7 +558,18 @@ export interface CardItem extends ItemState {
    * A source card: a starting point that isn't an image. A page someone linked to (its readable
    * text is in pageText) or a statement or question they typed.
    */
-  origin?: { kind: "page"; url: string; site?: string; title: string } | { kind: "note"; title: string };
+  origin?:
+    | {
+        kind: "page";
+        url: string;
+        site?: string;
+        title: string;
+        /** For a PDF's reading: the PDF on the canvas it reads (its image's id). Its text comes from the file, not the link. */
+        doc?: string;
+      }
+    | { kind: "note"; title: string };
+  /** For a PDF's reading: each paragraph's page in the PDF (from 1; 0 when not known), as `paragraphs(pageText)` numbers them. */
+  paraPages?: number[];
   /** A conversation about this card, held at the card (principle 4), oldest first. */
   chat?: ChatMessage[];
   /** The librarian is answering the last message. */

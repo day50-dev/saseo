@@ -581,8 +581,9 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     const done = pdf ? expect({ x, y, label: "", text: "Fetching the PDF…" }) : () => {};
     try {
       const res = await api.addSource(input, x, y);
-      const id = (res.card ?? res.image)!.id;
-      added(res.image?.doc ? "add a PDF" : "start from", [id]);
+      // A PDF comes with its reading beside it: one step adds (and undoes) both.
+      const id = (res.image?.doc ? res.image : (res.card ?? res.image))!.id;
+      added(res.image?.doc ? "add a PDF" : "start from", [res.image?.id, res.card?.id].filter((x): x is string => Boolean(x)));
       await refresh();
       setView((v) => ({ ...v, x: r.width * 0.06 - x * v.scale, y: 60 - y * v.scale }));
       setSelected(id);

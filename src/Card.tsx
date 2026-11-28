@@ -371,7 +371,7 @@ export function Card(props: {
       )}
       {busy && card.stage !== "asking" && (
         <p className="muted card-stage">
-          <span className="spinner" /> {card.origin?.kind === "page" ? "Reading the page…" : stageText(card)}
+          <span className="spinner" /> {card.origin?.kind === "page" ? (card.origin.doc ? "Reading the PDF…" : "Reading the page…") : stageText(card)}
           {card.progress && (
             <span className="card-progress">
               {card.progress.tokens > 0 && `${card.progress.tokens.toLocaleString()} tokens · `}

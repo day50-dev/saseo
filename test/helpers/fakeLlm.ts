@@ -46,6 +46,8 @@ export async function fakeLlm() {
   const wikiSearch = new Map<string, string>();
   // A stand-in Wikimedia Commons: what an image search finds, and the pictures themselves (PNG headers of a size).
   let commons: { file: string; description: string; date?: string; w: number; h: number }[] = [];
+  // Texts sent to the stand-in embeddings endpoint, in order.
+  const embedded: string[] = [];
 
   const server = createServer(async (req, res) => {
     const raw = await body(req);
@@ -54,6 +56,18 @@ export async function fakeLlm() {
       res.end(JSON.stringify(v));
     };
     if (req.url === "/v1/models") return json(200, { data: [{ id: "fake-model" }] });
+    // Embeddings (Ollama-style): a word-hashing vector, so texts sharing words come out close.
+    if (req.url === "/api/embeddings") {
+      const prompt = String(JSON.parse(raw.toString()).prompt ?? "");
+      embedded.push(prompt);
+      const v = Array(64).fill(0);
+      for (const w of prompt.replace(/^Instruct:.*\nQuery: /s, "").toLowerCase().match(/[a-z]{3,}/g) ?? []) {
+        let h = 0;
+        for (const ch of w) h = (h * 31 + ch.charCodeAt(0)) % 64;
+        v[h] += 1;
+      }
+      return json(200, { embedding: v });
+    }
     if (req.url === "/transcribe") {
       heard.push(raw);
       return json(200, { text: transcript });
@@ -183,6 +197,8 @@ export async function fakeLlm() {
     },
     /** States the decision model was asked about. */
     decided,
+    /** Texts sent for embedding. */
+    embedded,
     /** Requests whose system prompt or user message matches. */
     askedFor(match: RegExp) {
       return asked.filter((a) => match.test(`${a.system}\n${a.user}`));

@@ -45,8 +45,10 @@ describe("F-PDF: reading a PDF and taking pages out", () => {
     assert.ok(doc.doc.file && doc.asset, "the whole PDF is kept, and its first page drawn");
     const kept = await fetch(`${s.url}/api/assets/${doc.doc.file}`);
     assert.equal(Buffer.from(await kept.arrayBuffer()).subarray(0, 5).toString(), "%PDF-");
+    // The PDF, and beside it its reading (F-PDF-READ): nothing else, not a page each.
     const items = (await s.api("GET", "/api/canvases/pdfs0001")).body.items;
-    assert.equal(items.length, 1);
+    assert.equal(items.length, 2);
+    assert.equal(r.body.card.origin.doc, doc.id);
     docId = doc.id;
   });
 

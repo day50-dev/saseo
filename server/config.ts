@@ -32,6 +32,12 @@ export interface Tts {
   voice: string;
 }
 
+/** Embeddings, for finding passages in a long text by meaning (an Ollama-style POST /api/embeddings). Blank baseUrl: none, keyword search only. */
+export interface Embed {
+  baseUrl: string;
+  model: string;
+}
+
 export interface Searcher {
   enabled: boolean;
   baseUrl: string;
@@ -44,6 +50,7 @@ export interface Config {
   /** Draws SVG diagrams; blank fields fall back to `llm`'s (see diagramEndpoint). */
   diagram: Endpoint;
   tts: Tts;
+  embed: Embed;
   searchers: Record<SearcherId, Searcher>;
 }
 
@@ -84,6 +91,7 @@ function defaults(): Config {
       model: "",
       voice: process.env.LIBRARIAN_VOICE ?? (process.env.LIBRARIAN_TTS_URL ? "af_heart" : ""),
     },
+    embed: { baseUrl: "", model: "qwen3-embedding:0.6b" },
     searchers,
   };
 }
@@ -101,6 +109,7 @@ export async function loadConfig(): Promise<Config> {
     systemOne: { ...base.systemOne, ...stored.systemOne },
     diagram: { ...base.diagram, ...stored.diagram },
     tts: { ...base.tts, ...stored.tts },
+    embed: { ...base.embed, ...stored.embed },
     searchers: Object.fromEntries(
       SEARCHER_IDS.map((id) => [id, { ...base.searchers[id], ...stored.searchers?.[id] }]),
     ) as Record<SearcherId, Searcher>,

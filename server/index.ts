@@ -518,7 +518,7 @@ app.post("/api/canvases/:cid/call", async (c) => {
         ? besideOf(cards, near, (x) => x.h ?? (x.sem ? 900 : 300))
         : { x: shown.length ? Math.max(...shown.map((i) => i.x + i.w)) + 120 : 0, y: shown.length ? Math.min(...shown.map((i) => i.y)) : 0 };
       const r = await addSource(store, input, at);
-      const id = r.card?.id ?? r.image?.id ?? "";
+      const id = (r.image?.doc ? r.image.id : (r.card?.id ?? r.image?.id)) ?? "";
       const what = r.image?.doc ? `the PDF "${r.image.doc.title}"` : r.image?.video ? `the video "${r.image.video.title}"` : r.card?.origin?.kind === "page" ? `the page ${input}` : `a card on "${input.slice(0, 80)}"`;
       return { id, what };
     },
@@ -937,7 +937,22 @@ async function addSource(store: CanvasStore, input: string, at: { x: number; y: 
       doc: { file: opened.asset, pages: opened.pages, url: pdf.arxiv ? `https://arxiv.org/pdf/${pdf.arxiv}` : pdf.url, title: opened.title },
     };
     await store.add(image);
-    return { image };
+    // Beside it, the PDF read whole, like a linked page: its shape, its sections, and a
+    // conversation that can find things anywhere in it.
+    const reading: CardItem = {
+      kind: "card",
+      id: newId(),
+      parentId: "",
+      origin: { kind: "page", url: image.doc!.url, title: opened.title, site: `PDF, ${opened.pages} pages`, doc: image.id },
+      x: at.x + w + 64,
+      y: at.y,
+      w: SOURCE_WIDTH,
+      stage: "reading",
+      subject: opened.title,
+    };
+    await store.add(reading);
+    void readSource(store, reading.id);
+    return { image, card: reading };
   }
   if (looksLikeLink(input)) {
     const card: CardItem = { kind: "card", id: newId(), parentId: "", origin: { kind: "page", url: input, title: input }, ...at, w: SOURCE_WIDTH, stage: "reading", subject: input };

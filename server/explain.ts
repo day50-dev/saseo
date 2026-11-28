@@ -20,6 +20,8 @@ import { bestRead, editVersion, hashText, pageVersion, readOf, remember } from "
 import { chat, chatJson, chatStream, decideChoice, decideYesNo, type Message, metered, systemOneConfigured } from "./llm.ts";
 import { arxivPaper, parseArxivId, searchArxiv } from "./arxiv.ts";
 import { matchWikiLink, Permanent, readPage as readWebPage, wikiLead, wikiLinks } from "./pages.ts";
+import { embedPassages, passagesOf, passageText, searchPassages } from "./passages.ts";
+import { readPdf } from "./pdftext.ts";
 import { runSearch } from "./providers.ts";
 import { partialSvg, sanitizeSvg, svgLabels } from "./svg.ts";
 import { makeGraph, makePlot, makeTable } from "./figures.ts";
@@ -105,7 +107,8 @@ function excerpt(text: string, near = "", max = 16_000): string {
 
 /** A card's explanation as plain text: the structure for newer cards, paragraphs for older ones. */
 function cardText(c: CardItem): string {
-  if (c.origin) return [c.sem ? semText(c.sem) : "", excerpt(c.pageText ?? c.origin.title)].filter(Boolean).join("\n\n");
+  // A PDF is too long to be given whole: its passages are found for what's asked (pdfContext).
+  if (c.origin) return [c.sem ? semText(c.sem) : "", pdfReading(c) ? "" : excerpt(c.pageText ?? c.origin.title)].filter(Boolean).join("\n\n");
   if (c.sem) {
     const standIns = (c.sem.standIns ?? []).map((s) => `"${s.phrase}" stands for ${s.concept}`);
     return [semText(c.sem), standIns.length ? `Plain-language stand-ins used: ${standIns.join("; ")}` : ""].filter(Boolean).join("\n");
@@ -140,9 +143,11 @@ async function trail(store: CanvasStore, card: CardItem): Promise<string> {
   const parent = chain[chain.length - 1];
   const lines = [
     `The reader boxed this on a page${root.topic ? ` about ${root.topic}` : ""}${root.transcription ? `: ${root.transcription}` : ""}`,
-    root.pageText
-      ? `The page${root.pageText.length > 16_000 ? " (the part around what they selected)" : ""} reads:\n${excerpt(root.pageText, chain.length === 1 ? card.context : "")}`
-      : "",
+    pdfReading(root)
+      ? await pdfContext(root, [card.selection, chain.length === 1 ? card.context : ""].filter(Boolean).join("\n"), 6)
+      : root.pageText
+        ? `The page${root.pageText.length > 16_000 ? " (the part around what they selected)" : ""} reads:\n${excerpt(root.pageText, chain.length === 1 ? card.context : "")}`
+        : "",
     `Then, step by step, they asked about:`,
     ...chain.map((c, i) => `${i + 1}. ${c.subject ?? c.selection ?? "?"}${c.sem?.what.gist ? `: ${c.sem.what.gist}` : ""}`),
     // Selecting straight from the page: the page above is already what they selected from.
@@ -678,7 +683,8 @@ export async function extendPiece(store: CanvasStore, cardId: string, extId: str
         await store.edit(cardId, (now) => (now?.kind === "card" && now.ext ? { ext: now.ext.filter((e) => e.id !== extId) } : null));
         return;
       }
-      if (kind !== "answer") {
+      // Asking a piece for "the concepts in it" is answered in the piece itself, as more words.
+      if (kind !== "answer" && kind !== "concepts") {
         const made = await findFor(store, card, kind, request, ext.focus || piece);
         await save({ status: "done", made: made.id, items: [request.trim().toLowerCase() === ext.ask!.trim().toLowerCase() ? MADE[kind] : `${MADE[kind]}: ${request}`] });
         return;
@@ -1145,7 +1151,30 @@ async function readPage(store: CanvasStore, imageId: string): Promise<{ pageText
   return { pageText, topic };
 }
 
-async function describe(store: CanvasStore, id: string): Promise<{ name: string; text: string }> {
+/** A PDF's reading card, if this is one. */
+const pdfReading = (c: CardItem) => (c.origin?.kind === "page" && c.origin.doc && c.pageText ? c : null);
+
+/**
+ * What the librarian is shown of a whole PDF: its sections with their pages, and the passages that
+ * bear on `query` (each marked with its pages), rather than as much of the start as fits.
+ */
+export async function pdfContext(card: CardItem, query: string, k = 8): Promise<string> {
+  const passages = passagesOf(card.pageText ?? "", card.paraPages);
+  const hits = await searchPassages(passages, query || card.subject || "", k);
+  const heads = paragraphs(card.pageText ?? "")
+    .map((p, i) => [p, card.paraPages?.[i]] as const)
+    .filter(([p]) => p.startsWith("## "))
+    .map(([p, n]) => `${p.slice(3)}${n ? ` (p. ${n})` : ""}`);
+  return [
+    `The PDF "${card.subject ?? ""}"${card.origin?.kind === "page" && card.origin.site ? ` (${card.origin.site})` : ""}. Its sections: ${heads.join("; ")}.`,
+    `The passages of it that bear on this, each marked with its pages:
+
+${passageText(hits)}`,
+    `When you use something from it, say which page it's on ("p. 7"). If what's asked isn't in these passages, say so rather than guess.`,
+  ].join("\n\n");
+}
+
+async function describe(store: CanvasStore, id: string, query = ""): Promise<{ name: string; text: string }> {
   const item = await store.findItem(id);
   if (item?.kind === "image") {
     // A whole slide: read it (once) and describe it by what it says.
@@ -1158,7 +1187,7 @@ async function describe(store: CanvasStore, id: string): Promise<{ name: string;
   const lines = [
     `"${name}"`,
     item.transcription ? `Selected text: ${item.transcription}` : "",
-    item.pageText ? `The page it came from reads:\n${item.pageText}` : "",
+    pdfReading(item) ? await pdfContext(item, query) : item.pageText ? `The page it came from reads:\n${item.pageText}` : "",
     await trail(store, item),
     `Its explanation:\n${cardText(item)}`,
   ];
@@ -1219,7 +1248,8 @@ export async function chatAbout(store: CanvasStore, cardId: string) {
   const config = await loadConfig();
   const card = (await store.findItem(cardId)) as CardItem;
   try {
-    const about = await describe(store, cardId);
+    const asked = [...(card.chat ?? [])].reverse().find((m) => m.role === "user")?.text ?? "";
+    const about = await describe(store, cardId, asked);
     const told = await readerNotes(store, card);
     const sources = (card.sources ?? []).map((s) => `[${s.n}] ${s.title} (${s.url})\n${s.snippet}`).join("\n\n");
     const history: Message[] = (card.chat ?? []).slice(-20).map((m) => ({ role: m.role, content: m.text }));
@@ -1244,11 +1274,12 @@ export async function chatAbout(store: CanvasStore, cardId: string) {
 // Asking for videos, reading or a diagram makes an object on its own card, connected to the card
 // it was asked from, so a card gathers a collection instead of a long transcript.
 
-type Intent = "answer" | "note" | ObjectKind;
+type Intent = "answer" | "note" | "concepts" | ObjectKind;
 
 const INTENT_CRITERIA: Record<Intent, string> = {
   answer: "A question to be answered in words.",
   note: "A request to note, jot down or remember something for later, rather than to answer it now.",
+  concepts: "A request to open cards on several of the concepts, ideas, methods or terms in what the card is about, each explained on its own card.",
   videos: "A request for videos, lectures or talks to watch.",
   links: "A request for reading: articles, notes, papers, textbooks or other pages.",
   diagram: "A request to draw, sketch or diagram something: a picture made for them.",
@@ -1265,7 +1296,7 @@ const isIntent = (v: unknown): v is Intent => typeof v === "string" && v in INTE
 
 const INTENT = `A reader typed a message in the conversation box on a card about a topic they are studying.
 Decide what they want: an answer in words, or an object made for them.
-Return JSON only: {"kind": "answer" | "note" | "set" | "gallery" | "videos" | "links" | "diagram" | "papers" | "notebook" | "table" | "plot" | "graph" | "map", "request": "what they asked for, restated in a few words"}
+Return JSON only: {"kind": "answer" | "note" | "concepts" | "set" | "gallery" | "videos" | "links" | "diagram" | "papers" | "notebook" | "table" | "plot" | "graph" | "map", "request": "what they asked for, restated in a few words"}
 - "videos": they ask for videos, lectures or talks to watch.
 - "links": they ask for things to read: articles, notes, papers, textbook chapters.
 - "diagram": they ask you to draw, sketch or diagram something (a drawing made for them).
@@ -1282,6 +1313,9 @@ Return JSON only: {"kind": "answer" | "note" | "set" | "gallery" | "videos" | "l
   ("graph y = x^2" is a plot; "draw K4" or "how are these ideas connected" is a graph; a picture or sketch is a diagram.)
 - "note": they ask you to note, jot down or remember something for later ("note that…", "remind me to check this",
   "remember: the 1 is the unit"). "request" is then the note itself, as it should read (their point, in their words).
+- "concepts": they ask for cards on several of the concepts, ideas, methods or terms in this, each on its own card ("open
+  up a few cards on the concepts in this paper", "explain the main ideas separately"). "request" is what to pick them by
+  ("the key concepts", "the math it relies on").
 - "answer": anything else.`;
 
 async function decideIntent(text: string, about: string): Promise<{ kind: Intent; request: string }> {
@@ -1664,6 +1698,7 @@ export async function handleChat(store: CanvasStore, cardId: string) {
   }
   const { kind, request } = await decideIntent(last.text, card.subject ?? card.selection ?? "this");
   if (kind === "answer") return chatAbout(store, cardId);
+  if (kind === "concepts") return openConcepts(store, card, request);
   if (kind === "note") {
     const note = await addNote(store, { text: request, by: "librarian", via: "chat", on: { id: cardId }, said: last.text });
     await store.record({ type: "chat", id: cardId, message: { role: "assistant", text: `Noted beside the card: ${request}`, at: new Date().toISOString(), ...(note ? { objectId: note.id } : {}) } });
@@ -1679,6 +1714,49 @@ export async function handleChat(store: CanvasStore, cardId: string) {
   });
   await store.update(cardId, { chatPending: false });
   await makeObject(store, object.id);
+}
+
+const CONCEPTS = `You pick concepts out of a text for a reader to explore, each to be explained on a card of its own.
+Pick 3 to 6 that fit what the reader asked for: the ideas the text rests on or introduces, the ones worth understanding
+to follow it. Prefer established concepts, and the text's own new ones, over passing mentions; never two for one idea.
+Return JSON only: {"concepts": [{"name": "the concept, named as the text names it (a few words)",
+  "quote": "the sentence from the text where it appears, copied exactly"}]}`;
+
+/** Opens a card on each of a few concepts in what a card is about (for a PDF, found in its passages), hung from it. */
+async function openConcepts(store: CanvasStore, card: CardItem, request: string) {
+  const say = (text: string) => store.record({ type: "chat", id: card.id, message: { role: "assistant", text, at: new Date().toISOString() } });
+  const made: CardItem[] = [];
+  try {
+    const source = pdfReading(card) ? await pdfContext(card, request, 10) : [cardText(card), card.pageText && !card.origin ? excerpt(card.pageText) : ""].filter(Boolean).join("\n\n");
+    const told = await readerNotes(store, card);
+    const r = await chatJson<{ concepts?: unknown }>((await loadConfig()).llm, [
+      { role: "system", content: CONCEPTS },
+      { role: "user", content: [`What they asked for: ${request}`, told, `The text${card.subject ? ` ("${card.subject}")` : ""}:\n${source}`].filter(Boolean).join("\n\n") },
+    ]);
+    const concepts = (Array.isArray(r.concepts) ? r.concepts : [])
+      .map((x) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {}))
+      .map((x) => ({ name: str(x.name).slice(0, 120), quote: str(x.quote).slice(0, 600) }))
+      .filter((x) => x.name)
+      .slice(0, 6);
+    if (!concepts.length) return void (await say("(Couldn't pick out concepts to open. Try naming the ones you want.)"));
+    for (const c of concepts) {
+      const at = await placeBeside(store, card);
+      // Opened together, so none stops to ask the reader something first: five cards asking much the
+      // same question at once is noise (a skipped question, as if they'd passed on it).
+      const child: CardItem = { kind: "card", id: newId(), parentId: card.id, selection: c.name, ...(c.quote ? { context: c.quote } : {}), ...at, w: CARD_WIDTH, stage: "reading", subject: c.name, clarify: { question: "", options: [], answer: "" } };
+      await store.add(child);
+      made.push(child);
+    }
+    await say(`Opened cards on ${concepts.map((c) => c.name).join(", ")}.`);
+  } catch (err) {
+    await say(`(Couldn't open cards on its concepts: ${err instanceof Error ? err.message : String(err)})`);
+  } finally {
+    await store.update(card.id, { chatPending: false });
+  }
+  // One at a time: several explanations at once can starve a local model.
+  void (async () => {
+    for (const c of made) await explainSelection(store, c.id).catch(() => {});
+  })();
 }
 
 /** Puts a card that will hold videos, reading, papers or a diagram beside `from`; returns it at once. */
@@ -1729,6 +1807,7 @@ export function readSource(store: CanvasStore, cardId: string, fresh = false) {
     const card = (await store.findItem(cardId)) as CardItem;
     if (card.origin?.kind !== "page") return;
     await store.update(cardId, { stage: "reading" });
+    if (card.origin.doc) return readPdfSource(store, card);
     const linked = card.origin.url;
     const known = fresh ? undefined : await bestRead(linked);
     const page = known ? { url: known.finalUrl, title: known.title, site: known.site ?? "", text: known.text } : await readWebPage(linked);
@@ -1747,6 +1826,18 @@ export function readSource(store: CanvasStore, cardId: string, fresh = false) {
     void shapePage(store, cardId);
     void shapeSections(store, cardId);
   });
+}
+
+/** A PDF's reading: its whole text from the file, then drawn like a linked page; its passages are embedded for finding things in it. */
+async function readPdfSource(store: CanvasStore, card: CardItem) {
+  const docId = card.origin?.kind === "page" ? card.origin.doc : undefined;
+  const img = docId ? await store.findItem(docId) : undefined;
+  if (img?.kind !== "image" || !img.doc) throw new Permanent("The PDF this reads isn't on the canvas any more.");
+  const read = await readPdf(img.doc);
+  await store.update(card.id, { stage: "done", subject: img.doc.title, topic: img.doc.title, pageText: read.text, paraPages: read.pageOf });
+  void embedPassages(passagesOf(read.text, read.pageOf));
+  void shapePage(store, card.id);
+  void shapeSections(store, card.id);
 }
 
 // ---- A linked page, restructured into shapes ----
