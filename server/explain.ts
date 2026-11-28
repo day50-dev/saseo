@@ -372,7 +372,7 @@ export async function pdfTitle(url: string): Promise<string> {
   return fallback;
 }
 
-async function guard(store: CanvasStore, cardId: string, run: () => Promise<void>) {
+export async function guard(store: CanvasStore, cardId: string, run: () => Promise<void>) {
   const limit = (await loadConfig()).llm.timeoutSeconds;
   // The card shows the tokens every model call of the job has received, and the seconds since it
   // began, so a long job is visibly working whatever stage it is at.
@@ -993,7 +993,7 @@ Return JSON only, no prose:
  * What's known of the reader on this canvas, for a prompt: the goal they set (the lens it's written
  * through, see goals.ts) and what they've said about themselves.
  */
-async function readerNotes(store: CanvasStore, card?: CardItem): Promise<string> {
+export async function readerNotes(store: CanvasStore, card?: CardItem): Promise<string> {
   const notes = (await getCanvasInfo(store.id))?.reader ?? [];
   const s = await store.getState();
   const lens = goalLens(s.goals ?? [], s.items, card);

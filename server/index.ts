@@ -19,6 +19,7 @@ import { besideOf, type CallContext, callTurn, canSpeak, listen, type Pointing, 
 import { around, captions, clock, heardAround, heardCaptions, hearWhole, copyPath, copyProgress, fetchCopy, frameAt, videoInfo, youtubeId } from "./video.ts";
 import { CONFIG_PATH, diagramEndpoint, loadConfig, toPublic, updateConfig } from "./config.ts";
 import { saveGoal } from "./goals.ts";
+import { checkWork } from "./work.ts";
 import { continueAfterAnswer, restartCard, explainRegion, explainRelation, explainSelection, handleChat, extendPiece, findFor, makeObject, mapCourses, pointAt, readSource, refillSections, shapeSections } from "./explain.ts";
 import { looksLikeLink } from "./pages.ts";
 import { addNote, editNote, noteHistory } from "./notes.ts";
@@ -416,6 +417,8 @@ app.post("/api/canvases/:cid/regions", async (c) => {
     crop: string;
     /** Words selected on a PDF page, exactly as the PDF has them. */
     text?: string;
+    /** Check the working in the box, step by step, rather than explain it. */
+    check?: boolean;
   };
   const image = await store.findItem(body.imageId);
   if (image?.kind !== "image") return c.json({ error: "unknown image" }, 404);
@@ -424,10 +427,11 @@ app.post("/api/canvases/:cid/regions", async (c) => {
   }
   const region: RegionItem = { kind: "region", id: newId(), imageId: image.id, rect: body.rect };
   const text = typeof body.text === "string" ? body.text.replace(/\s+/g, " ").trim().slice(0, 2000) : "";
-  const card: CardItem = { kind: "card", id: newId(), parentId: region.id, x: body.card.x, y: body.card.y, w: CARD_WIDTH, stage: "reading", ...(text ? { selection: text } : {}) };
+  const check = body.check === true;
+  const card: CardItem = { kind: "card", id: newId(), parentId: region.id, x: body.card.x, y: body.card.y, w: CARD_WIDTH, stage: "reading", ...(text ? { selection: text } : {}), ...(check ? { check: true } : {}) };
   await store.add(region);
   await store.add(card);
-  void explainRegion(store, card.id, { marked: body.marked, crop: body.crop });
+  void (check ? checkWork : explainRegion)(store, card.id, { marked: body.marked, crop: body.crop });
   return c.json({ region, card });
 });
 
@@ -737,7 +741,7 @@ app.post("/api/canvases/:cid/cards/:id/retry", async (c) => {
     return c.json({ error: "marked and crop must be image data URLs" }, 400);
   }
   await store.update(card.id, { stage: "reading", error: "", retryAt: "", ...(body.auto ? {} : { retries: 0 }) });
-  void explainRegion(store, card.id, { marked: body.marked, crop: body.crop });
+  void (card.check ? checkWork : explainRegion)(store, card.id, { marked: body.marked, crop: body.crop });
   return c.json({ ok: true });
 });
 

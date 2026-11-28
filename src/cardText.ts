@@ -29,6 +29,16 @@ export function cardMarkdown(card: CardItem, labels?: Partial<Record<keyof typeo
   if (card.sem) out.push(...semMarkdown(card.sem, labels));
   else if (card.facets) out.push(...[card.facets.why, card.facets.what, card.facets.how].filter(Boolean).flatMap((t) => [t!, ""]));
   if (card.origin && !card.sem && card.pageText) out.push(card.pageText, "");
+  if (card.work) {
+    const sign = { given: "", ok: " ✓", wrong: " ✗", unchecked: " ?" };
+    out.push(
+      ...card.work.steps.map((s, i) => `${i + 1}. $${s.latex}$${sign[s.status]}${s.note ? ` (${s.note})` : ""}`),
+      "",
+      ...(card.work.verdict ? [card.work.verdict, ""] : []),
+      ...(card.work.why ? [`**What went wrong on line ${(card.work.wrongAt ?? 0) + 1}:** ${card.work.why}`, ""] : []),
+      ...(card.work.hint ? [`**Hint:** ${card.work.hint}`, ""] : []),
+    );
+  }
   const o = card.object;
   if (o) {
     if (o.type === "links") out.push(...o.links.map((l) => `- [${l.title || l.url}](${l.url})`));

@@ -2,6 +2,7 @@
 // page, each kind of card drawing and responding to the mouse, removing and Undo, a card's
 // conversation, and a call that numbers things on screen and takes a pick.
 import assert from "node:assert/strict";
+import { crc32, deflateSync } from "node:zlib";
 import { after, before, describe, test } from "node:test";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { fakeLlm } from "../helpers/fakeLlm.ts";
@@ -28,6 +29,7 @@ before(async () => {
     { id: "map00001", name: "Map", items: [objectCard("m", { type: "map", title: "Lagrange", route: true, places: [{ name: "Turin", lat: 45.07, lon: 7.69, note: "born" }, { name: "Berlin", lat: 52.52, lon: 13.4 }, { name: "Paris", lat: 48.86, lon: 2.35, approximate: true }] })] },
     { id: "undo0001", name: "Undo", items: [explained("u1", "Keep me", 0, 0), explained("u2", "Remove me", 800, 0)] },
     { id: "mark0001", name: "Marks", items: [explained("m1", "Reconciliation", 0, 0, { sources: [{ n: 1, url: "https://example.org/rec", title: "A reconciliation", snippet: "", searcher: "keenable" }] })] },
+    { id: "phot0001", name: "Photo", items: [] },
     { id: "pick0001", name: "Pick", items: [explained("k1", "Keep this", 0, 0), explained("k2", "Delete this", 900, 0), explained("k3", "And this", 1700, 0)] },
     { id: "chat0001", name: "Chat", items: [explained("c1", "Eigenvalues", 0, 0)] },
     {
@@ -711,6 +713,59 @@ describe("F-MARK: bookmark a card, copy a card", () => {
     // Off again.
     await card.locator(".bookmark-btn").click();
     await until(async () => !((await state("mark0001")).find((i) => i.id === "m1") as CardItem).bookmarked, 5000, "unbookmarked");
+    assert.deepEqual(errorsOf(p), []);
+    await p.context().close();
+  });
+});
+
+/** A plain white PNG, w × h: enough of a photo to draw a box on. */
+function whitePng(w: number, h: number): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(td));
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(w * 3, 255)]);
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+describe("F-CHECK: a photo of your working, checked", () => {
+  test("a photo goes on the canvas; a box on it asks: explain it, or check the working", async () => {
+    llm.on(/own written working/, { problem: "Solve for x", steps: [{ latex: "2x = 8", sympy: "2*x = 8" }, { latex: "x = 5", sympy: "x = 5" }] });
+    llm.on(/patient tutor/, { verdict: "Line 2 doesn't follow.", why: "\\(8/2\\) is 4.", hint: "Divide both sides by 2 again." });
+    const p = await open("/c/phot0001");
+    await p.locator(".empty .photo-btn input").setInputFiles({ name: "homework.png", mimeType: "image/png", buffer: whitePng(800, 600) });
+    const img = p.locator("[data-image-id]").first();
+    await img.waitFor();
+    const b = (await img.boundingBox())!;
+    const drag = async () => {
+      await p.mouse.move(b.x + b.width * 0.2, b.y + b.height * 0.2);
+      await p.mouse.down();
+      await p.mouse.move(b.x + b.width * 0.6, b.y + b.height * 0.6, { steps: 6 });
+      await p.mouse.up();
+      await p.locator(".box-ask").waitFor();
+    };
+    await drag();
+    // Not now: nothing is sent.
+    await p.locator(".box-ask").getByRole("button", { name: "Cancel" }).click();
+    assert.equal(await p.locator(".box-ask").count(), 0);
+    assert.equal((await state("phot0001")).filter((i) => i.kind === "region").length, 0);
+    await drag();
+    await p.locator(".box-ask").getByText("Check my working").click();
+    const card = p.locator(".card-item").first();
+    await card.locator(".work-step.first-wrong").waitFor({ timeout: 20000 });
+    assert.match(await card.locator(".work-why").innerText(), /What went wrong on line 2/);
+    assert.equal(await card.locator(".work-hint").count(), 0, "the hint waits to be asked for");
+    await card.getByRole("button", { name: "Show a hint" }).click();
+    assert.match(await card.locator(".work-hint").innerText(), /Divide both sides/);
     assert.deepEqual(errorsOf(p), []);
     await p.context().close();
   });

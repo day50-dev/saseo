@@ -73,7 +73,7 @@ export function canvasApi(cid: string) {
       return fetch(`${base}/images`, { method: "POST", body: form }).then((r) => json<ImageItem>(r));
     },
 
-    addRegion: (body: { imageId: string; rect: Rect; card: { x: number; y: number }; marked: string; crop: string; text?: string }) =>
+    addRegion: (body: { imageId: string; rect: Rect; card: { x: number; y: number }; marked: string; crop: string; text?: string; check?: boolean }) =>
       post(`${base}/regions`, body).then((r) => json<{ region: RegionItem; card: CardItem }>(r)),
 
     /** Starts from a link (the page is read) or a statement (explained beside it). */

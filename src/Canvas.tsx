@@ -164,6 +164,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const [marquee, setMarquee] = useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   // The card whose border a tap has readied for resizing by touch; picking anything else unreadies it.
   const [resizeArmed, setResizeArmed] = useState<string | null>(null);
+  /** A box just drawn on a photo, waiting to be told: explain it, or check the working in it. */
+  const [boxAsk, setBoxAsk] = useState<{ imageId: string; area: { x0: number; y0: number; x1: number; y1: number } } | null>(null);
   useEffect(() => {
     if (resizeArmed && selected !== resizeArmed) setResizeArmed(null);
   }, [selected, resizeArmed]);
@@ -535,6 +537,36 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     }
   };
 
+  /**
+   * A photo taken with the camera (or picked from the phone's pictures): made a sensible size, put in
+   * clear space to the right of everything, and fitted to the screen to box things on.
+   */
+  const addPhoto = async (picked: File) => {
+    const r = stageRef.current!.getBoundingClientRect();
+    try {
+      const file = await shrinkPhoto(picked);
+      const url = URL.createObjectURL(file);
+      const el = new Image();
+      el.src = url;
+      await el.decode();
+      URL.revokeObjectURL(url);
+      const w = Math.min(el.naturalWidth, MAX_IMAGE_WIDTH);
+      const h = Math.round((el.naturalHeight * w) / el.naturalWidth);
+      const right = Math.max(0, ...shown.filter((i) => i.kind !== "region").map((i) => i.x + i.w));
+      const x = shown.length ? right + 120 : 40;
+      const y = Math.round(toWorld(r.left, r.top + 60).y);
+      const img = await api.addImage(file, { x, y, w, h, naturalW: el.naturalWidth, naturalH: el.naturalHeight });
+      added("add a photo", [img.id]);
+      await refresh();
+      const scale = Math.min(1, (r.width * 0.92) / w, (r.height - 90) / h);
+      setView({ scale, x: (r.width - w * scale) / 2 - x * scale, y: 70 - y * scale });
+      setSelected(img.id);
+      setMode("select");
+    } catch (e) {
+      setError(`Couldn't add the photo: ${e}`);
+    }
+  };
+
   // ---- Starting from a link or a statement ----
 
   /** Puts a source card in clear space to the right of everything and brings it into view. */
@@ -815,6 +847,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
 
   // Pan mode (or Space, or the middle button) drags from anywhere; select mode only from empty canvas.
   const onStagePointerDown = (e: React.PointerEvent) => {
+    setBoxAsk(null);
     const onBackground = e.target === e.currentTarget || Boolean((e.target as HTMLElement).dataset.pan);
     const isButton = (e.target as HTMLElement).closest("button, a");
     if (!(panning || e.button === 1 || (onBackground && e.button === 0)) || (isButton && !panning)) return;
@@ -1171,14 +1204,19 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     setDraft(null);
     const img = byId.get(d.imageId);
     if (img?.kind !== "image") return;
-    await explainArea(img, { x0: Math.min(d.start.x, d.end.x), y0: Math.min(d.start.y, d.end.y), x1: Math.max(d.start.x, d.end.x), y1: Math.max(d.start.y, d.end.y) });
+    const area = { x0: Math.min(d.start.x, d.end.x), y0: Math.min(d.start.y, d.end.y), x1: Math.max(d.start.x, d.end.x), y1: Math.max(d.start.y, d.end.y) };
+    if (area.x1 - area.x0 < 8 || area.y1 - area.y0 < 8) return;
+    // A photo (of someone's own working, often): explain what's boxed, or check the working in it.
+    // Slides, papers, PDF pages and video frames are other people's: those are explained.
+    if (isPhoto(img)) return setBoxAsk({ imageId: img.id, area });
+    await explainArea(img, area);
   };
 
   /**
    * Explains an area of an image (in canvas coordinates): a box drawn on it, or the lines of words
    * selected on a PDF page, with `text` their exact words.
    */
-  const explainArea = async (img: ImageItem, area: { x0: number; y0: number; x1: number; y1: number }, text?: string) => {
+  const explainArea = async (img: ImageItem, area: { x0: number; y0: number; x1: number; y1: number }, text?: string, check = false) => {
     // Clamp to the image, then convert to the image's natural pixels.
     const x0 = Math.max(img.x, area.x0);
     const y0 = Math.max(img.y, area.y0);
@@ -1191,12 +1229,18 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     if (!el) return;
     const cardX = img.x + img.w + GAP;
     const cardY = slotY(cardX, Math.round(y0));
-    const done = expect({ x: cardX, y: cardY, label: text ?? "", box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } });
+    const done = expect({ x: cardX, y: cardY, label: text ?? "", ...(check ? { text: "Reading your working…" } : {}), box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } });
     try {
       const { marked, crop } = renderRegion(el, rect);
-      const res = await api.addRegion({ imageId: img.id, rect, card: { x: cardX, y: cardY }, marked, crop, ...(text ? { text } : {}) });
-      added("box", [res.region.id]);
+      const res = await api.addRegion({ imageId: img.id, rect, card: { x: cardX, y: cardY }, marked, crop, ...(text ? { text } : {}), ...(check ? { check: true } : {}) });
+      added(check ? "check working" : "box", [res.region.id]);
       await refresh();
+      // On a narrow screen the card lands off it, beside the photo: go to it, wide enough to read.
+      const r = stageRef.current!.getBoundingClientRect();
+      if ((cardX + 120) * view.scale + view.x > r.width) {
+        const scale = Math.max(view.scale, Math.min(1, (r.width * 0.96) / res.card.w));
+        setView({ scale, x: r.width * 0.02 - cardX * scale, y: 70 - cardY * scale });
+      }
     } catch (e) {
       setError(`Couldn't send the selection: ${e}`);
     } finally {
@@ -1761,6 +1805,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
         {/* Making: what goes on the canvas, the call that does it with you, and taking it back. */}
         {!viewOnly && (
         <div className="tb-group" role="group" aria-label="Add to the canvas">
+          <PhotoButton onPhoto={addPhoto} />
           {/* Always in its place: on an empty canvas the start box is already open in the middle, so it's only disabled. */}
           <button
             type="button"
@@ -1779,6 +1824,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           >
             ✎ Note <kbd>N</kbd>
           </button>
+
           {canCall && (
             <button type="button" className={calling ? "on call-btn" : "secondary call-btn"} title="Talk with the librarian while you point at things" onClick={() => setCalling(!calling)}>
               {calling ? "On a call" : "Call"}
@@ -1938,6 +1984,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
           <div className="empty" data-pan="1">
             <h2 data-pan="1">What's confusing you?</h2>
             <StartBox onStart={startFrom} big />
+            <PhotoButton onPhoto={addPhoto} label="Take a photo" />
             <p className="muted" data-pan="1">
               Paste the slide, the paper or the lecture link, or just type the words that lost you. Then drag a box over the
               part that made no sense.
@@ -2256,6 +2303,33 @@ export function Canvas({ canvasId }: { canvasId: string }) {
               );
             })()}
 
+          {boxAsk && (() => {
+            const img = byId.get(boxAsk.imageId);
+            if (img?.kind !== "image") return null;
+            const a = boxAsk.area;
+            const go = (check: boolean) => (setBoxAsk(null), void explainArea(img, a, undefined, check));
+            return (
+              <>
+                <div className="region drafting" style={{ left: a.x0, top: a.y0, width: a.x1 - a.x0, height: a.y1 - a.y0, zIndex: 99998 }} />
+                <div
+                  className="box-ask"
+                  style={{ left: a.x0, top: a.y1 + 8, zIndex: 99999, transform: `scale(${1 / view.scale})`, transformOrigin: "0 0" }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.key === "Escape" && setBoxAsk(null)}
+                >
+                  <button type="button" autoFocus onClick={() => go(false)} title="Explain what's in the box">
+                    Explain this
+                  </button>
+                  <button type="button" className="secondary" onClick={() => go(true)} title="Read the working in the box and check each step, to find where it went wrong">
+                    ✓ Check my working
+                  </button>
+                  <button type="button" className="link" aria-label="Cancel" onClick={() => setBoxAsk(null)}>
+                    ✕
+                  </button>
+                </div>
+              </>
+            );
+          })()}
           {draftRect && (
             // Above everything while drawing, or the image it's drawn on hides it.
             <div className="region drafting" style={{ left: draftRect.x, top: draftRect.y, width: draftRect.w, height: draftRect.h, zIndex: 99999 }} />
@@ -2830,3 +2904,51 @@ function Bookmarks({ cards, onShow }: { cards: CardItem[]; onShow: (id: string) 
   );
 }
 
+
+/** Takes a photo with the camera (on a phone), or picks a picture (elsewhere). */
+function PhotoButton({ onPhoto, label = "Photo" }: { onPhoto: (f: File) => void; label?: string }) {
+  return (
+    <label className="secondary photo-btn" title="Take a photo of your working (or pick one), then box the part to explain or check">
+      <svg viewBox="0 0 16 16" aria-hidden>
+        <path d="M2 5h2.5l1.2-1.8h4.6L11.5 5H14v8H2z" />
+        <circle cx="8" cy="9" r="2.4" />
+      </svg>
+      {label}
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) onPhoto(f);
+        }}
+      />
+    </label>
+  );
+}
+
+/** A picture of one's own (a photo, a scan, a screenshot): not a page from a paper or PDF, nor a video's frame. */
+const isPhoto = (img: ImageItem) => !img.pdf && !img.moment && !img.source && !img.video && !img.doc;
+
+/**
+ * A phone photo is 12 megapixels or more: shrunk to 2400 pixels on its long side, which keeps
+ * handwriting sharp for reading and is quick to send. The browser applies the photo's rotation.
+ */
+async function shrinkPhoto(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) throw new Error("that isn't a picture");
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+  if (k === 1 && file.size < 3_000_000) {
+    bmp.close();
+    return file;
+  }
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k);
+  c.height = Math.round(bmp.height * k);
+  c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close();
+  const blob = await new Promise<Blob>((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error("couldn't shrink it"))), "image/jpeg", 0.88));
+  return new File([blob], (file.name || "photo").replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
+}

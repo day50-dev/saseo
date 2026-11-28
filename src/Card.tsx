@@ -35,6 +35,7 @@ import { clearMarks, findPhrases, setMarks } from "./marks.ts";
 import { looksLikeTex, selectedText, Tex, textWithTex, withMath } from "./MathText.tsx";
 import { unescapeTwice } from "../shared/tex.ts";
 import { SemShapes } from "./SemShapes.tsx";
+import { WorkView } from "./WorkView.tsx";
 
 const STAGE_TEXT: Record<CardStage, string> = {
   reading: "Working out what you selected…",
@@ -45,6 +46,14 @@ const STAGE_TEXT: Record<CardStage, string> = {
   done: "",
   failed: "",
 };
+
+/** A card checking someone's working says what it's doing in those terms. */
+const CHECK_TEXT: Partial<Record<CardStage, string>> = {
+  reading: "Reading your working…",
+  checking: "Checking each step…",
+  writing: "Working out what went wrong…",
+};
+const stageText = (card: CardItem) => (card.check ? (CHECK_TEXT[card.stage] ?? STAGE_TEXT[card.stage]) : STAGE_TEXT[card.stage]);
 
 const FACETS = [
   ["why", "Why it exists"],
@@ -335,7 +344,7 @@ export function Card(props: {
       {card.collapsed ? (
         <p className="folded-count">
           {props.foldedCount ? `${props.foldedCount} ${props.foldedCount === 1 ? "card" : "cards"} folded below` : "Collapsed"}
-          {busy ? ` · ${STAGE_TEXT[card.stage]}` : ""}
+          {busy ? ` · ${stageText(card)}` : ""}
         </p>
       ) : (
       <>
@@ -362,7 +371,7 @@ export function Card(props: {
       )}
       {busy && card.stage !== "asking" && (
         <p className="muted card-stage">
-          <span className="spinner" /> {card.origin?.kind === "page" ? "Reading the page…" : STAGE_TEXT[card.stage]}
+          <span className="spinner" /> {card.origin?.kind === "page" ? "Reading the page…" : stageText(card)}
           {card.progress && (
             <span className="card-progress">
               {card.progress.tokens > 0 && `${card.progress.tokens.toLocaleString()} tokens · `}
@@ -413,6 +422,7 @@ export function Card(props: {
           ↶ Bring back the earlier {card.objectKind === "diagram" ? "drawing" : card.objectKind === "links" ? "reading" : card.objectKind}
         </button>
       )}
+      {card.work && <WorkView work={card.work} done={card.stage === "done"} />}
       {showShapes && card.sem && (
         <SemShapes
           title={card.subject ?? "Explanation"}

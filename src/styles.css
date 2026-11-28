@@ -1177,6 +1177,14 @@ body.resizing iframe, body.resizing video { pointer-events: none; }
 .moment-head.lit { fill: var(--accent); opacity: 1; }
 @media (prefers-color-scheme: dark) { .connector.note-line { stroke: #8a7a3a; } }
 .note-add-btn { font-size: 13px; padding: 4px 10px; font-weight: 500; flex-shrink: 0; }
+/* A label (it holds the camera's file input) drawn as the buttons beside it. */
+.photo-btn {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 13px; padding: 4px 10px; font-weight: 500; flex-shrink: 0; margin: 0;
+  border: 1px solid var(--accent); border-radius: 6px; color: var(--accent); cursor: pointer; user-select: none;
+}
+.empty .photo-btn { margin: 12px auto 0; font-size: 15px; padding: 8px 16px; pointer-events: auto; }
+.photo-btn:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.photo-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
 
 /* ---- Card sets: things to look through, three across ---- */
 .card-set { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 12px; margin-top: 10px; }
@@ -1381,3 +1389,35 @@ body.resizing iframe, body.resizing video { pointer-events: none; }
 .copy-btn.fail { color: var(--fail); }
 .bookmarks { position: relative; }
 .bookmarks-menu { right: 0; left: auto; top: 36px; }
+
+/* After a box on a photo: explain it, or check the working in it. */
+.box-ask {
+  position: absolute; display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px;
+  background: var(--card); border: 1px solid var(--line); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); white-space: nowrap;
+}
+.box-ask button { font-size: 14px; padding: 7px 12px; }
+
+/* ---- Checked working: each line, what SymPy found, and what went wrong first ---- */
+.work { margin-top: 6px; }
+.work-problem { font-weight: 600; margin: 0 0 8px; }
+.work-steps { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line); }
+.work-step {
+  display: grid; grid-template-columns: 26px 1fr 26px; align-items: baseline; column-gap: 8px;
+  padding: 6px 8px 6px 6px; border-radius: 0 6px 6px 0;
+}
+.work-n { color: var(--muted); font-size: 12px; text-align: right; }
+.work-line { overflow-x: auto; font-size: 16px; }
+.work-mark { font-weight: 700; text-align: center; }
+.work-note { grid-column: 2 / 4; font-size: 12px; color: var(--muted); }
+.work-step.ok .work-mark { color: var(--ok); }
+.work-step.unchecked .work-mark { color: var(--muted); }
+.work-step.wrong .work-mark { color: var(--fail); }
+.work-step.first-wrong { background: color-mix(in srgb, var(--fail) 10%, transparent); box-shadow: inset 3px 0 0 var(--fail); }
+.work-step.after-wrong { opacity: 0.6; }
+.work-step.reading .work-line { opacity: 0.7; }
+.work-verdict { margin: 12px 0 4px; font-size: 15px; }
+.work-why, .work-hint { margin-top: 10px; padding: 8px 12px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.work-why h4, .work-hint h4 { margin: 0 0 4px; font-size: 13px; }
+.work-why p, .work-hint p { margin: 0; }
+.work-hint-btn { margin-top: 10px; font-size: 13px; padding: 5px 12px; }
+.work-how { margin-top: 10px; }

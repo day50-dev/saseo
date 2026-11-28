@@ -460,6 +460,31 @@ export interface NodeGraph {
 
 export type ObjectKind = CardObject["type"];
 
+/** One line of someone's own working, as read off the page, and what SymPy made of it. */
+export interface WorkStep {
+  /** The line as written, in LaTeX. */
+  latex: string;
+  /** The same line in SymPy's syntax ("" for words). */
+  sympy: string;
+  /** given: the first line; ok: follows from the line before; wrong: plainly doesn't; unchecked: couldn't be told. */
+  status: "given" | "ok" | "wrong" | "unchecked";
+  note?: string;
+}
+
+/** Working checked step by step: what it's solving, the steps, and what went wrong first (if anything). */
+export interface WorkCheck {
+  problem: string;
+  steps: WorkStep[];
+  /** The first step SymPy found doesn't follow. */
+  wrongAt?: number;
+  /** One or two sentences: how it went. */
+  verdict: string;
+  /** At the first wrong step: what went wrong there. */
+  why?: string;
+  /** What to do there instead, without doing the rest for them. */
+  hint?: string;
+}
+
 export type CardStage = "reading" | "asking" | "searching" | "writing" | "checking" | "done" | "failed";
 
 /** A question the librarian asked the reader before explaining, and what they said. */
@@ -568,6 +593,9 @@ export interface CardItem extends ItemState {
   /** Probability from the System One check that the explanation climbs (0 = clearly descends). */
   climb?: number;
   rewritten?: boolean;
+  /** This card checks the working in its box, step by step, rather than explaining it. */
+  check?: boolean;
+  work?: WorkCheck;
   error?: string;
   /** Tries made again by themselves after failing (up to RETRY_TRIES), and when the next one is due ("" when none is). */
   retries?: number;
