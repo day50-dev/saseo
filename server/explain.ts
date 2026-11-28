@@ -111,6 +111,16 @@ function cardText(c: CardItem): string {
     return [semText(c.sem), standIns.length ? `Plain-language stand-ins used: ${standIns.join("; ")}` : ""].filter(Boolean).join("\n");
   }
   if (c.facets) return [c.facets.why, c.facets.what, c.facets.how].filter(Boolean).join("\n");
+  // Someone's own work, looked at: their lines, and the ideas named in it.
+  if (c.work?.lines)
+    return [
+      `Their own work, line by line:\n${c.work.lines.map((l, i) => `${i + 1}. ${l.latex}`).join("\n")}`,
+      c.work.opening,
+      ...c.work.ideas.map((d) => `${d.name} (lines ${d.lines.join(", ")}): ${d.what} ${d.note}`),
+      c.work.invite ? `You asked them: ${c.work.invite}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
   return "";
 }
 

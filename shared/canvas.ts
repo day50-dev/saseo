@@ -460,29 +460,40 @@ export interface NodeGraph {
 
 export type ObjectKind = CardObject["type"];
 
-/** One line of someone's own working, as read off the page, and what SymPy made of it. */
-export interface WorkStep {
-  /** The line as written, in LaTeX. */
+/** A line of someone's own work, as read off the page. */
+export interface WorkLine {
+  /** As written, in LaTeX. */
   latex: string;
-  /** The same line in SymPy's syntax ("" for words). */
+  /** The same in SymPy's syntax ("" for words): what the computer algebra looked at. */
   sympy: string;
-  /** given: the first line; ok: follows from the line before; wrong: plainly doesn't; unchecked: couldn't be told. */
-  status: "given" | "ok" | "wrong" | "unchecked";
+  /** What SymPy found about it against the line before, given to the model as evidence; never shown as a verdict. */
+  follows?: "yes" | "no" | "unsure";
   note?: string;
 }
 
-/** Working checked step by step: what it's solving, the steps, and what went wrong first (if anything). */
-export interface WorkCheck {
+/** A named technique, result or idea the work uses or reaches for. */
+export interface WorkIdea {
+  name: string;
+  /** Line numbers (1-based) where it happens. */
+  lines: number[];
+  /** What it is, in a sentence. */
+  what: string;
+  /** How it's being used here, and where it goes a different way from the usual one. */
+  note: string;
+  /** Goes about it differently from how it's usually done. */
+  differs?: boolean;
+  /** Where it comes from (who, when, what it's usually called), when that's known. */
+  origin?: string;
+}
+
+/** Someone's own work, looked at with them: what they're doing, what it's called, where to go from here. */
+export interface WorkLook {
   problem: string;
-  steps: WorkStep[];
-  /** The first step SymPy found doesn't follow. */
-  wrongAt?: number;
-  /** One or two sentences: how it went. */
-  verdict: string;
-  /** At the first wrong step: what went wrong there. */
-  why?: string;
-  /** What to do there instead, without doing the rest for them. */
-  hint?: string;
+  lines: WorkLine[];
+  opening: string;
+  ideas: WorkIdea[];
+  /** What it leads to next, as a question to them. */
+  invite: string;
 }
 
 export type CardStage = "reading" | "asking" | "searching" | "writing" | "checking" | "done" | "failed";
@@ -593,9 +604,9 @@ export interface CardItem extends ItemState {
   /** Probability from the System One check that the explanation climbs (0 = clearly descends). */
   climb?: number;
   rewritten?: boolean;
-  /** This card checks the working in its box, step by step, rather than explaining it. */
-  check?: boolean;
-  work?: WorkCheck;
+  /** This card looks at the work in its box (what it's doing, what that's called) rather than explaining it. */
+  look?: boolean;
+  work?: WorkLook;
   error?: string;
   /** Tries made again by themselves after failing (up to RETRY_TRIES), and when the next one is due ("" when none is). */
   retries?: number;

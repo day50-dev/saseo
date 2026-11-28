@@ -9,10 +9,14 @@ simplifying didn't show the two agree AND they differ when numbers are put in.
 
 import json
 import random
+import re
 import signal
 import sys
 
-from sympy import Eq, I, nan, oo, simplify, solveset, S, zoo
+import sympy
+
+from sympy import Derivative, Function, Integral, Limit, nan, oo, simplify, solveset, S, zoo
+from sympy.core.function import AppliedUndef
 from sympy.parsing.sympy_parser import (
     convert_xor,
     implicit_multiplication_application,
@@ -35,6 +39,24 @@ def _alarm(_sig, _frame):
 signal.signal(signal.SIGALRM, _alarm)
 
 
+# Single capitals SymPy takes for its own (I is the imaginary unit, E is e…): written as I(a), they're a function.
+TAKEN = {"I", "E", "S", "N", "O", "Q", "C"}
+
+
+def names(text):
+    """A function of theirs for each name written before a bracket that SymPy doesn't know as one (f(x), I(a))."""
+    out = {}
+    for n in set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", text)):
+        known = getattr(sympy, n, None)
+        if n in TAKEN or not callable(known):
+            out[n] = Function(n)
+    return out
+
+
+def read(text, local):
+    return parse_expr(text, local_dict=local, transformations=TRANSFORMS).doit()
+
+
 def parse(text):
     """An expression, or ("eq", lhs - rhs, lhs, rhs) for an equation; None if it can't be read."""
     t = (text or "").strip()
@@ -44,12 +66,13 @@ def parse(text):
     if any(op in t for op in ("<", ">", "≤", "≥", "!=")):
         return None  # inequalities aren't checked
     parts = t.split("=")
+    local = names(t)
     try:
         if len(parts) == 1:
-            return ("expr", parse_expr(parts[0], transformations=TRANSFORMS).doit())
+            return ("expr", read(parts[0], local))
         if len(parts) == 2:
-            lhs = parse_expr(parts[0], transformations=TRANSFORMS).doit()
-            rhs = parse_expr(parts[1], transformations=TRANSFORMS).doit()
+            lhs = read(parts[0], local)
+            rhs = read(parts[1], local)
             return ("eq", lhs - rhs, lhs, rhs)
     except Exception:
         return None
@@ -145,6 +168,15 @@ def same_equation(prev, cur):
     return False, ""
 
 
+def opaque(*exprs):
+    """Holds something this can't judge: a function it doesn't know (I(a), f(x)), or an integral,
+    derivative or limit SymPy couldn't work out. Then it says nothing rather than something wrong."""
+    for e in exprs:
+        if e.atoms(AppliedUndef) or e.atoms(Integral) or e.atoms(Derivative) or e.atoms(Limit):
+            return True
+    return False
+
+
 def check(steps):
     results = []
     prev = None
@@ -155,6 +187,10 @@ def check(steps):
             continue
         if prev is None:
             results.append({"status": "given", "note": ""})
+            prev = cur
+            continue
+        if opaque(*prev[1:], *cur[1:]):
+            results.append({"status": "unchecked", "note": ""})
             prev = cur
             continue
         signal.alarm(STEP_SECONDS)

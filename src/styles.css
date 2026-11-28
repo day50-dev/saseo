@@ -1397,27 +1397,19 @@ body.resizing iframe, body.resizing video { pointer-events: none; }
 }
 .box-ask button { font-size: 14px; padding: 7px 12px; }
 
-/* ---- Checked working: each line, what SymPy found, and what went wrong first ---- */
+/* ---- Someone's own work, looked at: their lines, the ideas named in them, where to go next ---- */
 .work { margin-top: 6px; }
-.work-problem { font-weight: 600; margin: 0 0 8px; }
-.work-steps { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line); }
-.work-step {
-  display: grid; grid-template-columns: 26px 1fr 26px; align-items: baseline; column-gap: 8px;
-  padding: 6px 8px 6px 6px; border-radius: 0 6px 6px 0;
-}
+.work-opening { margin: 0 0 10px; font-size: 15px; }
+.work-lines { list-style: none; margin: 0 0 12px; padding: 0; border-left: 2px solid var(--line); }
+.work-lines li { display: grid; grid-template-columns: 26px 1fr; align-items: baseline; column-gap: 8px; padding: 4px 8px 4px 6px; border-radius: 0 6px 6px 0; transition: background 0.15s; }
+.work-lines li.lit { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
 .work-n { color: var(--muted); font-size: 12px; text-align: right; }
 .work-line { overflow-x: auto; font-size: 16px; }
-.work-mark { font-weight: 700; text-align: center; }
-.work-note { grid-column: 2 / 4; font-size: 12px; color: var(--muted); }
-.work-step.ok .work-mark { color: var(--ok); }
-.work-step.unchecked .work-mark { color: var(--muted); }
-.work-step.wrong .work-mark { color: var(--fail); }
-.work-step.first-wrong { background: color-mix(in srgb, var(--fail) 10%, transparent); box-shadow: inset 3px 0 0 var(--fail); }
-.work-step.after-wrong { opacity: 0.6; }
-.work-step.reading .work-line { opacity: 0.7; }
-.work-verdict { margin: 12px 0 4px; font-size: 15px; }
-.work-why, .work-hint { margin-top: 10px; padding: 8px 12px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 6%, transparent); }
-.work-why h4, .work-hint h4 { margin: 0 0 4px; font-size: 13px; }
-.work-why p, .work-hint p { margin: 0; }
-.work-hint-btn { margin-top: 10px; font-size: 13px; padding: 5px 12px; }
-.work-how { margin-top: 10px; }
+.work-idea { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: color-mix(in srgb, var(--sem-line) 5%, transparent); }
+.work-idea h4 { margin: 0 0 4px; font-size: 15px; }
+.work-idea p { margin: 4px 0; }
+.work-origin { font-style: italic; }
+.work-idea.differs .work-note { border-left: 3px solid var(--accent); padding-left: 8px; }
+.work-go { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.work-go button { font-size: 13px; padding: 4px 12px; }
+.work-invite { margin: 14px 0 4px; font-size: 15px; font-style: italic; }

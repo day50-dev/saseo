@@ -737,10 +737,14 @@ function whitePng(w: number, h: number): Buffer {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-describe("F-CHECK: a photo of your work, checked", () => {
-  test("a photo goes on the canvas; a box on it asks: explain it, or check the working", async () => {
-    llm.on(/own written working/, { problem: "Solve for x", steps: [{ latex: "2x = 8", sympy: "2*x = 8" }, { latex: "x = 5", sympy: "x = 5" }] });
-    llm.on(/patient tutor/, { verdict: "Line 2 doesn't follow.", why: "\\(8/2\\) is 4.", hint: "Divide both sides by 2 again." });
+describe("F-WORK: a photo of your work, looked at", () => {
+  test("a photo goes on the canvas; a box on it asks: explain it, or look at the work; ideas become cards", async () => {
+    llm.on(/own written work/, { problem: "Solving for x", steps: [{ latex: "2x = 8", sympy: "2*x = 8" }, { latex: "x = 5", sympy: "x = 5" }] });
+    llm.on(/colleague's own work/, {
+      opening: "You're solving a linear equation.",
+      ideas: [{ name: "Inverse operations", lines: [1, 2], what: "Undoing a multiplication by dividing.", note: "Dividing 8 by 2 usually gives 4; you have 5.", differs: true }],
+      invite: "What does dividing by 2 give?",
+    });
     const p = await open("/c/phot0001");
     await p.locator(".empty .photo-btn input").setInputFiles({ name: "homework.png", mimeType: "image/png", buffer: whitePng(800, 600) });
     const img = p.locator("[data-image-id]").first();
@@ -759,13 +763,19 @@ describe("F-CHECK: a photo of your work, checked", () => {
     assert.equal(await p.locator(".box-ask").count(), 0);
     assert.equal((await state("phot0001")).filter((i) => i.kind === "region").length, 0);
     await drag();
-    await p.locator(".box-ask").getByText("Check my work").click();
+    await p.locator(".box-ask").getByText("Look at my work").click();
     const card = p.locator(".card-item").first();
-    await card.locator(".work-step.first-wrong").waitFor({ timeout: 20000 });
-    assert.match(await card.locator(".work-why").innerText(), /What went wrong on line 2/);
-    assert.equal(await card.locator(".work-hint").count(), 0, "the hint waits to be asked for");
-    await card.getByRole("button", { name: "Show a hint" }).click();
-    assert.match(await card.locator(".work-hint").innerText(), /Divide both sides/);
+    const idea = card.locator(".work-idea").first();
+    await idea.waitFor({ timeout: 20000 });
+    assert.match(await idea.innerText(), /Inverse operations/);
+    assert.equal(await card.locator(".work-mark, .first-wrong").count(), 0, "nothing is graded");
+    // Hovering an idea marks its lines.
+    await idea.hover();
+    assert.equal(await card.locator(".work-lines li.lit").count(), 2);
+    // An idea becomes a card: asking for papers on it goes to the card's librarian.
+    llm.on(/./, {});
+    await idea.getByRole("button", { name: "Papers" }).click();
+    await until(async () => ((await state("phot0001")).find((i) => i.kind === "card" && i.chat?.length) as CardItem | undefined)?.chat?.[0]?.text === "Find papers on Inverse operations", 5000, "asked for papers");
     assert.deepEqual(errorsOf(p), []);
     await p.context().close();
   });

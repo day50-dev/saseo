@@ -1,59 +1,67 @@
-// Someone's own working, checked: each line as they wrote it, marked by what SymPy found (follows,
-// doesn't, couldn't tell), the first wrong line picked out, and what went wrong there. The hint
-// waits to be asked for, so they can try first.
+// Someone's own work, looked at with them: what they're doing, the established ideas it uses or
+// reaches for (named, with where they come from and where this version differs from the usual
+// one), and where to go next. Each idea can become a card of its own: an explanation, papers,
+// videos. Hovering an idea marks the lines it's in.
 import { useState } from "react";
-import type { WorkCheck, WorkStep } from "../shared/canvas.ts";
+import type { WorkLook } from "../shared/canvas.ts";
 import { Tex, withMath } from "./MathText.tsx";
 
-const MARK: Record<WorkStep["status"], { sign: string; title: string }> = {
-  given: { sign: "", title: "Where it starts" },
-  ok: { sign: "✓", title: "Follows from the line before (checked with SymPy)" },
-  wrong: { sign: "✗", title: "Doesn't follow from the line before (checked with SymPy)" },
-  unchecked: { sign: "?", title: "Couldn't be checked" },
-};
-
-export function WorkView({ work, done }: { work: WorkCheck; done: boolean }) {
-  const [hint, setHint] = useState(false);
-  const checked = work.steps.some((s) => s.status !== "unchecked") || done;
+export function WorkView({
+  work,
+  done,
+  onExplain,
+  onAsk,
+}: {
+  work: WorkLook;
+  done: boolean;
+  /** A card explaining this idea, hung from this one. */
+  onExplain: (name: string, context: string, clientY: number) => void;
+  /** Asks this card's librarian for something (papers, videos) about it. */
+  onAsk: (text: string) => void;
+}) {
+  const [lit, setLit] = useState<number[]>([]);
+  // Lines are only shown once there's something said about them; while reading, they arrive as read.
   return (
-    <div className="work">
-      <ol className="work-steps">
-        {work.steps.map((s, i) => {
-          const after = work.wrongAt !== undefined && i > work.wrongAt;
-          const m = MARK[s.status];
-          return (
-            <li key={i} className={`work-step ${checked ? s.status : "reading"} ${i === work.wrongAt ? "first-wrong" : ""} ${after ? "after-wrong" : ""}`}>
-              <span className="work-n">{i + 1}</span>
-              <span className="work-line">{s.latex ? <Tex tex={s.latex} display={false} /> : <code>{s.sympy}</code>}</span>
-              {checked && (
-                <span className="work-mark" title={s.note ? `${m.title}: ${s.note}` : m.title}>
-                  {m.sign}
-                </span>
-              )}
-              {checked && s.note && s.status !== "given" && <span className="work-note">{s.note}</span>}
-            </li>
-          );
-        })}
-      </ol>
-      {work.verdict && <p className="work-verdict">{withMath(work.verdict)}</p>}
-      {work.why && (
-        <section className="work-why">
-          <h4>What went wrong on line {(work.wrongAt ?? 0) + 1}</h4>
-          <p>{withMath(work.why)}</p>
-        </section>
-      )}
-      {work.hint &&
-        (hint ? (
-          <section className="work-hint">
-            <h4>A hint</h4>
-            <p>{withMath(work.hint)}</p>
-          </section>
-        ) : (
-          <button type="button" className="secondary work-hint-btn" onPointerDown={(e) => e.stopPropagation()} onClick={() => setHint(true)}>
-            Show a hint
-          </button>
+    <div className="work" onPointerDown={(e) => (e.target as HTMLElement).closest("button") && e.stopPropagation()}>
+      {work.opening && <p className="work-opening">{withMath(work.opening)}</p>}
+      <ol className="work-lines">
+        {work.lines.map((l, i) => (
+          <li key={i} className={lit.includes(i + 1) ? "lit" : ""}>
+            <span className="work-n">{i + 1}</span>
+            <span className="work-line">{l.latex ? <Tex tex={l.latex} display={false} /> : <code>{l.sympy}</code>}</span>
+          </li>
         ))}
-      {done && <p className="muted small work-how">✓ and ✗ are checked with a computer algebra system (SymPy), not guessed. A ? is a line it couldn't check.</p>}
+      </ol>
+      {work.ideas.map((idea, k) => (
+        <section key={k} className={`work-idea ${idea.differs ? "differs" : ""}`} onMouseEnter={() => setLit(idea.lines)} onMouseLeave={() => setLit([])}>
+          <h4>
+            {idea.name}
+            {idea.lines.length > 0 && (
+              <span className="work-at muted small">
+                {" "}
+                · {idea.lines.length === 1 ? `line ${idea.lines[0]}` : `lines ${Math.min(...idea.lines)}–${Math.max(...idea.lines)}`}
+              </span>
+            )}
+          </h4>
+          {idea.what && <p className="work-what">{withMath(idea.what)}</p>}
+          {idea.origin && <p className="muted small work-origin">{idea.origin}</p>}
+          {idea.note && <p className="work-note">{withMath(idea.note)}</p>}
+          {done && (
+            <div className="work-go">
+              <button type="button" className="secondary" onClick={(e) => onExplain(idea.name, `${idea.what} (seen in their own work: ${idea.note})`, e.clientY)}>
+                Explain it
+              </button>
+              <button type="button" className="secondary" onClick={() => onAsk(`Find papers on ${idea.name}`)}>
+                Papers
+              </button>
+              <button type="button" className="secondary" onClick={() => onAsk(`Find videos on ${idea.name}`)}>
+                Videos
+              </button>
+            </div>
+          )}
+        </section>
+      ))}
+      {work.invite && <p className="work-invite">{withMath(work.invite)}</p>}
     </div>
   );
 }

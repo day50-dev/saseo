@@ -164,7 +164,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
   const [marquee, setMarquee] = useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
   // The card whose border a tap has readied for resizing by touch; picking anything else unreadies it.
   const [resizeArmed, setResizeArmed] = useState<string | null>(null);
-  /** A box just drawn on a photo, waiting to be told: explain it, or check the working in it. */
+  /** A box just drawn on a photo, waiting to be told: explain it, or look at the work in it. */
   const [boxAsk, setBoxAsk] = useState<{ imageId: string; area: { x0: number; y0: number; x1: number; y1: number } } | null>(null);
   useEffect(() => {
     if (resizeArmed && selected !== resizeArmed) setResizeArmed(null);
@@ -1206,7 +1206,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     if (img?.kind !== "image") return;
     const area = { x0: Math.min(d.start.x, d.end.x), y0: Math.min(d.start.y, d.end.y), x1: Math.max(d.start.x, d.end.x), y1: Math.max(d.start.y, d.end.y) };
     if (area.x1 - area.x0 < 8 || area.y1 - area.y0 < 8) return;
-    // A photo (of someone's own working, often): explain what's boxed, or check the working in it.
+    // A photo (of someone's own work, often): explain what's boxed, or look at the work in it.
     // Slides, papers, PDF pages and video frames are other people's: those are explained.
     if (isPhoto(img)) return setBoxAsk({ imageId: img.id, area });
     await explainArea(img, area);
@@ -1216,7 +1216,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
    * Explains an area of an image (in canvas coordinates): a box drawn on it, or the lines of words
    * selected on a PDF page, with `text` their exact words.
    */
-  const explainArea = async (img: ImageItem, area: { x0: number; y0: number; x1: number; y1: number }, text?: string, check = false) => {
+  const explainArea = async (img: ImageItem, area: { x0: number; y0: number; x1: number; y1: number }, text?: string, look = false) => {
     // Clamp to the image, then convert to the image's natural pixels.
     const x0 = Math.max(img.x, area.x0);
     const y0 = Math.max(img.y, area.y0);
@@ -1229,11 +1229,11 @@ export function Canvas({ canvasId }: { canvasId: string }) {
     if (!el) return;
     const cardX = img.x + img.w + GAP;
     const cardY = slotY(cardX, Math.round(y0));
-    const done = expect({ x: cardX, y: cardY, label: text ?? "", ...(check ? { text: "Reading your work…" } : {}), box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } });
+    const done = expect({ x: cardX, y: cardY, label: text ?? "", ...(look ? { text: "Reading your work…" } : {}), box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } });
     try {
       const { marked, crop } = renderRegion(el, rect);
-      const res = await api.addRegion({ imageId: img.id, rect, card: { x: cardX, y: cardY }, marked, crop, ...(text ? { text } : {}), ...(check ? { check: true } : {}) });
-      added(check ? "check work" : "box", [res.region.id]);
+      const res = await api.addRegion({ imageId: img.id, rect, card: { x: cardX, y: cardY }, marked, crop, ...(text ? { text } : {}), ...(look ? { look: true } : {}) });
+      added(look ? "look at work" : "box", [res.region.id]);
       await refresh();
       // On a narrow screen the card lands off it, beside the photo: go to it, wide enough to read.
       const r = stageRef.current!.getBoundingClientRect();
@@ -2307,7 +2307,7 @@ export function Canvas({ canvasId }: { canvasId: string }) {
             const img = byId.get(boxAsk.imageId);
             if (img?.kind !== "image") return null;
             const a = boxAsk.area;
-            const go = (check: boolean) => (setBoxAsk(null), void explainArea(img, a, undefined, check));
+            const go = (look: boolean) => (setBoxAsk(null), void explainArea(img, a, undefined, look));
             return (
               <>
                 <div className="region drafting" style={{ left: a.x0, top: a.y0, width: a.x1 - a.x0, height: a.y1 - a.y0, zIndex: 99998 }} />
@@ -2320,8 +2320,8 @@ export function Canvas({ canvasId }: { canvasId: string }) {
                   <button type="button" autoFocus onClick={() => go(false)} title="Explain what's in the box">
                     Explain this
                   </button>
-                  <button type="button" className="secondary" onClick={() => go(true)} title="Read the work in the box and check each step, to find where it went wrong">
-                    ✓ Check my work
+                  <button type="button" className="secondary" onClick={() => go(true)} title="Read the work in the box: what you're doing, what it's called, and where to read more">
+                    Look at my work
                   </button>
                   <button type="button" className="link" aria-label="Cancel" onClick={() => setBoxAsk(null)}>
                     ✕
@@ -2908,7 +2908,7 @@ function Bookmarks({ cards, onShow }: { cards: CardItem[]; onShow: (id: string) 
 /** Takes a photo with the camera (on a phone), or picks a picture (elsewhere). */
 function PhotoButton({ onPhoto, label = "Photo" }: { onPhoto: (f: File) => void; label?: string }) {
   return (
-    <label className="secondary photo-btn" title="Take a photo of your work (or pick one), then box the part to explain or check">
+    <label className="secondary photo-btn" title="Take a photo of your work (or pick one), then box the part to explain or look at">
       <svg viewBox="0 0 16 16" aria-hidden>
         <path d="M2 5h2.5l1.2-1.8h4.6L11.5 5H14v8H2z" />
         <circle cx="8" cy="9" r="2.4" />

@@ -1,11 +1,13 @@
-// Checking someone's own working: a box drawn round handwritten (or typed) steps on a photo. The
-// model only reads it, line by line, mistakes and all; SymPy (check_steps.py) decides whether each
-// step follows from the one before; then the model says what went wrong at the first step that
-// doesn't, and what to do there instead, without doing the rest for them.
+// Looking at someone's own work with them: a box drawn round a derivation, notes or an attempt at
+// a problem on a photo. The people doing this are researchers and teachers working past their own
+// field, so this isn't a grade: the model reads the work line by line, SymPy follows the algebra
+// underneath (check_steps.py) as evidence only, and the model names what they're doing, where it
+// comes from, and where they're going about it differently from the usual way, then offers cards
+// (an explanation, papers, videos) and asks where to go next.
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CardItem, WorkCheck, WorkStep } from "../shared/canvas.ts";
+import type { CardItem, WorkIdea, WorkLine, WorkLook } from "../shared/canvas.ts";
 import { unescapeTwice } from "../shared/tex.ts";
 import type { CanvasStore } from "./canvas.ts";
 import { loadConfig } from "./config.ts";
@@ -14,11 +16,11 @@ import { chatJson } from "./llm.ts";
 
 const CHECKER = path.join(path.dirname(fileURLToPath(import.meta.url)), "check_steps.py");
 
-const READ_WORK = `You are reading someone's own written working: homework, practice or notes, often handwritten. You are shown the
-whole photo with a box drawn on it, then the boxed part enlarged. Transcribe the working in the box, line by line, EXACTLY as
-written, mistakes included: never correct, skip or tidy a step, and never add steps of your own. Their mistakes are the point.
+const READ_WORK = `You are reading someone's own written work: a derivation, notes, or an attempt at a problem, often handwritten. You are shown the
+whole photo with a box drawn on it, then the boxed part enlarged. Transcribe the work in the box, line by line, EXACTLY as
+written: never correct, skip or tidy a step, and never add steps of your own.
 Return JSON only:
-{"problem": "what they are working out, in words, if it's written or plain from the working (else \\"\\")",
+{"problem": "a short title in plain words for what they are working on, no LaTeX (\\"A Gaussian integral with a parameter\\"), if it's written or plain from the work (else \\"\\")",
  "steps": [{"latex": "the line as written, in LaTeX", "sympy": "the same line in SymPy syntax"}]}
 SymPy syntax: * for multiplication and ** for powers (write 2*x, x**2), sqrt(), exp(), log(), sin(), cos(), tan(), pi, E, I.
 - A line that is an equation: "lhs = rhs", one "=".
@@ -27,26 +29,42 @@ SymPy syntax: * for multiplication and ** for powers (write 2*x, x**2), sqrt(), 
 - A line of words, a label ("a)", "Step 2"), a crossed-out line or a diagram: "sympy": "" (keep words in latex as \\text{...}).
 - A number with units: leave the units out of sympy.
 Use the same letters they use. The question itself ("Find f'(x) if…", "Solve for x") goes in "problem", not in the steps;
-the steps are only their working.`;
+the steps are only their work.`;
 
-const SAY = `You are a patient tutor looking over someone's working with them. Each step has already been checked by a computer
-algebra system (SymPy): "ok" means it follows from the line before, "wrong" means it plainly does not, "unchecked" means the
-system couldn't tell (trust your own reading there, carefully). Trust the system's "ok" and "wrong".
+const LOOK = `You are a research librarian looking at a colleague's own work with them: a derivation, notes, or an attempt at
+a problem. They are a researcher or teacher, likely expert in their own field and exploring outside it. This is not grading:
+never say right, wrong, correct, incorrect, mistake or error, and never give a verdict. Your job is to see what they are doing
+and connect it to what is already known, the way a well-read colleague would: "the move you're making here has a name".
+Each line comes with what a computer algebra system (SymPy) found about it against the line before ("follows", "doesn't
+follow", or nothing when it couldn't tell). Treat that as evidence: where a line doesn't follow, they're going about it
+differently from the usual way there, and you say what's different as an observation. Never mention SymPy, the computer
+algebra or these marks to them: just say what you see.
 Return JSON only:
-{"verdict": "one or two plain sentences: how the working went. If a step is wrong, say which line (number) and that the rest follows from it.
-             If every step is ok, say so, and whether the last line actually answers what was asked.",
- "why": "if a step is wrong: what went wrong at THAT step, in 1 to 3 plain sentences, about the move they made (a sign, a term dropped,
-         a rule misapplied), not a lecture. Else \\"\\".",
- "hint": "if a step is wrong: what to do at that step instead, in one sentence, without working the rest out for them. Else \\"\\"."}
-Write math inline as LaTeX between \\( and \\). Be direct and kind; never say "great job" or similar.`;
+{"opening": "1 or 2 sentences to them: what they are working on and the approach they took. Plain, peer to peer, no praise.",
+ "ideas": [1 to 4 of: {
+   "name": "the established name of a technique, result, identity or idea the work uses or is reaching for (as it is usually called)",
+   "lines": [the line numbers where it happens],
+   "what": "one sentence: what it is",
+   "origin": "where it comes from, if known: who, roughly when, or the field it's usual in (else \"\")",
+   "note": "1 or 2 sentences to them about how it shows up here. If they may not know it has a name, say so lightly: maybe they
+            knew, maybe they found it themselves. Where their version differs from the usual one, say how, plainly.",
+   "differs": true if their version differs from the usual one, else false}],
+ "invite": "one short question to them about where to go next: the usual form of the move, what it leads to, or a related idea"}
+A line marked "doesn't follow" is the most useful thing to raise: put it under the idea it belongs to, mark that idea
+"differs", and say plainly what's different there (for example: "the usual form has \\(+\\cos x\\) here; you have
+\\(-\\cos x\\)"). Never describe such a line as if it matched the usual form.
+Name only ideas that carry weight in this work, genuinely established ones; skip the trivial (arithmetic, a single standard
+derivative or identity) unless it's where their version differs. Don't remark on lines being fine ("this is correct",
+"follows"): say what they're doing, not how well. Don't work the problem out for them.
+Write math inline as LaTeX between \\( and \\).`;
 
 /** What SymPy made of each step, in order. */
-export function checkSteps(steps: string[]): Promise<{ status: WorkStep["status"]; note?: string }[]> {
+export function checkSteps(steps: string[]): Promise<{ status: "given" | "ok" | "wrong" | "unchecked"; note?: string }[]> {
   return new Promise((resolve, reject) => {
     const child = execFile("python3", ["-I", CHECKER], { timeout: 60_000, maxBuffer: 1 << 20 }, (err, out) => {
       if (err) return reject(new Error(`Couldn't check the steps: ${err.message.split("\n")[0]}`));
       try {
-        resolve((JSON.parse(String(out)) as { results: { status: WorkStep["status"]; note?: string }[] }).results);
+        resolve((JSON.parse(String(out)) as { results: { status: "given" | "ok" | "wrong" | "unchecked"; note?: string }[] }).results);
       } catch {
         reject(new Error("Couldn't check the steps: the checker's answer didn't parse"));
       }
@@ -57,8 +75,10 @@ export function checkSteps(steps: string[]): Promise<{ status: WorkStep["status"
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
-/** Reads the working in a box, checks each step, and says what went wrong first. */
-export function checkWork(store: CanvasStore, cardId: string, images: { marked: string; crop: string }) {
+const FOLLOWS: Record<string, WorkLine["follows"]> = { ok: "yes", wrong: "no", unchecked: "unsure" };
+
+/** Reads the work in a box and says what it's doing, what that's called, and where to go next. */
+export function lookAtWork(store: CanvasStore, cardId: string, images: { marked: string; crop: string }) {
   return guard(store, cardId, async () => {
     const config = await loadConfig();
     await store.update(cardId, { stage: "reading" });
@@ -67,55 +87,58 @@ export function checkWork(store: CanvasStore, cardId: string, images: { marked: 
       {
         role: "user",
         content: [
-          { type: "text", text: "Here is the photo, and the working I boxed." },
+          { type: "text", text: "Here is the photo, and the work I boxed." },
           { type: "image_url", image_url: { url: images.marked } },
           { type: "image_url", image_url: { url: images.crop } },
         ],
       },
     ]);
-    const lines = (Array.isArray(read.steps) ? read.steps : [])
+    const read_ = (Array.isArray(read.steps) ? read.steps : [])
       .map((s) => (s && typeof s === "object" ? (s as Record<string, unknown>) : {}))
       .map((s) => ({ latex: unescapeTwice(str(s.latex)).slice(0, 600), sympy: str(s.sympy).slice(0, 600) }))
       .filter((s) => s.latex || s.sympy)
       .slice(0, 40);
-    if (!lines.length) throw new Error("Couldn't find any math in the box. Try a box around the lines of work, in a sharper photo.");
+    if (!read_.length) throw new Error("Couldn't find any math in the box. Try a box around the lines of work, in a sharper photo.");
     const problem = str(read.problem).slice(0, 400);
-    await store.update(cardId, {
-      stage: "checking",
-      subject: problem || "Your work",
-      work: { problem, steps: lines.map((l) => ({ ...l, status: "unchecked" as const })), verdict: "" },
-    });
+    await store.update(cardId, { stage: "checking", subject: problem || "Your work", work: { problem, lines: read_, opening: "", ideas: [], invite: "" } });
 
-    const results = await checkSteps(lines.map((l) => l.sympy));
-    const steps: WorkStep[] = lines.map((l, i) => ({ ...l, status: results[i]?.status ?? "unchecked", ...(results[i]?.note ? { note: results[i].note } : {}) }));
-    const wrong = steps.findIndex((s) => s.status === "wrong");
-    const work: WorkCheck = { problem, steps, ...(wrong >= 0 ? { wrongAt: wrong } : {}), verdict: "" };
-    await store.update(cardId, { stage: "writing", work });
+    // The algebra followed underneath, as evidence for the model; a checker that fails just leaves it out.
+    const results = await checkSteps(read_.map((l) => l.sympy)).catch(() => []);
+    const lines: WorkLine[] = read_.map((l, i) => {
+      const r = results[i];
+      const follows = r && r.status !== "given" ? FOLLOWS[r.status] : undefined;
+      return { ...l, ...(follows ? { follows } : {}), ...(r?.note ? { note: r.note } : {}) };
+    });
+    await store.update(cardId, { stage: "writing", work: { problem, lines, opening: "", ideas: [], invite: "" } });
 
     const card = (await store.findItem(cardId)) as CardItem;
     const told = await readerNotes(store, card);
-    const said = await chatJson<{ verdict?: unknown; why?: unknown; hint?: unknown }>(config.llm, [
-      { role: "system", content: SAY },
+    const evidence = (l: WorkLine) => (l.follows === "yes" ? "   [follows]" : l.follows === "no" ? `   [doesn't follow${l.note ? `: ${l.note}` : ""}]` : l.note ? `   [${l.note}]` : "");
+    const said = await chatJson<{ opening?: unknown; ideas?: unknown; invite?: unknown }>(config.llm, [
+      { role: "system", content: LOOK },
       {
         role: "user",
-        content: [
-          problem ? `What they're working out: ${problem}` : "",
-          `Their working, checked:\n${steps.map((s, i) => `${i + 1}. ${s.latex}   [${s.status}${s.note ? `: ${s.note}` : ""}]`).join("\n")}`,
-          wrong >= 0 ? `The first step that doesn't follow is line ${wrong + 1}.` : "No step was found wrong.",
-          told,
-        ]
+        content: [problem ? `What they're working on: ${problem}` : "", `Their work:\n${lines.map((l, i) => `${i + 1}. ${l.latex}${evidence(l)}`).join("\n")}`, told]
           .filter(Boolean)
           .join("\n\n"),
       },
     ]);
+    const ideas: WorkIdea[] = (Array.isArray(said.ideas) ? said.ideas : [])
+      .map((x) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {}))
+      .map((x) => ({
+        name: str(x.name).slice(0, 120),
+        lines: (Array.isArray(x.lines) ? x.lines : []).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= lines.length),
+        what: str(x.what).slice(0, 400),
+        note: str(x.note).slice(0, 600),
+        ...(x.differs === true ? { differs: true } : {}),
+        ...(str(x.origin) ? { origin: str(x.origin).slice(0, 200) } : {}),
+      }))
+      .filter((x) => x.name)
+      .slice(0, 4);
+    if (!ideas.length && !str(said.opening)) console.warn("looking at work: nothing said; the reply had:", JSON.stringify(said).slice(0, 600));
     await store.update(cardId, {
       stage: "done",
-      work: {
-        ...work,
-        verdict: str(said.verdict).slice(0, 600) || (wrong >= 0 ? `Line ${wrong + 1} doesn't follow from the line before.` : "Every step that could be checked follows."),
-        ...(wrong >= 0 && str(said.why) ? { why: str(said.why).slice(0, 800) } : {}),
-        ...(wrong >= 0 && str(said.hint) ? { hint: str(said.hint).slice(0, 400) } : {}),
-      },
+      work: { problem, lines, opening: str(said.opening).slice(0, 600), ideas, invite: str(said.invite).slice(0, 300) },
     });
   });
 }

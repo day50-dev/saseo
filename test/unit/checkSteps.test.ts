@@ -1,12 +1,13 @@
-// The step checker (server/check_steps.py, through checkSteps): SymPy, not the model, says whether
-// each line of someone's working follows from the line before.
+// The step checker (server/check_steps.py, through checkSteps): SymPy follows someone's algebra
+// underneath, as evidence for the model when it looks at their work. It must never claim a line
+// doesn't follow when it can't really tell.
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { checkSteps } from "../../server/work.ts";
 
 const statuses = async (steps: string[]) => (await checkSteps(steps)).map((r) => r.status);
 
-describe("F-CHECK: each step checked with SymPy", () => {
+describe("F-WORK: SymPy follows the algebra underneath", () => {
   test("a correct solution follows all the way", async () => {
     assert.deepEqual(await statuses(["3*(x - 2) + 4 = 2*x + 9", "3*x - 2 = 2*x + 9", "x = 11"]), ["given", "ok", "ok"]);
   });
@@ -30,5 +31,19 @@ describe("F-CHECK: each step checked with SymPy", () => {
   });
   test("words and what can't be read aren't judged", async () => {
     assert.deepEqual(await statuses(["", "2*x = 4", "x >= 2"]), ["unchecked", "given", "unchecked"]);
+  });
+  test("their own functions, and integrals it can't do, are never called wrong", async () => {
+    assert.deepEqual(
+      await statuses([
+        "I(a) = Integral(exp(-x**2)*cos(a*x), (x, 0, oo))",
+        "Derivative(I(a), a) = -Integral(x*exp(-x**2)*sin(a*x), (x, 0, oo))",
+        "-(a/2)*I(a)",
+        "I(a) = I(0)*exp(-a**2/4)",
+      ]),
+      ["given", "unchecked", "unchecked", "unchecked"],
+    );
+    assert.deepEqual(await statuses(["f(x) = x**2*sin(x)", "Derivative(f(x), x) = 2*x*sin(x) + x**2*cos(x)"]), ["given", "unchecked"]);
+    // I on its own is still the imaginary unit.
+    assert.deepEqual(await statuses(["(1+I)**2", "2*I"]), ["given", "ok"]);
   });
 });

@@ -29,14 +29,14 @@ export function cardMarkdown(card: CardItem, labels?: Partial<Record<keyof typeo
   if (card.sem) out.push(...semMarkdown(card.sem, labels));
   else if (card.facets) out.push(...[card.facets.why, card.facets.what, card.facets.how].filter(Boolean).flatMap((t) => [t!, ""]));
   if (card.origin && !card.sem && card.pageText) out.push(card.pageText, "");
-  if (card.work) {
-    const sign = { given: "", ok: " ✓", wrong: " ✗", unchecked: " ?" };
+  if (card.work?.lines) {
+    const w = card.work;
     out.push(
-      ...card.work.steps.map((s, i) => `${i + 1}. $${s.latex}$${sign[s.status]}${s.note ? ` (${s.note})` : ""}`),
+      ...(w.opening ? [w.opening, ""] : []),
+      ...w.lines.map((l, i) => `${i + 1}. $${l.latex}$`),
       "",
-      ...(card.work.verdict ? [card.work.verdict, ""] : []),
-      ...(card.work.why ? [`**What went wrong on line ${(card.work.wrongAt ?? 0) + 1}:** ${card.work.why}`, ""] : []),
-      ...(card.work.hint ? [`**Hint:** ${card.work.hint}`, ""] : []),
+      ...w.ideas.flatMap((d) => [`### ${d.name}`, ...[d.what, d.origin, d.note].filter((t): t is string => Boolean(t)), ""]),
+      ...(w.invite ? [w.invite, ""] : []),
     );
   }
   const o = card.object;

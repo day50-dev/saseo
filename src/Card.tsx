@@ -47,13 +47,13 @@ const STAGE_TEXT: Record<CardStage, string> = {
   failed: "",
 };
 
-/** A card checking someone's working says what it's doing in those terms. */
-const CHECK_TEXT: Partial<Record<CardStage, string>> = {
+/** A card looking at someone's own work says what it's doing in those terms. */
+const LOOK_TEXT: Partial<Record<CardStage, string>> = {
   reading: "Reading your work…",
-  checking: "Checking each step…",
-  writing: "Working out what went wrong…",
+  checking: "Following the algebra…",
+  writing: "Looking for what it connects to…",
 };
-const stageText = (card: CardItem) => (card.check ? (CHECK_TEXT[card.stage] ?? STAGE_TEXT[card.stage]) : STAGE_TEXT[card.stage]);
+const stageText = (card: CardItem) => (card.look ? (LOOK_TEXT[card.stage] ?? STAGE_TEXT[card.stage]) : STAGE_TEXT[card.stage]);
 
 const FACETS = [
   ["why", "Why it exists"],
@@ -422,7 +422,7 @@ export function Card(props: {
           ↶ Bring back the earlier {card.objectKind === "diagram" ? "drawing" : card.objectKind === "links" ? "reading" : card.objectKind}
         </button>
       )}
-      {card.work && <WorkView work={card.work} done={card.stage === "done"} />}
+      {card.work?.lines && <WorkView work={card.work} done={card.stage === "done"} onExplain={(name, context, y) => void props.onDescend(name, context, y)} onAsk={props.onAsk} />}
       {showShapes && card.sem && (
         <SemShapes
           title={card.subject ?? "Explanation"}
